@@ -1,0 +1,19 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model AcademicEvent {
+  id           String   @id @db.Uuid
+  title        String
+  priceInCents Int
+  capacity     Int
+  status       String   @default("draft")
+  createdAt    DateTime @default(now())
+
+  @@map("academic_events")
+}
