@@ -29,17 +29,6 @@ export class AcademicEvent {
       throw new Error('O título do evento é obrigatório.');
     }
 
-    if (!Number.isSafeInteger(input.priceInCents) || input.priceInCents <= 0) {
-      throw new Error(
-        'O preço do evento deve ser um número inteiro positivo em centavos.',
-      );
-    }
-
-    if (!Number.isSafeInteger(input.capacity) || input.capacity <= 0) {
-      throw new Error(
-        'A capacidade do evento deve ser um número inteiro positivo.',
-      );
-    }
     if (
       !Number.isSafeInteger(input.priceInCents) ||
       input.priceInCents <= 0 ||
@@ -49,7 +38,7 @@ export class AcademicEvent {
         'O preço do evento deve estar entre 1 e 2.147.483.647 centavos.',
       );
     }
-    
+
     if (
       !Number.isSafeInteger(input.capacity) ||
       input.capacity <= 0 ||

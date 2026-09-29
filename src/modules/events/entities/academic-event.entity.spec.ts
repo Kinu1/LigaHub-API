@@ -61,29 +61,39 @@ describe('AcademicEvent', () => {
     ).toThrow('O título do evento é obrigatório.');
   });
 
-  it.each([0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
-    'deve rejeitar um preço inválido: %s',
-    (priceInCents) => {
-      expect(() =>
-        AcademicEvent.create({
-          ...validInput,
-          priceInCents,
-        }),
-      ).toThrow(
-        'O preço do evento deve ser um número inteiro positivo em centavos.',
-      );
-    },
-  );
+  it.each([
+    0,
+    -1,
+    1.5,
+    NaN,
+    Infinity,
+    2_147_483_648,
+    Number.MAX_SAFE_INTEGER + 1,
+  ])('deve rejeitar um preço inválido: %s', (priceInCents) => {
+    expect(() =>
+      AcademicEvent.create({
+        ...validInput,
+        priceInCents,
+      }),
+    ).toThrow('O preço do evento deve estar entre 1 e 2.147.483.647 centavos.');
+  });
 
-  it.each([0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
-    'deve rejeitar uma capacidade inválida: %s',
-    (capacity) => {
-      expect(() =>
-        AcademicEvent.create({
-          ...validInput,
-          capacity,
-        }),
-      ).toThrow('A capacidade do evento deve ser um número inteiro positivo.');
-    },
-  );
+  it.each([
+    0,
+    -1,
+    1.5,
+    NaN,
+    Infinity,
+    2_147_483_648,
+    Number.MAX_SAFE_INTEGER + 1,
+  ])('deve rejeitar uma capacidade inválida: %s', (capacity) => {
+    expect(() =>
+      AcademicEvent.create({
+        ...validInput,
+        capacity,
+      }),
+    ).toThrow(
+      'A capacidade do evento deve estar entre 1 e 2.147.483.647 participantes.',
+    );
+  });
 });
