@@ -1,0 +1,23 @@
+# Dependências instaladas
+node_modules/
+
+# Arquivos gerados pela compilação
+dist/
+*.tsbuildinfo
+
+# Relatórios dos testes
+coverage/
+
+# Configurações locais do Visual Studio
+.vs/
+
+# Variáveis de ambiente
+.env
+.env.*
+!.env.example
+
+# Modelo de configuração que pode ser versionado
+!.env.example
+
+# Logs
+*.log
