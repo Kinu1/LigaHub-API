@@ -5,6 +5,8 @@ export type CreateAcademicEventInput = {
   capacity: number;
 };
 
+const MAX_DATABASE_INT = 2_147_483_647;
+
 export class AcademicEvent {
   public readonly status = 'draft' as const;
 
@@ -36,6 +38,25 @@ export class AcademicEvent {
     if (!Number.isSafeInteger(input.capacity) || input.capacity <= 0) {
       throw new Error(
         'A capacidade do evento deve ser um número inteiro positivo.',
+      );
+    }
+    if (
+      !Number.isSafeInteger(input.priceInCents) ||
+      input.priceInCents <= 0 ||
+      input.priceInCents > MAX_DATABASE_INT
+    ) {
+      throw new Error(
+        'O preço do evento deve estar entre 1 e 2.147.483.647 centavos.',
+      );
+    }
+    
+    if (
+      !Number.isSafeInteger(input.capacity) ||
+      input.capacity <= 0 ||
+      input.capacity > MAX_DATABASE_INT
+    ) {
+      throw new Error(
+        'A capacidade do evento deve estar entre 1 e 2.147.483.647 participantes.',
       );
     }
 
