@@ -1,14 +1,14 @@
 import { Module } from '@nestjs/common';
-import { PrismaService } from '../../prisma.service.js';
+import { PrismaModule } from '../../prisma.module.js';
 import { EventsController } from './events.controller.js';
 import { EventsRepository } from './events.repository.js';
 import { EventsService } from './events.service.js';
 import { PrismaEventsRepository } from './prisma-events.repository.js';
 
 @Module({
+  imports: [PrismaModule],
   controllers: [EventsController],
   providers: [
-    PrismaService,
     EventsService,
     { provide: EventsRepository, useClass: PrismaEventsRepository },
   ],
