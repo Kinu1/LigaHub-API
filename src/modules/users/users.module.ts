@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-
+import { UsersService } from './users.service.js';
 import { PrismaModule } from '../../prisma.module.js';
 import { Argon2PasswordHasher } from './argon2-password-hasher.js';
 import { PasswordHasher } from './password-hasher.js';
@@ -18,6 +18,6 @@ import { UserRepository } from './users.repository.js';
       useClass: Argon2PasswordHasher,
     },
   ],
-  exports: [UserRepository, PasswordHasher],
+  exports: [UsersService, UserRepository, PasswordHasher],
 })
 export class UsersModule {}
