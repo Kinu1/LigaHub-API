@@ -9,6 +9,7 @@ import { UserRepository } from './users.repository.js';
 @Module({
   imports: [PrismaModule],
   providers: [
+    UsersService,
     {
       provide: UserRepository,
       useClass: PrismaUsersRepository,
