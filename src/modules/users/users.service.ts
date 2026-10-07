@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { CreateUserDto } from './dto/create-user.dto.js';
 import { User } from './entities/user.entity.js';
+import { EmailAlreadyInUseError } from './errors/email-already-in-use.error.js';
 import { PasswordHasher } from './password-hasher.js';
 import { UserRepository } from './users.repository.js';
 
@@ -35,7 +36,7 @@ export class UsersService {
     );
 
     if (existingAccount) {
-      throw new Error('Já existe uma conta com este e-mail.');
+      throw new EmailAlreadyInUseError();
     }
 
     const passwordHash = await this.passwordHasher.hash(input.password);

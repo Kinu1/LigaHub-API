@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '../../generated/prisma/client.js';
 
 import { PrismaService } from '../../prisma.service.js';
 import { User } from './entities/user.entity.js';
+import { EmailAlreadyInUseError } from './errors/email-already-in-use.error.js';
 import {
   UserRepository,
   type UserWithCredentials,
@@ -14,6 +16,7 @@ export class PrismaUsersRepository extends UserRepository {
   }
 
   async create(user: User, passwordHash: string): Promise<void> {
+    try {
     await this.prisma.user.create({
       data: {
         id: user.id,
@@ -23,6 +26,15 @@ export class PrismaUsersRepository extends UserRepository {
         passwordHash,
       },
     });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const target = error.meta?.target;
+        if (Array.isArray(target) && target.length === 1 && target[0] === 'email') {
+          throw new EmailAlreadyInUseError({ cause: error });
+        }
+      }
+      throw error;
+    }
   }
 
   async findByEmail(email: string): Promise<UserWithCredentials | null> {
