@@ -4,6 +4,18 @@ A API utiliza Payments API (`/v1/payments`) com Checkout Transparente. A conta r
 
 ## Configuração local
 
+### Conta fixa de teste (sem OAuth)
+
+Para testar antes de liberar OAuth, configure `MERCADO_PAGO_TEST_MODE=true`, `MERCADO_PAGO_TEST_ACCESS_TOKEN` e `MERCADO_PAGO_TEST_PUBLIC_KEY` com o par de credenciais de teste da mesma aplicação. Não use o prefixo do token como prova de ambiente: a API consulta a conta e exige a identificação `test_user` e país Brasil.
+
+Defina `MERCADO_PAGO_TEST_OWNER_EMAIL` com o e-mail de um administrador ou organizador ativo da LigaHub. Se houver exatamente um organizador ativo, o comando pode selecioná-lo sem essa variável. Execute as migrations e `npm.cmd run payments:connect-test`. O comando verifica a conta no Mercado Pago e armazena o token criptografado; não cria pagamentos. Repetir com a mesma conta atualiza suas credenciais sem criar um novo vínculo. Não substitui uma conta OAuth existente.
+
+Essa alternativa não exige Client Secret nem URL de callback OAuth. Para pagamentos com notificações, ainda configure `MERCADO_PAGO_NOTIFICATION_URL` e `MERCADO_PAGO_WEBHOOK_SECRET`. `npm.cmd run payments:check` reconhece automaticamente esse modo. A conta fica marcada como teste no banco e seu token é bloqueado quando `MERCADO_PAGO_TEST_MODE` não é `true`.
+
+Não versione o `.env` nem compartilhe os tokens. Para produção, remova as variáveis de conta fixa, configure OAuth e conecte a conta real do organizador. Alterar apenas a variável de ambiente não transforma uma conta de teste em conta real.
+
+### Conta conectada por OAuth
+
 1. Crie uma aplicação de Checkout Transparente no painel Mercado Pago Developers. Cadastre a URL HTTPS exata do callback e habilite PKCE.
 2. Configure notificações do tópico `payment` para a URL HTTPS do webhook e obtenha seu segredo de assinatura.
 3. Preencha as variáveis abaixo **no `.env` local**, sem enviar credenciais no chat.

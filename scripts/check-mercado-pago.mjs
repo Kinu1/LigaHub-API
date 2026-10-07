@@ -46,10 +46,25 @@ function endpoint(name, expectedPath) {
 }
 
 console.log('Verificação local do Mercado Pago (sem chamadas ao provedor).');
-required('MERCADO_PAGO_CLIENT_ID');
-required('MERCADO_PAGO_CLIENT_SECRET');
+const fixedAccount = Boolean(
+  process.env.MERCADO_PAGO_TEST_ACCESS_TOKEN ||
+  process.env.MERCADO_PAGO_TEST_PUBLIC_KEY,
+);
+if (fixedAccount) {
+  required('MERCADO_PAGO_TEST_ACCESS_TOKEN');
+  required('MERCADO_PAGO_TEST_PUBLIC_KEY');
+  report(
+    'Conta fixa de teste',
+    process.env.MERCADO_PAGO_TEST_MODE === 'true',
+    'exige MERCADO_PAGO_TEST_MODE=true explicitamente.',
+  );
+} else {
+  required('MERCADO_PAGO_CLIENT_ID');
+  required('MERCADO_PAGO_CLIENT_SECRET');
+}
 required('MERCADO_PAGO_WEBHOOK_SECRET');
-endpoint('MERCADO_PAGO_REDIRECT_URI', '/payments/accounts/callback');
+if (!fixedAccount)
+  endpoint('MERCADO_PAGO_REDIRECT_URI', '/payments/accounts/callback');
 endpoint('MERCADO_PAGO_NOTIFICATION_URL', '/payments/webhook');
 
 const key = process.env.CREDENTIALS_ENCRYPTION_KEY ?? '';
