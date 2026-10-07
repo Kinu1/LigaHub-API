@@ -100,7 +100,7 @@ export class EmailOutboxService implements OnModuleInit, OnModuleDestroy {
       const item = await tx.emailOutbox.findUniqueOrThrow({
         where: { id: rows[0].id },
       });
-      if (!item.firstAttemptAt) {
+      {
         const registration = await tx.registration.findUniqueOrThrow({
           where: { id: item.registrationId },
         });

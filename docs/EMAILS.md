@@ -19,6 +19,8 @@ Há até oito tentativas, com espera progressiva de 1 a 64 minutos. Como as chav
 
 ## Link de consulta
 
+Antes de cada tentativa, inclusive após falha ou timeout, o worker verifica se a inscrição continua confirmada, sem suspensão e com token válido. Caso contrário, descarta a tarefa como `skipped`. Um e-mail já aceito pelo provedor não pode ser desfeito por essa verificação.
+
 O e-mail aponta para `/inscricoes/UUID#token=TOKEN` no frontend. O token fica no fragmento, não na query enviada ao servidor. A futura página deve lê-lo, removê-lo do endereço com `history.replaceState`, mantê-lo apenas em memória e chamar:
 
 ```http

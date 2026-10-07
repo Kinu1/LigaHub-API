@@ -359,6 +359,37 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
       ).status,
     ).toBe('skipped');
   });
+  it.each(['canceled', 'suspended'])(
+    'não deve repetir a confirmação após falha se a inscrição estiver %s',
+    async (state) => {
+      await service.applyPayment(attemptId, payment());
+      const { worker, send } = mailWorker(
+        vi
+          .fn()
+          .mockRejectedValueOnce(new Error('Resposta perdida'))
+          .mockResolvedValue('email-provedor'),
+      );
+      await worker.processBatch(registrationId);
+      await prisma.registration.update({
+        where: { id: registrationId },
+        data:
+          state === 'canceled'
+            ? { status: 'canceled' }
+            : { suspendedAt: new Date() },
+      });
+      await prisma.emailOutbox.update({
+        where: { registrationId },
+        data: { nextAttemptAt: new Date(0) },
+      });
+      await worker.processBatch(registrationId);
+      expect(send).toHaveBeenCalledOnce();
+      const outbox = await prisma.emailOutbox.findUniqueOrThrow({
+        where: { registrationId },
+      });
+      expect(outbox.status).toBe('skipped');
+      expect(outbox.payloadEncrypted).toBeNull();
+    },
+  );
   it('deve consultar o status com o token do e-mail sem conceder acesso de alteração', async () => {
     await service.applyPayment(attemptId, payment());
     const outbox = await prisma.emailOutbox.findUniqueOrThrow({
