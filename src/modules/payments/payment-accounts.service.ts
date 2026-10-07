@@ -127,6 +127,7 @@ export class PaymentAccountsService {
         data: {
           ownerId: owner.id,
           merchantId: String(token.user_id),
+          isTest: (process.env.MERCADO_PAGO_TEST_MODE ?? 'true') === 'true',
           publicKey: token.public_key,
           accessTokenEncrypted: encryptCredential(token.access_token),
           refreshTokenEncrypted: token.refresh_token
@@ -181,6 +182,13 @@ export class PaymentAccountsService {
         const account = await tx.paymentAccount.findUniqueOrThrow({
           where: { id: accountId },
         });
+        if (
+          account.isTest &&
+          (process.env.MERCADO_PAGO_TEST_MODE ?? 'true') !== 'true'
+        )
+          throw new ServiceUnavailableException(
+            'Uma conta de teste não pode ser utilizada no ambiente de produção.',
+          );
         if (
           !account.tokenExpiresAt ||
           account.tokenExpiresAt.getTime() > Date.now() + 60_000

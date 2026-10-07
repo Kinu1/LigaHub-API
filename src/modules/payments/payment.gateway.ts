@@ -18,7 +18,9 @@ export class PaymentRejectedByProvider extends ServiceUnavailableException {
 }
 export abstract class PaymentGateway {
   abstract exchangeOAuth(input: Record<string, string>): Promise<OAuthToken>;
-  abstract merchant(accessToken: string): Promise<{ id: number | string }>;
+  abstract merchant(
+    accessToken: string,
+  ): Promise<{ id: number | string; tags?: string[]; site_id?: string }>;
   abstract createPayment(
     accessToken: string,
     idempotencyKey: string,
@@ -104,7 +106,9 @@ export class MercadoPagoGateway extends PaymentGateway {
       );
     return token;
   }
-  merchant(accessToken: string): Promise<{ id: number | string }> {
+  merchant(
+    accessToken: string,
+  ): Promise<{ id: number | string; tags?: string[]; site_id?: string }> {
     return this.request('/users/me', accessToken);
   }
   createPayment(
