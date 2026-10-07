@@ -9,9 +9,13 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { JwtAuthGuard, RolesGuard } from './modules/auth/auth.guards.js';
 import { ApiExceptionFilter } from './common/http.js';
+import { CatalogModule } from './modules/catalog/catalog.module.js';
+import { RegistrationsModule } from './modules/registrations/registrations.module.js';
+import { PaymentsModule } from './modules/payments/payments.module.js';
+import { AdminModule } from './modules/admin/admin.module.js';
 
 @Module({
-  imports: [EventsModule, UsersModule, AuthModule, ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }])],
+  imports: [EventsModule, UsersModule, AuthModule, CatalogModule, RegistrationsModule, PaymentsModule, AdminModule, ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }])],
   controllers: [AppController],
   providers: [AppService,
     { provide: APP_FILTER, useClass: ApiExceptionFilter },
