@@ -24,6 +24,12 @@ Para testar uma API local, utilize um endereço HTTPS acessível pelo provedor q
 
 ## Conectar o organizador
 
+Antes de conectar a conta, execute `npm.cmd run payments:check`. O comando verifica o preenchimento das variáveis, o formato das URLs e da chave de criptografia sem imprimir segredos nem chamar o Mercado Pago. Pendências produzem código de saída 1. Um resultado OK não comprova validade das credenciais nem acessibilidade do túnel.
+
+A autorização do MCP no Cursor ou Codex pertence à ferramenta de desenvolvimento. Ela não conecta automaticamente o organizador à LigaHub e não preenche o `.env` da API.
+
+Para testes locais, inicie a API na porta 3000 e encaminhe um túnel HTTPS para essa porta. Use o host fornecido pelo túnel nas URLs de callback e webhook e cadastre essas mesmas URLs na aplicação Mercado Pago. Se o host mudar, atualize o painel e o `.env`, reinicie a API e gere uma nova autorização.
+
 1. Faça login na API como organizador.
 2. Chame `POST /payments/accounts/authorize` com `{}` e JWT. Como administrador, envie `{ "ownerId": "UUID_DO_ORGANIZADOR" }`.
 3. Abra `authorizationUrl` e autorize a conta que receberá os pagamentos.
