@@ -319,4 +319,3 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
     ).toBe('reserved');
   });
 });
-

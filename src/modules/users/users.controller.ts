@@ -42,7 +42,10 @@ export class UsersController {
     @Inject(PrismaService) private readonly prisma: PrismaService,
   ) {}
   @Post()
-  create(@Body() input: CreateUserHttpDto, @CurrentUser() actor: AuthenticatedUser) {
+  create(
+    @Body() input: CreateUserHttpDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
     return this.users.create(input, actor.id);
   }
   @Get()

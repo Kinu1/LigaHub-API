@@ -15,9 +15,19 @@ import { PaymentsModule } from './modules/payments/payments.module.js';
 import { AdminModule } from './modules/admin/admin.module.js';
 
 @Module({
-  imports: [EventsModule, UsersModule, AuthModule, CatalogModule, RegistrationsModule, PaymentsModule, AdminModule, ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }])],
+  imports: [
+    EventsModule,
+    UsersModule,
+    AuthModule,
+    CatalogModule,
+    RegistrationsModule,
+    PaymentsModule,
+    AdminModule,
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
+  ],
   controllers: [AppController],
-  providers: [AppService,
+  providers: [
+    AppService,
     { provide: APP_FILTER, useClass: ApiExceptionFilter },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useExisting: JwtAuthGuard },

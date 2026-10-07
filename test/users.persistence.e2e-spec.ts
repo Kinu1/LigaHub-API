@@ -73,10 +73,30 @@ describe('Persistência de usuários', () => {
     const ids = [randomUUID(), randomUUID()];
     const email = `${ids[0]}@ligahub.test`;
     try {
-      await repository.create(User.create({ id: ids[0], name: 'Primeiro administrador', email, role: 'admin' }), 'hash-de-teste');
-      await expect(repository.create(User.create({ id: ids[1], name: 'Segundo administrador', email, role: 'admin' }), 'hash-de-teste')).rejects.toBeInstanceOf(EmailAlreadyInUseError);
+      await repository.create(
+        User.create({
+          id: ids[0],
+          name: 'Primeiro administrador',
+          email,
+          role: 'admin',
+        }),
+        'hash-de-teste',
+      );
+      await expect(
+        repository.create(
+          User.create({
+            id: ids[1],
+            name: 'Segundo administrador',
+            email,
+            role: 'admin',
+          }),
+          'hash-de-teste',
+        ),
+      ).rejects.toBeInstanceOf(EmailAlreadyInUseError);
       expect(await prisma.user.count({ where: { email } })).toBe(1);
-      expect(await prisma.auditLog.count({ where: { entityId: ids[1] } })).toBe(0);
+      expect(await prisma.auditLog.count({ where: { entityId: ids[1] } })).toBe(
+        0,
+      );
     } finally {
       await prisma.auditLog.deleteMany({ where: { entityId: { in: ids } } });
       await prisma.user.deleteMany({ where: { id: { in: ids } } });
