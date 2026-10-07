@@ -15,6 +15,7 @@ import { PrismaService } from '../../prisma.service.js';
 import { Prisma, type PaymentAttempt } from '../../generated/prisma/client.js';
 import type { AuthenticatedUser } from '../auth/auth.decorators.js';
 import { PaymentAccountsService } from './payment-accounts.service.js';
+import { enqueueConfirmation } from '../notifications/confirmation-email.js';
 import type { CreatePaymentDto } from './payment.dto.js';
 import {
   PaymentGateway,
@@ -436,6 +437,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           where: { id: registration.id },
           data: { status },
         });
+        if (canConfirm) await enqueueConfirmation(tx, registration);
         await tx.auditLog.create({
           data: {
             entityType: 'registration',
