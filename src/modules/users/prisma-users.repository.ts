@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '../../generated/prisma/client.js';
+import { isUniqueConstraint } from '../../common/prisma-errors.js';
 
 import { PrismaService } from '../../prisma.service.js';
 import { User } from './entities/user.entity.js';
@@ -15,27 +15,35 @@ export class PrismaUsersRepository extends UserRepository {
     super();
   }
 
-  async create(user: User, passwordHash: string, actorId?: string): Promise<void> {
+  async create(
+    user: User,
+    passwordHash: string,
+    actorId?: string,
+  ): Promise<void> {
     try {
-    await this.prisma.$transaction(async (tx) => {
-    await tx.user.create({
-      data: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        passwordHash,
-      },
-    });
-    await tx.auditLog.create({ data: { actorId, entityType: 'user', entityId: user.id, action: 'user.created', metadata: { role: user.role } } });
-    });
+      await this.prisma.$transaction(async (tx) => {
+        await tx.user.create({
+          data: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            passwordHash,
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId,
+            entityType: 'user',
+            entityId: user.id,
+            action: 'user.created',
+            metadata: { role: user.role },
+          },
+        });
+      });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        const target = error.meta?.target;
-        if (Array.isArray(target) && target.length === 1 && target[0] === 'email') {
-          throw new EmailAlreadyInUseError({ cause: error });
-        }
-      }
+      if (isUniqueConstraint(error, ['email'], 'users_email_key'))
+        throw new EmailAlreadyInUseError({ cause: error });
       throw error;
     }
   }

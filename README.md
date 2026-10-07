@@ -1,80 +1,69 @@
 # LigaHub API
 
-Backend de uma plataforma para gestão de eventos de uma liga acadêmica.
+Backend para organizar eventos pagos de **uma liga acadêmica**, com TypeScript, NestJS, Prisma e PostgreSQL. O frontend será construído em uma etapa posterior.
 
-Projeto em desenvolvimento para estudo e portfólio, com aplicação
-organizada por funcionalidades, com controllers, services, DTOs e entidades.
+## Funcionalidades
 
-## Organização
+- Administrador com acesso global e um responsável organizador com acesso aos próprios eventos.
+- JWT de 15 minutos, senhas Argon2id e revogação de sessões.
+- Eventos em rascunho, publicados, suspensos ou encerrados; formulário personalizável e preço único em centavos.
+- Inscrições pelo link divulgado pelo organizador, sem catálogo público nem conta do participante.
+- Uma inscrição por e-mail normalizado por evento; reserva temporária e proteção da última vaga com transação no PostgreSQL.
+- Pix e cartão com parcelamento; conta recebedora conectada por OAuth com PKCE.
+- Webhooks autenticados, idempotência e reconciliação de pagamentos.
+- Solicitação de cancelamento, suspensão de inscrições, auditoria e indicadores administrativos.
 
-Cada funcionalidade fica em `src/modules/`. O módulo de eventos contém:
+Não há taxa da plataforma nos pagamentos. Reembolsos são executados pelo organizador no Mercado Pago e acompanhados pela sincronização. Não há certificados.
 
-- `events.controller.ts`: base para as rotas HTTP de eventos.
-- `events.service.ts`: criação de eventos e chamada ao repositório.
-- `events.module.ts`: configuração do módulo NestJS.
-- `events.repository.ts`: contrato de persistência dos eventos.
-- `prisma-events.repository.ts`: implementação do contrato com Prisma.
-- `dto/create-event.dto.ts`: formato dos dados de criação.
-- `entities/academic-event.entity.ts`: entidade e validações do evento.
+## Iniciar no Windows
 
-O `PrismaService` fica em `src/prisma.service.ts`. O esquema e as migrations
-ficam em `prisma/`. O módulo injeta `PrismaEventsRepository` onde o serviço
-depende de `EventsRepository`: assim, a regra de criação não depende do Prisma.
+Requisitos: Node.js 24, Git e Docker Desktop iniciado. No terminal do Cursor, dentro da pasta do projeto:
 
-Os testes unitários ficam ao lado dos arquivos que verificam. O teste de
-persistência fica em `test/` e grava um evento no PostgreSQL. A rota HTTP de
-criação ainda não foi implementada. O DTO descreve os dados; ele ainda não
-valida requisições HTTP.
+```powershell
+npm.cmd ci
+npm.cmd run env:init
+docker compose up -d
+npm.cmd run db:generate
+npm.cmd run db:migrate
+```
 
-## Tecnologias
+`env:init` cria `.env` se necessário e gera os segredos JWT e de criptografia. Segredos existentes são preservados. PostgreSQL: `127.0.0.1:5433`; API: porta 3000. Ao trocar a senha do banco, atualize também `DATABASE_URL`. Alterar a variável não altera a senha de um volume PostgreSQL já inicializado.
 
-- Node.js
-- TypeScript
-- NestJS
-- PostgreSQL
-- Prisma
-- npm
+Para criar o primeiro administrador, preencha **somente no `.env` local**:
 
-## Funcionalidades planejadas
+```dotenv
+BOOTSTRAP_ADMIN_NAME=Pedro
+BOOTSTRAP_ADMIN_EMAIL=seu-email@example.com
+BOOTSTRAP_ADMIN_PASSWORD=escolha-uma-senha
+```
 
-- Gestão de eventos.
-- Formulários de inscrição personalizáveis.
-- Controle de vagas e reservas temporárias.
-- Pagamentos com Pix e cartão via Mercado Pago.
-- Acesso administrativo e acesso do organizador.
-- Solicitações de cancelamento e acompanhamento de reembolsos.
+```powershell
+npm.cmd run admin:bootstrap
+npm.cmd run start:dev
+```
 
-## Executar localmente
+Senhas aceitam de 6 a 128 caracteres. O bootstrap não redefine senhas, não promove usuários existentes e não reativa contas suspensas. Depois da criação, remova `BOOTSTRAP_ADMIN_PASSWORD` do `.env`. Não versione credenciais.
 
-Instale as dependências:
+Com `API_DOCS_ENABLED=true`, abra [Swagger local](http://localhost:3000/docs). Exemplos em [docs/API.md](docs/API.md), decisões em [docs/ARQUITETURA.md](docs/ARQUITETURA.md) e configuração de pagamentos em [docs/MERCADO_PAGO.md](docs/MERCADO_PAGO.md).
 
-    npm ci
+## Verificar
 
-Copie `.env.example` para `.env` e inicie o PostgreSQL:
+```powershell
+npm.cmd run lint
+npm.cmd run build
+npm.cmd test
+npm.cmd run test:e2e
+npm.cmd audit
+```
 
-    docker compose up -d
+Os testes de integração exigem as migrations aplicadas. Criam dados identificados por UUID e removem somente esses dados; prefira um banco separado para testes. Pagamentos usam provedor simulado, sem cobrança real. O GitHub Actions usa um PostgreSQL exclusivo do job.
 
-Gere o cliente Prisma e aplique as migrations:
+## Limites da entrega
 
-    npx prisma generate --config prisma7.config.ts
-    npx prisma migrate deploy --config prisma7.config.ts
+A integração com Mercado Pago está implementada, mas a validação ponta a ponta no sandbox depende de aplicação, credenciais e conta de teste configuradas pelo proprietário. Nenhum recebimento real foi validado. A API recebe apenas o token temporário do cartão; a tokenização pelo SDK do Mercado Pago será feita no futuro frontend.
 
-Inicie a aplicação em desenvolvimento:
+O histórico é imutável pelas rotas da API; administradores do banco podem editar registros. Reservas expiradas deixam de consumir vagas pela data de expiração, mesmo antes de o estado ser materializado como `expired`.
 
-    npm run start:dev
+## Versionamento
 
-A aplicação utiliza a porta 3000 por padrão.
-
-## Verificações
-
-Compilar:
-
-    npm run build
-
-Executar testes:
-
-    npm test
-
-Executar os testes de integração (com o PostgreSQL iniciado):
-
-    npm run test:e2e
+Branches de autenticação, eventos, inscrições, pagamentos e administração são encadeadas porque uma funcionalidade depende da anterior. Revise e integre na mesma ordem. `.github/workflows/backend.yml` verifica lint, compilação, testes e dependências a cada push ou PR.

@@ -40,6 +40,37 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
     searchPayment: vi.fn(),
   };
   const accounts = { accessToken: vi.fn().mockResolvedValue('token-simulado') };
+  it.each([undefined, 'https://', 'http://localhost/webhook'])(
+    'deve rejeitar configuração inválida de webhook sem criar tentativa: %s',
+    async (notificationUrl) => {
+      await prisma.paymentAttempt.delete({ where: { id: attemptId } });
+      const previous = process.env.MERCADO_PAGO_NOTIFICATION_URL;
+      if (notificationUrl === undefined)
+        delete process.env.MERCADO_PAGO_NOTIFICATION_URL;
+      else process.env.MERCADO_PAGO_NOTIFICATION_URL = notificationUrl;
+      try {
+        await expect(
+          service.create(
+            registrationId,
+            'token-participante',
+            randomUUID(),
+            pixInput,
+          ),
+        ).rejects.toThrow('Configure uma URL HTTPS');
+        expect(
+          await prisma.paymentAttempt.count({ where: { registrationId } }),
+        ).toBe(0);
+        expect(
+          await prisma.auditLog.count({ where: { entityId: registrationId } }),
+        ).toBe(0);
+        expect(gateway.createPayment).not.toHaveBeenCalled();
+      } finally {
+        if (previous === undefined)
+          delete process.env.MERCADO_PAGO_NOTIFICATION_URL;
+        else process.env.MERCADO_PAGO_NOTIFICATION_URL = previous;
+      }
+    },
+  );
   beforeEach(async () => {
     vi.clearAllMocks();
     prisma = new PrismaService();
@@ -319,4 +350,3 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
     ).toBe('reserved');
   });
 });
-
