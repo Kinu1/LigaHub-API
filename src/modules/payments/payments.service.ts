@@ -152,13 +152,13 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           );
         return existing;
       }
-      // Falhas locais de configuração não devem criar cobranças pendentes.
-      this.notificationUrl();
       const current = await tx.registration.findUniqueOrThrow({
         where: { id: registration.id },
         include: { event: { include: { owner: true } } },
       });
       this.assertCanPay(current);
+      // Falhas locais de configuração não devem criar cobranças pendentes.
+      this.notificationUrl();
       const active = await tx.paymentAttempt.findFirst({
         where: { registrationId, status: { in: unresolved } },
       });
