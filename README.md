@@ -48,6 +48,8 @@ Com `API_DOCS_ENABLED=true`, abra [Swagger local](http://localhost:3000/docs). E
 
 ## Verificar
 
+Confirmação automática por e-mail e link somente de consulta: veja [docs/EMAILS.md](docs/EMAILS.md). O envio fica desativado até configurar o provedor e publicar a página de consulta.
+
 ```powershell
 npm.cmd run lint
 npm.cmd run build
