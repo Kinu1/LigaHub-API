@@ -152,6 +152,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           );
         return existing;
       }
+      // Falhas locais de configuração não devem criar cobranças pendentes.
+      this.notificationUrl();
       const current = await tx.registration.findUniqueOrThrow({
         where: { id: registration.id },
         include: { event: { include: { owner: true } } },
@@ -295,11 +297,16 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
 
   private notificationUrl(): string {
     const value = process.env.MERCADO_PAGO_NOTIFICATION_URL;
-    if (!value || !value.startsWith('https://'))
+    try {
+      const url = new URL(value ?? '');
+      if (url.protocol !== 'https:' || url.username || url.password || url.hash)
+        throw new Error('URL inválida.');
+      return url.toString();
+    } catch {
       throw new ServiceUnavailableException(
         'Configure uma URL HTTPS para notificações do Mercado Pago.',
       );
-    return value;
+    }
   }
 
   private assertCanPay(registration: {
