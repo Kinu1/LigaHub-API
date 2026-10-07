@@ -1,0 +1,45 @@
+name: Backend
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: ligahub
+          POSTGRES_PASSWORD: senha-exclusiva-ci
+          POSTGRES_DB: ligahub_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U ligahub -d ligahub_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ligahub:senha-exclusiva-ci@127.0.0.1:5433/ligahub_test?schema=public
+      JWT_SECRET: segredo-exclusivo-ci-nao-utilizar-em-producao
+      PAYMENT_RECONCILIATION_ENABLED: 'false'
+      MERCADO_PAGO_TEST_MODE: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run db:migrate
+      - run: npm run lint
+      - run: npm run build
+      - run: npm test
+      - run: npm run test:e2e
+      - run: npm audit --audit-level=high

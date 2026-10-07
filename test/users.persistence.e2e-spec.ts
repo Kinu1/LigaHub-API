@@ -6,6 +6,7 @@ import { User } from '../src/modules/users/entities/user.entity.js';
 import { UsersModule } from '../src/modules/users/users.module.js';
 import { UserRepository } from '../src/modules/users/users.repository.js';
 import { PrismaService } from '../src/prisma.service.js';
+import { EmailAlreadyInUseError } from '../src/modules/users/errors/email-already-in-use.error.js';
 
 describe('Persistência de usuários', () => {
   let moduleRef: TestingModule;
@@ -32,7 +33,7 @@ describe('Persistência de usuários', () => {
       id,
       name: 'Pedro',
       email: `teste-${id}@ligahub.test`,
-      role: 'organizer',
+      role: 'admin',
     });
 
     const passwordHash = 'hash-ficticio-usado-apenas-no-teste';
@@ -49,10 +50,11 @@ describe('Persistência de usuários', () => {
         id: user.id,
         name: 'Pedro',
         email: user.email,
-        role: 'organizer',
+        role: 'admin',
       });
       expect(result?.passwordHash).toBe(passwordHash);
     } finally {
+      await prisma.auditLog.deleteMany({ where: { entityId: id } });
       await prisma.user.deleteMany({
         where: { id },
       });
@@ -65,5 +67,39 @@ describe('Persistência de usuários', () => {
     );
 
     expect(result).toBeNull();
+  });
+
+  it('deve traduzir o conflito de e-mail do banco sem gravar uma segunda conta', async () => {
+    const ids = [randomUUID(), randomUUID()];
+    const email = `${ids[0]}@ligahub.test`;
+    try {
+      await repository.create(
+        User.create({
+          id: ids[0],
+          name: 'Primeiro administrador',
+          email,
+          role: 'admin',
+        }),
+        'hash-de-teste',
+      );
+      await expect(
+        repository.create(
+          User.create({
+            id: ids[1],
+            name: 'Segundo administrador',
+            email,
+            role: 'admin',
+          }),
+          'hash-de-teste',
+        ),
+      ).rejects.toBeInstanceOf(EmailAlreadyInUseError);
+      expect(await prisma.user.count({ where: { email } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: ids[1] } })).toBe(
+        0,
+      );
+    } finally {
+      await prisma.auditLog.deleteMany({ where: { entityId: { in: ids } } });
+      await prisma.user.deleteMany({ where: { id: { in: ids } } });
+    }
   });
 });

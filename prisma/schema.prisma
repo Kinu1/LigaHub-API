@@ -80,6 +80,7 @@ model PaymentAccount {
   ownerId               String           @db.Uuid
   owner                 User             @relation(fields: [ownerId], references: [id])
   merchantId            String
+  isTest                Boolean          @default(false)
   publicKey             String
   accessTokenEncrypted  String
   refreshTokenEncrypted String?
