@@ -10,6 +10,8 @@ export default defineConfig({
     env: {
       JWT_SECRET: 'segredo-exclusivo-testes-ligahub-nao-usar-em-producao',
       PAYMENT_RECONCILIATION_ENABLED: 'false',
+      EMAIL_DELIVERY_ENABLED: 'false',
+      CREDENTIALS_ENCRYPTION_KEY: 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=',
     },
   },
 });

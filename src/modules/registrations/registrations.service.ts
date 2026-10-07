@@ -25,6 +25,50 @@ export const hashParticipantToken = (token: string): string =>
 
 @Injectable()
 export class RegistrationsService {
+  async participantStatus(id: string, token?: string) {
+    if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token))
+      throw new UnauthorizedException(
+        'O link de consulta é inválido ou expirou.',
+      );
+    const registration = await this.prisma.registration.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        suspendedAt: true,
+        cancellationRequestedAt: true,
+        statusTokenHash: true,
+        statusTokenExpiresAt: true,
+        event: {
+          select: { title: true, startsAt: true, location: true, status: true },
+        },
+      },
+    });
+    const received = createHash('sha256').update(token).digest();
+    const expected = Buffer.from(
+      registration?.statusTokenHash ?? '0'.repeat(64),
+      'hex',
+    );
+    if (
+      !registration ||
+      !registration.statusTokenExpiresAt ||
+      registration.statusTokenExpiresAt <= new Date() ||
+      expected.length !== received.length ||
+      !timingSafeEqual(received, expected)
+    )
+      throw new UnauthorizedException(
+        'O link de consulta é inválido ou expirou.',
+      );
+    return {
+      id: registration.id,
+      name: registration.name,
+      status: registration.status,
+      suspended: Boolean(registration.suspendedAt),
+      cancellationRequested: Boolean(registration.cancellationRequestedAt),
+      event: registration.event,
+    };
+  }
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   async reserve(publicId: string, input: CreateRegistrationDto) {
@@ -119,7 +163,13 @@ export class RegistrationsService {
         manageToken,
       };
     } catch (error) {
-      if (isUniqueConstraint(error, ['eventId', 'email'], 'registrations_eventId_email_key'))
+      if (
+        isUniqueConstraint(
+          error,
+          ['eventId', 'email'],
+          'registrations_eventId_email_key',
+        )
+      )
         throw new ConflictException(
           'Você já possui uma inscrição neste evento.',
         );

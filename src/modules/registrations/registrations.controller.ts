@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Headers,
+  Header,
   Inject,
   Param,
   ParseUUIDPipe,
@@ -45,6 +46,16 @@ export class RegistrationsController {
     @Body() input: CreateRegistrationDto,
   ) {
     return this.registrations.reserve(publicId, input);
+  }
+  @Public()
+  @Get('public/registrations/:id/status')
+  @Header('Cache-Control', 'no-store')
+  @ApiHeader({ name: 'x-registration-status-token', required: true })
+  status(
+    @Param('id', uuid()) id: string,
+    @Headers('x-registration-status-token') token?: string,
+  ) {
+    return this.registrations.participantStatus(id, token);
   }
   @Public()
   @Get('public/registrations/:id')

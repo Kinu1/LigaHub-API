@@ -65,10 +65,13 @@ model Registration {
   status                  String           @default("reserved")
   reservationExpiresAt    DateTime
   manageTokenHash         String
+  statusTokenHash         String?
+  statusTokenExpiresAt    DateTime?
   suspendedAt             DateTime?
   cancellationRequestedAt DateTime?
   createdAt               DateTime         @default(now())
   payments                PaymentAttempt[]
+  confirmationEmails      EmailOutbox[]
 
   @@unique([eventId, email])
   @@index([eventId, status, reservationExpiresAt])
@@ -142,4 +145,23 @@ model AuditLog {
 
   @@index([entityType, entityId, createdAt])
   @@map("audit_logs")
+}
+
+model EmailOutbox {
+  id               String       @id @default(uuid()) @db.Uuid
+  registrationId   String       @unique @db.Uuid
+  registration     Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  payloadEncrypted String?
+  status           String       @default("pending")
+  attempts         Int          @default(0)
+  nextAttemptAt    DateTime     @default(now())
+  firstAttemptAt   DateTime?
+  leaseId          String?      @db.Uuid
+  leaseExpiresAt   DateTime?
+  providerId       String?
+  sentAt           DateTime?
+  createdAt        DateTime     @default(now())
+
+  @@index([status, nextAttemptAt])
+  @@map("email_outbox")
 }
