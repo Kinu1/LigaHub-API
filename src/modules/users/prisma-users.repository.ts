@@ -15,9 +15,10 @@ export class PrismaUsersRepository extends UserRepository {
     super();
   }
 
-  async create(user: User, passwordHash: string): Promise<void> {
+  async create(user: User, passwordHash: string, actorId?: string): Promise<void> {
     try {
-    await this.prisma.user.create({
+    await this.prisma.$transaction(async (tx) => {
+    await tx.user.create({
       data: {
         id: user.id,
         name: user.name,
@@ -25,6 +26,8 @@ export class PrismaUsersRepository extends UserRepository {
         role: user.role,
         passwordHash,
       },
+    });
+    await tx.auditLog.create({ data: { actorId, entityType: 'user', entityId: user.id, action: 'user.created', metadata: { role: user.role } } });
     });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {

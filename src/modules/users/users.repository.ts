@@ -6,7 +6,7 @@ export type UserWithCredentials = {
 };
 
 export abstract class UserRepository {
-    abstract create(user: User, passwordHash: string): Promise<void>;
+    abstract create(user: User, passwordHash: string, actorId?: string): Promise<void>;
 
     abstract findByEmail(email:string): Promise<UserWithCredentials | null>;
 }
