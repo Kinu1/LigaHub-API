@@ -10,6 +10,24 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, LoginPage } from './auth';
 import { Layout, PublicLayout } from './layout';
+const Dashboard = React.lazy(() =>
+  import('./pages/panel').then((m) => ({ default: m.Dashboard })),
+);
+const EventsPage = React.lazy(() =>
+  import('./pages/panel').then((m) => ({ default: m.EventsPage })),
+);
+const EventDetails = React.lazy(() =>
+  import('./pages/panel').then((m) => ({ default: m.EventDetails })),
+);
+const FinancePage = React.lazy(() =>
+  import('./pages/panel').then((m) => ({ default: m.FinancePage })),
+);
+const UsersPage = React.lazy(() =>
+  import('./pages/panel').then((m) => ({ default: m.UsersPage })),
+);
+const AuditPage = React.lazy(() =>
+  import('./pages/panel').then((m) => ({ default: m.AuditPage })),
+);
 import { Heading, Notice, Loading } from './ui';
 import './styles.css';
 function Home() {
@@ -90,7 +108,12 @@ const router = createBrowserRouter([
     element: <Layout />,
     errorElement: <RouteError />,
     children: [
-      { index: true, element: <Heading title="Painel de gestão" /> },
+      { index: true, element: <Dashboard /> },
+      { path: 'eventos', element: <EventsPage /> },
+      { path: 'eventos/:id', element: <EventDetails /> },
+      { path: 'financeiro', element: <FinancePage /> },
+      { path: 'usuarios', element: <UsersPage /> },
+      { path: 'auditoria', element: <AuditPage /> },
     ],
   },
   {
