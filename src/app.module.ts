@@ -13,6 +13,7 @@ import { CatalogModule } from './modules/catalog/catalog.module.js';
 import { RegistrationsModule } from './modules/registrations/registrations.module.js';
 import { PaymentsModule } from './modules/payments/payments.module.js';
 import { AdminModule } from './modules/admin/admin.module.js';
+import { NotificationsModule } from './modules/notifications/notifications.module.js';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { AdminModule } from './modules/admin/admin.module.js';
     RegistrationsModule,
     PaymentsModule,
     AdminModule,
+    NotificationsModule,
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
   ],
   controllers: [AppController],

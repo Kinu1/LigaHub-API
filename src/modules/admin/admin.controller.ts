@@ -18,6 +18,11 @@ import { AdminService } from './admin.service.js';
 @Controller()
 export class AdminController {
   constructor(@Inject(AdminService) private readonly admin: AdminService) {}
+  @Get('dashboard')
+  @Roles('admin', 'organizer')
+  dashboard(@CurrentUser() actor: AuthenticatedUser) {
+    return this.admin.dashboard(actor);
+  }
 
   @Get('admin/overview')
   @Roles('admin')

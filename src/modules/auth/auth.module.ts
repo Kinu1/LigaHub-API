@@ -6,10 +6,11 @@ import { UsersController } from '../users/users.controller.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { JwtAuthGuard, RolesGuard } from './auth.guards.js';
+import { BrowserController } from './browser.controller.js';
 
 @Module({
   imports: [JwtModule.register({}), PrismaModule, UsersModule],
-  controllers: [AuthController, UsersController],
+  controllers: [AuthController, UsersController, BrowserController],
   providers: [AuthService, JwtAuthGuard, RolesGuard],
   exports: [AuthService, JwtAuthGuard, RolesGuard],
 })

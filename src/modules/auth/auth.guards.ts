@@ -16,9 +16,10 @@ import {
   type AuthenticatedUser,
 } from './auth.decorators.js';
 import { jwtSecret } from './auth.service.js';
+import { cookies } from '../../common/browser-security.js';
 
 type AuthRequest = {
-  headers: { authorization?: string };
+  headers: { authorization?: string; cookie?: string };
   user?: AuthenticatedUser;
 };
 
@@ -39,7 +40,10 @@ export class JwtAuthGuard implements CanActivate {
       return true;
     const request = context.switchToHttp().getRequest<AuthRequest>();
     const match = /^Bearer ([^\s]+)$/i.exec(
-      request.headers.authorization ?? '',
+      request.headers.authorization ??
+        (cookies(request).lh_access
+          ? `Bearer ${cookies(request).lh_access}`
+          : ''),
     );
     if (!match || match[1].length > 4096)
       throw new UnauthorizedException('Autenticação necessária.');

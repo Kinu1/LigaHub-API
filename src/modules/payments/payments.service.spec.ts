@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaService } from '../../prisma.service.js';
 import type { PaymentAccountsService } from './payment-accounts.service.js';
 import type { PaymentGateway } from './payment.gateway.js';
@@ -55,6 +55,10 @@ function fixture(capacity = 1, occupied = 0) {
     },
   };
   const tx = {
+    emailOutbox: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      create: vi.fn(),
+    },
     $queryRaw: vi.fn().mockResolvedValue([]),
     paymentAttempt: {
       count: vi.fn().mockResolvedValue(0),
@@ -109,6 +113,13 @@ function fixture(capacity = 1, occupied = 0) {
 }
 
 describe('PaymentsService', () => {
+  beforeEach(() =>
+    vi.stubEnv(
+      'CREDENTIALS_ENCRYPTION_KEY',
+      Buffer.alloc(32, 1).toString('base64'),
+    ),
+  );
+  afterEach(() => vi.unstubAllEnvs());
   it('deve recusar a mesma chave de idempotência com dados diferentes', async () => {
     const setup = fixture();
     await expect(

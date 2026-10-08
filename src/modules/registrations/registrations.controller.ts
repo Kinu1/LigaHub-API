@@ -4,13 +4,19 @@ import {
   Controller,
   Get,
   Headers,
+  Header,
   Inject,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   Query,
+  Req,
+  Res,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
+import { participantCookie } from '../../common/browser-security.js';
+import { RegistrationAccessService } from './access.service.js';
 import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
 import {
   CurrentUser,
@@ -18,10 +24,11 @@ import {
   Roles,
   type AuthenticatedUser,
 } from '../auth/auth.decorators.js';
-import { PaginationDto } from '../../common/pagination.js';
+
 import {
   CreateRegistrationDto,
   RegistrationSuspensionDto,
+  RegistrationPaginationDto,
 } from './registrations.dto.js';
 import { RegistrationsService } from './registrations.service.js';
 
@@ -37,14 +44,35 @@ export class RegistrationsController {
   constructor(
     @Inject(RegistrationsService)
     private readonly registrations: RegistrationsService,
+    @Inject(RegistrationAccessService)
+    private readonly access: RegistrationAccessService,
   ) {}
   @Public()
   @Post('public/events/:publicId/registrations')
-  reserve(
+  async reserve(
     @Param('publicId', uuid()) publicId: string,
     @Body() input: CreateRegistrationDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
   ) {
-    return this.registrations.reserve(publicId, input);
+    const record = await this.registrations.reserve(publicId, input);
+    await this.access.safeSend(record.id);
+    if (request.headers['x-browser-client'] === '1') {
+      participantCookie(response, record.id, record.manageToken);
+      const { manageToken: _secret, ...safe } = record;
+      return safe;
+    }
+    return record;
+  }
+  @Public()
+  @Get('public/registrations/:id/status')
+  @Header('Cache-Control', 'no-store')
+  @ApiHeader({ name: 'x-registration-status-token', required: true })
+  status(
+    @Param('id', uuid()) id: string,
+    @Headers('x-registration-status-token') token?: string,
+  ) {
+    return this.registrations.participantStatus(id, token);
   }
   @Public()
   @Get('public/registrations/:id')
@@ -79,7 +107,7 @@ export class RegistrationsController {
   list(
     @Param('eventId', uuid()) eventId: string,
     @CurrentUser() actor: AuthenticatedUser,
-    @Query() pagination: PaginationDto,
+    @Query() pagination: RegistrationPaginationDto,
   ) {
     return this.registrations.list(eventId, actor, pagination);
   }
