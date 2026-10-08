@@ -1,0 +1,200 @@
+@import 'tailwindcss';
+@theme {
+  --color-brand: #b91c1c;
+  --color-red-700: #b91c1c;
+  --color-red-800: #991b1b;
+}
+@layer base {
+  body {
+    margin: 0;
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    color: #212126;
+    background: #fafafa;
+    font-size: 15px;
+  }
+  h1 {
+    font-size: clamp(1.7rem, 4vw, 2.3rem);
+    font-weight: 700;
+    letter-spacing: -0.045em;
+    line-height: 1.15;
+  }
+  h2 {
+    font-size: 1.15rem;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+  }
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  :focus-visible {
+    outline: 3px solid #b91c1c;
+    outline-offset: 3px;
+  }
+  input:not([type='checkbox']),
+  select,
+  textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: 46px;
+    border: 1px solid #d4d4d8;
+    border-radius: 10px;
+    padding: 11px 13px;
+    background: white;
+    color: #27272a;
+    font: inherit;
+  }
+  input[type='checkbox'] {
+    width: 20px;
+    height: 20px;
+    accent-color: #b91c1c;
+  }
+  textarea {
+    min-height: 110px;
+    resize: vertical;
+  }
+}
+@layer components {
+  .brand {
+    @apply inline-flex items-center gap-1 text-xl font-bold tracking-tight;
+  }
+  .brand-mark {
+    @apply relative mr-2 grid h-9 w-9 place-items-center rounded-xl bg-red-700 text-xl text-white;
+  }
+  .brand-mark span {
+    @apply absolute right-1.5 top-2 h-1 w-1 rounded-full bg-white;
+  }
+  .muted {
+    @apply text-zinc-600;
+  }
+  .eyebrow {
+    @apply mb-3 text-xs font-semibold tracking-[.16em] text-red-700;
+  }
+  .btn {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-red-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-800;
+  }
+  .btn.secondary {
+    @apply border border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50;
+  }
+  .icon-btn {
+    @apply grid h-11 w-11 shrink-0 place-items-center rounded-xl hover:bg-zinc-100;
+  }
+  .card {
+    @apply rounded-2xl border border-zinc-200 bg-white p-5 sm:p-7;
+  }
+  .page-heading {
+    @apply mb-8 flex flex-wrap items-center justify-between gap-5;
+  }
+  .field {
+    @apply flex min-w-0 flex-col gap-2 text-sm font-medium;
+  }
+  .field-error {
+    @apply text-red-800;
+  }
+  .badge {
+    @apply inline-flex rounded-lg bg-zinc-100 px-2.5 py-1 text-xs font-semibold text-zinc-700;
+  }
+  .badge-good {
+    @apply bg-emerald-50 text-emerald-800;
+  }
+  .notice {
+    @apply my-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900;
+  }
+  .notice.success {
+    @apply border-emerald-200 bg-emerald-50 text-emerald-900;
+  }
+  .notice svg {
+    @apply mt-0.5 shrink-0;
+  }
+  .loading {
+    @apply flex items-center justify-center gap-3 py-20 text-zinc-600;
+  }
+  .spinner {
+    @apply h-5 w-5 animate-spin rounded-full border-2 border-zinc-200 border-t-red-700;
+  }
+  .empty {
+    @apply flex flex-col items-center gap-3 py-14 text-center;
+  }
+  .empty-symbol {
+    @apply grid h-12 w-12 place-items-center rounded-2xl bg-red-50 text-2xl text-red-700;
+  }
+  .pager {
+    @apply mt-5 flex flex-wrap items-center justify-between gap-3 text-sm;
+  }
+  .dialog {
+    @apply fixed m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border-0 p-6 shadow-xl;
+  }
+  .dialog::backdrop {
+    background: #18181b66;
+  }
+  .nav-link {
+    @apply flex min-h-11 items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-zinc-600 hover:bg-zinc-50;
+  }
+  .nav-link.active {
+    @apply bg-red-50 text-red-800;
+  }
+  .step {
+    @apply flex items-center gap-2 text-sm text-zinc-500;
+  }
+  .step span {
+    @apply grid h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white;
+  }
+  .step.active {
+    @apply font-semibold text-red-800;
+  }
+  .step.active span {
+    @apply border-red-700 bg-red-700 text-white;
+  }
+  .data-table {
+    @apply w-full text-left text-sm;
+  }
+  .data-table th {
+    @apply border-b border-zinc-200 py-3 text-xs font-medium text-zinc-500;
+  }
+  .data-table td {
+    @apply border-b border-zinc-100 py-4 pr-4 align-top;
+  }
+}
+@media (max-width: 767px) {
+  .data-table thead {
+    display: none;
+  }
+  .data-table tr {
+    display: block;
+    padding: 16px 0;
+    border-bottom: 1px solid #eee;
+  }
+  .data-table td {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: space-between;
+    border: 0;
+    padding: 6px 0;
+    overflow-wrap: anywhere;
+  }
+  .data-table td::before {
+    content: attr(data-label);
+    color: #71717a;
+    font-size: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
