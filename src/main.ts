@@ -3,11 +3,14 @@ import { AppModule } from './app.module.js';
 import helmet from 'helmet';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { validationPipe } from './common/http.js';
+import { browserSecurity } from './common/browser-security.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.use(helmet());
+  app.use(browserSecurity);
   app.enableCors({
+    credentials: true,
     origin:
       process.env.CORS_ORIGINS?.split(',').map((origin) => origin.trim()) ??
       false,

@@ -65,6 +65,8 @@ model Registration {
   status                  String           @default("reserved")
   reservationExpiresAt    DateTime
   manageTokenHash         String
+  manageTokenEncrypted    String?
+  accessLinks             RegistrationAccessLink[]
   statusTokenHash         String?
   statusTokenExpiresAt    DateTime?
   suspendedAt             DateTime?
@@ -76,6 +78,27 @@ model Registration {
   @@unique([eventId, email])
   @@index([eventId, status, reservationExpiresAt])
   @@map("registrations")
+}
+
+model BrowserSession {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  tokenVersion Int
+  tokenHash String @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  @@index([userId])
+  @@map("browser_sessions")
+}
+
+model RegistrationAccessLink {
+  id String @id @default(uuid()) @db.Uuid
+  registrationId String @db.Uuid
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  tokenHash String @unique
+  expiresAt DateTime
+  usedAt DateTime?
+  @@map("registration_access_links")
 }
 
 model PaymentAccount {
