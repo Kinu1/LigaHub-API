@@ -38,11 +38,11 @@ function Steps({ step }: { step: number }) {
       {['Seus dados', 'Pagamento', 'Acompanhamento'].map((label, i) => (
         <li
           key={label}
-          className={`step ${i === step ? 'active' : ''}`}
+          className={`step min-w-0 !flex-col sm:!flex-row ${i === step ? 'active' : ''}`}
           aria-current={i === step ? 'step' : undefined}
         >
           <span>{i + 1}</span>
-          <span className="!block !h-auto !w-auto !border-0 !bg-transparent !text-inherit text-xs sm:text-sm">
+          <span className="!block !h-auto !w-auto !border-0 !bg-transparent !text-inherit max-w-full break-words text-center text-[11px] sm:text-sm">
             {label}
           </span>
         </li>
