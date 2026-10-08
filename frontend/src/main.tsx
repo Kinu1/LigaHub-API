@@ -28,6 +28,9 @@ const UsersPage = React.lazy(() =>
 const AuditPage = React.lazy(() =>
   import('./pages/panel').then((m) => ({ default: m.AuditPage })),
 );
+const EventEditor = React.lazy(() =>
+  import('./pages/editor').then((m) => ({ default: m.EventEditor })),
+);
 import { Heading, Notice, Loading } from './ui';
 import './styles.css';
 function Home() {
@@ -110,7 +113,9 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Dashboard /> },
       { path: 'eventos', element: <EventsPage /> },
+      { path: 'eventos/novo', element: <EventEditor /> },
       { path: 'eventos/:id', element: <EventDetails /> },
+      { path: 'eventos/:id/editar', element: <EventEditor /> },
       { path: 'financeiro', element: <FinancePage /> },
       { path: 'usuarios', element: <UsersPage /> },
       { path: 'auditoria', element: <AuditPage /> },
