@@ -1,4 +1,5 @@
 import React from 'react';
+import './access-fragment';
 import ReactDOM from 'react-dom/client';
 import {
   createBrowserRouter,
@@ -30,6 +31,18 @@ const AuditPage = React.lazy(() =>
 );
 const EventEditor = React.lazy(() =>
   import('./pages/editor').then((m) => ({ default: m.EventEditor })),
+);
+const PublicEvent = React.lazy(() =>
+  import('./pages/public').then((m) => ({ default: m.PublicEvent })),
+);
+const ParticipantPage = React.lazy(() =>
+  import('./pages/public').then((m) => ({ default: m.ParticipantPage })),
+);
+const RecoveryPage = React.lazy(() =>
+  import('./pages/public').then((m) => ({ default: m.RecoveryPage })),
+);
+const StatusPage = React.lazy(() =>
+  import('./pages/public').then((m) => ({ default: m.StatusPage })),
 );
 import { Heading, Notice, Loading } from './ui';
 import './styles.css';
@@ -126,7 +139,10 @@ const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { path: '/', element: <Home /> },
-
+      { path: '/eventos/:publicId', element: <PublicEvent /> },
+      { path: '/inscricao/:id', element: <ParticipantPage /> },
+      { path: '/inscricoes/:id', element: <StatusPage /> },
+      { path: '/recuperar', element: <RecoveryPage /> },
       { path: '*', element: <NotFound /> },
     ],
   },
