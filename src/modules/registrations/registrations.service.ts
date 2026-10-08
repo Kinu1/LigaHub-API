@@ -17,8 +17,10 @@ import {
   assertRegistrationOpen,
 } from './registration.policy.js';
 import type { CreateRegistrationDto } from './registrations.dto.js';
-import type { PaginationDto } from '../../common/pagination.js';
+
 import { isUniqueConstraint } from '../../common/prisma-errors.js';
+import { encryptCredential } from '../payments/payment-security.js';
+import type { RegistrationPaginationDto } from './registrations.dto.js';
 
 export const hashParticipantToken = (token: string): string =>
   createHash('sha256').update(token).digest('hex');
@@ -143,6 +145,7 @@ export class RegistrationsService {
             priceInCents: event.priceInCents,
             reservationExpiresAt: expiresAt,
             manageTokenHash: hashParticipantToken(manageToken),
+            manageTokenEncrypted: encryptCredential(manageToken),
           },
         });
         await tx.auditLog.create({
@@ -358,10 +361,49 @@ export class RegistrationsService {
   async list(
     eventId: string,
     actor: AuthenticatedUser,
-    pagination: PaginationDto,
+    pagination: RegistrationPaginationDto,
   ) {
     await this.eventAccess(eventId, actor);
-    const where = { eventId };
+    const now = new Date();
+    const where: Prisma.RegistrationWhereInput = {
+      eventId,
+      ...(pagination.search
+        ? {
+            OR: [
+              {
+                name: {
+                  contains: pagination.search.trim(),
+                  mode: 'insensitive',
+                },
+              },
+              {
+                email: {
+                  contains: pagination.search.trim(),
+                  mode: 'insensitive',
+                },
+              },
+            ],
+          }
+        : {}),
+      ...(pagination.status === 'cancellation'
+        ? { cancellationRequestedAt: { not: null } }
+        : pagination.status === 'expired'
+          ? {
+              AND: [
+                {
+                  OR: [
+                    { status: 'expired' },
+                    { status: 'reserved', reservationExpiresAt: { lte: now } },
+                  ],
+                },
+              ],
+            }
+          : pagination.status === 'reserved'
+            ? { status: 'reserved', reservationExpiresAt: { gt: now } }
+            : pagination.status
+              ? { status: pagination.status }
+              : {}),
+    };
     const [items, total] = await Promise.all([
       this.prisma.registration.findMany({
         where,
@@ -384,7 +426,18 @@ export class RegistrationsService {
       }),
       this.prisma.registration.count({ where }),
     ]);
-    return { items, total, page: pagination.page, limit: pagination.limit };
+    return {
+      items: items.map((item) => ({
+        ...item,
+        status:
+          item.status === 'reserved' && item.reservationExpiresAt <= now
+            ? 'expired'
+            : item.status,
+      })),
+      total,
+      page: pagination.page,
+      limit: pagination.limit,
+    };
   }
 
   async suspend(id: string, suspended: boolean, actor: AuthenticatedUser) {

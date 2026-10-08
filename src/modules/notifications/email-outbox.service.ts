@@ -38,7 +38,9 @@ export class EmailOutboxService implements OnModuleInit, OnModuleDestroy {
   async processBatch(registrationId?: string) {
     if (
       process.env.EMAIL_DELIVERY_ENABLED !== 'true' ||
-      !process.env.RESEND_API_KEY ||
+      !(process.env.EMAIL_PROVIDER === 'smtp' || process.env.SMTP_HOST
+        ? process.env.SMTP_HOST
+        : process.env.RESEND_API_KEY) ||
       !process.env.EMAIL_FROM ||
       !process.env.FRONTEND_URL ||
       this.busy
