@@ -1,6 +1,8 @@
 # LigaHub API
 
-Backend para organizar eventos pagos de **uma liga acadêmica**, com TypeScript, NestJS, Prisma e PostgreSQL. O frontend será construído em uma etapa posterior.
+Aplicação para organizar eventos pagos de **uma liga acadêmica**, com backend TypeScript, NestJS, Prisma e PostgreSQL e frontend React com Tailwind CSS.
+
+O frontend fica em `frontend/`. Depois de iniciar a API, execute `npm.cmd --prefix frontend ci` e `npm.cmd run frontend:dev`, e abra [LigaHub local](http://localhost:3001). Instruções de e-mail local, segurança, contratos e publicação estão em [frontend/README.md](frontend/README.md).
 
 ## Funcionalidades
 
@@ -62,7 +64,7 @@ Os testes de integração exigem as migrations aplicadas. Criam dados identifica
 
 ## Limites da entrega
 
-A integração com Mercado Pago está implementada, mas a validação ponta a ponta no sandbox depende de aplicação, credenciais e conta de teste configuradas pelo proprietário. Nenhum recebimento real foi validado. A API recebe apenas o token temporário do cartão; a tokenização pelo SDK do Mercado Pago será feita no futuro frontend.
+A integração com Mercado Pago está implementada, mas a validação ponta a ponta no sandbox depende de aplicação, credenciais e conta de teste configuradas pelo proprietário. Nenhum recebimento real foi validado. A API recebe apenas o token temporário do cartão; o frontend usa o SDK do Mercado Pago para tokenização.
 
 O histórico é imutável pelas rotas da API; administradores do banco podem editar registros. Reservas expiradas deixam de consumir vagas pela data de expiração, mesmo antes de o estado ser materializado como `expired`.
 
