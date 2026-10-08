@@ -521,7 +521,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     return attempts.map((attempt) => this.publicAttempt(attempt));
   }
 
-  async history(actor: AuthenticatedUser, page = 1) {
+  async history(actor: AuthenticatedUser, page = 1, paginated = false) {
     const where: Prisma.PaymentAttemptWhereInput =
       actor.role === 'admin'
         ? {}
@@ -532,7 +532,10 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       take: 50,
       orderBy: { createdAt: 'desc' },
     });
-    return records.map((attempt) => this.publicAttempt(attempt));
+    const items = records.map((attempt) => this.publicAttempt(attempt));
+    if (!paginated) return items;
+    const total = await this.prisma.paymentAttempt.count({ where });
+    return { items, total, page, limit: 50 };
   }
 
   private publicAttempt(attempt: PaymentAttempt) {

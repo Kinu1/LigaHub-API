@@ -12,6 +12,61 @@ import type { PaginationDto } from '../../common/pagination.js';
 @Injectable()
 export class AdminService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  async dashboard(actor: AuthenticatedUser) {
+    const event = actor.role === 'admin' ? {} : { ownerId: actor.id };
+    const [
+      events,
+      drafts,
+      confirmed,
+      cancellationRequests,
+      pendingPayments,
+      approved,
+      account,
+    ] = await this.prisma.$transaction([
+      this.prisma.academicEvent.count({ where: event }),
+      this.prisma.academicEvent.count({ where: { ...event, status: 'draft' } }),
+      this.prisma.registration.count({ where: { event, status: 'confirmed' } }),
+      this.prisma.registration.count({
+        where: { event, cancellationRequestedAt: { not: null } },
+      }),
+      this.prisma.paymentAttempt.count({
+        where: {
+          registration: { event },
+          status: {
+            in: [
+              'created',
+              'pending',
+              'in_process',
+              'authorized',
+              'in_mediation',
+            ],
+          },
+        },
+      }),
+      this.prisma.paymentAttempt.aggregate({
+        where: { registration: { event }, status: 'approved' },
+        _sum: { amountInCents: true },
+      }),
+      this.prisma.paymentAccount.count({
+        where: {
+          active: true,
+          owner:
+            actor.role === 'admin'
+              ? { role: 'organizer', active: true }
+              : { id: actor.id, active: true },
+        },
+      }),
+    ]);
+    return {
+      events,
+      drafts,
+      confirmed,
+      cancellationRequests,
+      pendingPayments,
+      approvedBaseAmountInCents: approved._sum.amountInCents ?? 0,
+      accountConnected: account > 0,
+    };
+  }
 
   async overview() {
     const now = new Date();

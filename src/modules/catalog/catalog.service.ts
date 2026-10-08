@@ -121,7 +121,13 @@ export class CatalogService {
   }
 
   async list(query: EventPaginationDto, actor: AuthenticatedUser) {
-    const where = actor.role === 'admin' ? {} : { ownerId: actor.id };
+    const where: Prisma.AcademicEventWhereInput = {
+      ...(actor.role === 'admin' ? {} : { ownerId: actor.id }),
+      ...(query.search
+        ? { title: { contains: query.search.trim(), mode: 'insensitive' } }
+        : {}),
+      ...(query.status ? { status: query.status } : {}),
+    };
     const [items, total] = await this.prisma.$transaction([
       this.prisma.academicEvent.findMany({
         where,

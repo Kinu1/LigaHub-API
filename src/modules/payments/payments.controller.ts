@@ -136,12 +136,13 @@ export class PaymentsController {
   history(
     @CurrentUser() actor: AuthenticatedUser,
     @Query('page') page?: string,
+    @Headers('x-browser-client') browser?: string,
   ) {
     if (page !== undefined && (typeof page !== 'string' || !/^\d+$/.test(page)))
       throw new BadRequestException('A página informada é inválida.');
     const parsed = Number(page ?? 1);
     if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100_000)
       throw new BadRequestException('A página informada é inválida.');
-    return this.payments.history(actor, parsed);
+    return this.payments.history(actor, parsed, browser === '1');
   }
 }

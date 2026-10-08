@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import {
   IsArray,
+  IsIn,
   IsISO8601,
   IsInt,
   IsOptional,
@@ -72,6 +73,10 @@ export class CreateEventDto {
 
 export class UpdateEventDto extends PartialType(CreateEventDto) {}
 export class EventPaginationDto {
+  @IsOptional() @IsString() @MaxLength(200) search?: string;
+  @IsOptional()
+  @IsIn(['draft', 'published', 'suspended', 'closed', ''])
+  status?: string;
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   @Type(() => Number)
