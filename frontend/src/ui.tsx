@@ -268,3 +268,12 @@ export function useUnsaved(dirty: boolean) {
     return () => window.removeEventListener('beforeunload', listener);
   }, [dirty]);
 }
+
+export function useDebounced<T>(value: T, delay = 350): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettled(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [value, delay]);
+  return settled;
+}

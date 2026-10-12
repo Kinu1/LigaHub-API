@@ -27,6 +27,7 @@ import {
   Pager,
   Confirm,
   Field,
+  useDebounced,
 } from '../ui';
 import {
   money,
@@ -200,14 +201,15 @@ function Action({
 export function EventsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const querySearch = useDebounced(search);
   const [status, setStatus] = useState(
     new URLSearchParams(location.search).get('status') || '',
   );
   const query = useQuery({
-    queryKey: ['events', page, search, status],
+    queryKey: ['events', page, querySearch, status],
     queryFn: () =>
       api<Page<Event>>(
-        `/events?page=${page}&limit=12&search=${encodeURIComponent(search)}&status=${status}`,
+        `/events?page=${page}&limit=12&search=${encodeURIComponent(querySearch)}&status=${status}`,
       ),
   });
   return (
@@ -380,16 +382,17 @@ export function EventDetails() {
   const [tab, setTab] = useState('inscricoes');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const querySearch = useDebounced(search);
   const [status, setStatus] = useState('');
   const query = useQuery({
     queryKey: ['event', id],
     queryFn: () => api<Event>(`/events/${id}`),
   });
   const registrations = useQuery({
-    queryKey: ['registrations', id, page, search, status],
+    queryKey: ['registrations', id, page, querySearch, status],
     queryFn: () =>
       api<Page<Registration>>(
-        `/events/${id}/registrations?page=${page}&search=${encodeURIComponent(search)}&status=${status}`,
+        `/events/${id}/registrations?page=${page}&search=${encodeURIComponent(querySearch)}&status=${status}`,
       ),
     enabled: tab === 'inscricoes',
   });
