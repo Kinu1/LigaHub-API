@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Headers,
   Inject,
   Param,
@@ -132,6 +133,7 @@ export class PaymentsController {
   }
 
   @Get('payments')
+  @Header('Cache-Control', 'no-store')
   @Roles('admin', 'organizer')
   history(
     @CurrentUser() actor: AuthenticatedUser,

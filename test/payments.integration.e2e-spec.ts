@@ -4,7 +4,10 @@ import { PrismaService } from '../src/prisma.service.js';
 import { PaymentsService } from '../src/modules/payments/payments.service.js';
 import type { PaymentAccountsService } from '../src/modules/payments/payment-accounts.service.js';
 import type { PaymentGateway } from '../src/modules/payments/payment.gateway.js';
-import { decryptCredential } from '../src/modules/payments/payment-security.js';
+import {
+  decryptCredential,
+  encryptCredential,
+} from '../src/modules/payments/payment-security.js';
 import { EmailOutboxService } from '../src/modules/notifications/email-outbox.service.js';
 import type { EmailGateway } from '../src/modules/notifications/email.gateway.js';
 import { RegistrationsService } from '../src/modules/registrations/registrations.service.js';
@@ -56,8 +59,9 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
     gateway.searchPayment.mockResolvedValue(null);
     gateway.createPayment.mockRejectedValueOnce(new Error('Tempo esgotado.'));
     const newKey = randomUUID();
+    const input = { ...pixInput, payerName: 'Mariana Souza Oliveira' };
     await expect(
-      service.create(registrationId, 'token-participante', newKey, pixInput),
+      service.create(registrationId, 'token-participante', newKey, input),
     ).rejects.toThrow('Tempo esgotado');
     const saved = await prisma.paymentAttempt.findUniqueOrThrow({
       where: { idempotencyKey: newKey },
@@ -68,6 +72,9 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
       decryptCredential(saved.providerRequestEncrypted!),
     );
     expect(original.expiration_time).toMatch(/^PT\d+S$/);
+    expect(original.payer.first_name).toBe(input.payerName);
+    expect(saved.payerEncrypted).not.toContain(input.payerName);
+    expect(saved.payerEncrypted).not.toContain(input.cpf);
     await prisma.registration.update({
       where: { id: registrationId },
       data: {
@@ -92,7 +99,7 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
       registrationId,
       'token-participante',
       newKey,
-      pixInput,
+      input,
     );
     expect(result.status).toBe('pending');
     expect(gateway.createPayment.mock.calls[0]![2]).toEqual(original);
@@ -111,6 +118,71 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
       ).providerRequestEncrypted,
     ).toBeNull();
     expect(result).not.toHaveProperty('providerRequestEncrypted');
+    expect(result).not.toHaveProperty('payerEncrypted');
+    expect(result).not.toHaveProperty('payer');
+    const owner = {
+      id: ownerId,
+      name: 'Dono teste',
+      email: 'owner@ligahub.test',
+      role: 'organizer' as const,
+    };
+    const history = await service.history(owner, 1, false);
+    if (!Array.isArray(history))
+      throw new Error('Histórico sem paginação inválido.');
+    expect(history[0]).toMatchObject({
+      payer: { name: input.payerName, cpf: input.cpf },
+    });
+    expect(history[0]).not.toHaveProperty('payerEncrypted');
+    expect(
+      await service.history({ ...owner, id: randomUUID() }, 1, false),
+    ).toEqual([]);
+    const publicPayments = await service.participantPayments(
+      registrationId,
+      'token-participante',
+    );
+    expect(JSON.stringify(publicPayments)).not.toContain(input.cpf);
+    expect(publicPayments[0]).not.toHaveProperty('payer');
+    await expect(
+      service.create(registrationId, 'token-participante', newKey, {
+        ...input,
+        payerName: 'Outro pagador',
+      }),
+    ).rejects.toThrow('outros dados');
+  });
+  it('mantém o pagador de uma requisição antiga quando descarta o token e informa ausência em registros sem dados', async () => {
+    const actor = {
+      id: ownerId,
+      name: 'Dono teste',
+      email: 'owner@ligahub.test',
+      role: 'organizer' as const,
+    };
+    expect(await service.history(actor)).toMatchObject([{ payer: null }]);
+    await prisma.paymentAttempt.update({
+      where: { id: attemptId },
+      data: {
+        providerRequestEncrypted: encryptCredential(
+          JSON.stringify({
+            payer: {
+              first_name: 'Bruno',
+              last_name: 'Souza Lima',
+              identification: { type: 'CPF', number: pixInput.cpf },
+            },
+            token: 'token-cartao-simulado',
+          }),
+        ),
+      },
+    });
+    await service.applyPayment(attemptId, payment({ status: 'rejected' }));
+    const saved = await prisma.paymentAttempt.findUniqueOrThrow({
+      where: { id: attemptId },
+    });
+    expect(saved.providerRequestEncrypted).toBeNull();
+    expect(decryptCredential(saved.payerEncrypted!)).not.toContain(
+      'token-cartao-simulado',
+    );
+    expect(await service.history(actor)).toMatchObject([
+      { payer: { name: 'Bruno Souza Lima', cpf: pixInput.cpf } },
+    ]);
   });
   it('deve consultar Orders em webhook assinado, ignorar o tópico legado e confirmar uma única vez', async () => {
     const secret = 'segredo-teste-orders';
@@ -542,6 +614,7 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
     try {
       await app.init();
       const server = app.getHttpServer() as Parameters<typeof request>[0];
+      await request(server).get('/payments?page=1').expect(401);
       const result = await request(server)
         .get(`/public/registrations/${registrationId}/status`)
         .set('x-registration-status-token', token)
