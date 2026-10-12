@@ -46,6 +46,7 @@ const StatusPage = React.lazy(() =>
 );
 import { Heading, Notice, Loading } from './ui';
 import './styles.css';
+import { ExperienceProvider } from './experience';
 import { HomePage } from './pages/home';
 function NotFound() {
   return (
@@ -112,11 +113,13 @@ const client = new QueryClient({
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={client}>
-      <AuthProvider>
-        <React.Suspense fallback={<Loading />}>
-          <RouterProvider router={router} />
-        </React.Suspense>
-      </AuthProvider>
+      <ExperienceProvider>
+        <AuthProvider>
+          <React.Suspense fallback={<Loading />}>
+            <RouterProvider router={router} />
+          </React.Suspense>
+        </AuthProvider>
+      </ExperienceProvider>
     </QueryClientProvider>
   </React.StrictMode>,
 );

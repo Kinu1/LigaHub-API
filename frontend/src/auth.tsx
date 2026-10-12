@@ -9,6 +9,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { api, send } from './api';
 import type { User } from './types';
 import { Brand, Field, Notice } from './ui';
+import { SoundToggle } from './experience';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -169,6 +170,9 @@ export function LoginPage() {
           <Brand />
         </div>
         <div className="login-form-panel mx-auto w-full max-w-md">
+          <div className="mb-5 flex justify-end">
+            <SoundToggle />
+          </div>
           <LoginForm />
           <p className="muted mt-8 text-sm">
             Acesso exclusivo para administradores e organizador da liga.

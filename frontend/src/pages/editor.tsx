@@ -1,3 +1,4 @@
+import { MotionSection } from '../experience';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useBlocker } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -230,281 +231,288 @@ export function EventEditor() {
       </ol>
       {error && <Notice>{error}</Notice>}
       <form onSubmit={form.handleSubmit(submit)}>
-        <section className="card">
-          {step === 0 && (
-            <div className="space-y-5">
-              <h2>Sobre o evento</h2>
-              <Field label="Nome do evento" error={err.title?.message}>
-                <input
-                  {...form.register('title')}
-                  maxLength={200}
-                  placeholder="Ex.: Jornada da Liga Acadêmica"
-                />
-              </Field>
-              <Field label="Descrição" error={err.description?.message}>
-                <textarea
-                  {...form.register('description')}
-                  placeholder="Conte aos participantes o que esperar."
-                />
-              </Field>
-              <Field label="Local" error={err.location?.message}>
-                <input {...form.register('location')} />
-              </Field>
-              <div className="grid gap-5 md:grid-cols-3">
-                {(
-                  [
-                    ['startsAt', 'Início'],
-                    ['endsAt', 'Fim'],
-                    ['registrationDeadline', 'Inscrições até'],
-                  ] as const
-                ).map(([name, label]) => (
-                  <Field
-                    key={name}
-                    label={label}
-                    hint="Horário de Brasília"
-                    error={err[name]?.message}
-                  >
-                    <input type="datetime-local" {...form.register(name)} />
-                  </Field>
-                ))}
-              </div>
-            </div>
-          )}
-          {step === 1 && (
-            <div className="space-y-5">
-              <h2>Vagas e pagamento</h2>
-              <div className="grid gap-5 sm:grid-cols-2">
-                <Field
-                  label="Preço da inscrição (R$)"
-                  error={err.price?.message}
-                >
+        <MotionSection change={step}>
+          <section className="card">
+            {step === 0 && (
+              <div className="space-y-5">
+                <h2>Sobre o evento</h2>
+                <Field label="Nome do evento" error={err.title?.message}>
                   <input
-                    inputMode="decimal"
-                    {...form.register('price')}
-                    placeholder="25,00"
+                    {...form.register('title')}
+                    maxLength={200}
+                    placeholder="Ex.: Jornada da Liga Acadêmica"
                   />
                 </Field>
-                <Field label="Capacidade" error={err.capacity?.message}>
-                  <input
-                    type="number"
-                    min={1}
-                    {...form.register('capacity', { valueAsNumber: true })}
+                <Field label="Descrição" error={err.description?.message}>
+                  <textarea
+                    {...form.register('description')}
+                    placeholder="Conte aos participantes o que esperar."
                   />
                 </Field>
-              </div>
-              <Field
-                label="Reserva temporária (minutos)"
-                hint="Entre 5 e 60 minutos. A API controla a expiração."
-                error={err.reservationMinutes?.message}
-              >
-                <input
-                  type="number"
-                  min={5}
-                  max={60}
-                  {...form.register('reservationMinutes', {
-                    valueAsNumber: true,
-                  })}
-                />
-              </Field>
-              {user?.role === 'admin' && (
-                <Field label="Organizador responsável">
-                  <select {...form.register('ownerId')}>
-                    <option value="">Selecione o responsável</option>
-                    {users.data
-                      ?.filter((u) => u.role === 'organizer' && u.active)
-                      .map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.name}
-                        </option>
-                      ))}
-                  </select>
+                <Field label="Local" error={err.location?.message}>
+                  <input {...form.register('location')} />
                 </Field>
-              )}
-              <p className="muted text-sm">
-                Após a primeira inscrição, o backend protege preço, formulário e
-                responsável contra alterações.
-              </p>
-            </div>
-          )}
-          {step === 2 && (
-            <div>
-              <div className="mb-5 flex flex-wrap justify-between gap-4">
-                <div>
-                  <h2>Perguntas aos participantes</h2>
-                  <p className="muted mt-2 text-sm">
-                    Nome e e-mail já estão incluídos. Adicione até 25 perguntas.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="btn secondary"
-                  disabled={fields.length >= 25}
-                  onClick={() => {
-                    setFields([
-                      ...fields,
-                      {
-                        id: `campo_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`,
-                        label: '',
-                        type: 'text',
-                        required: false,
-                      },
-                    ]);
-                    setFieldsDirty(true);
-                  }}
-                >
-                  <Plus size={17} />
-                  Adicionar pergunta
-                </button>
-              </div>
-              {fields.length === 0 && (
-                <p className="muted py-10 text-center">
-                  Nenhuma pergunta extra. Você pode continuar.
-                </p>
-              )}
-              {fields.map((f, index) => {
-                const update = (patch: Partial<FormField>) => {
-                  setFields(
-                    fields.map((item, i) =>
-                      i === index ? { ...item, ...patch } : item,
-                    ),
-                  );
-                  setFieldsDirty(true);
-                };
-                return (
-                  <div
-                    className="mb-4 rounded-xl border border-zinc-200 p-5"
-                    key={f.id}
-                  >
-                    <div className="mb-4 flex items-center justify-between">
-                      <p className="text-sm font-semibold">
-                        Pergunta {index + 1}
-                      </p>
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        aria-label={`Remover pergunta ${index + 1}`}
-                        onClick={() => {
-                          setFields(fields.filter((_, i) => i !== index));
-                          setFieldsDirty(true);
-                        }}
-                      >
-                        <Trash2 size={17} />
-                      </button>
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Field label="Pergunta">
-                        <input
-                          value={f.label}
-                          maxLength={150}
-                          onChange={(e) => update({ label: e.target.value })}
-                        />
-                      </Field>
-                      <Field label="Tipo de resposta">
-                        <select
-                          value={f.type}
-                          onChange={(e) =>
-                            update({
-                              type: e.target.value as FormField['type'],
-                              options:
-                                e.target.value === 'select' ? [''] : undefined,
-                            })
-                          }
-                        >
-                          <option value="text">Texto</option>
-                          <option value="number">Número</option>
-                          <option value="select">Seleção</option>
-                          <option value="checkbox">Checkbox</option>
-                        </select>
-                      </Field>
-                    </div>
-                    {f.type === 'select' && (
-                      <div className="mt-4">
-                        <Field label="Opções (uma por linha)">
-                          <textarea
-                            value={f.options?.join('\n') || ''}
-                            onChange={(e) =>
-                              update({ options: e.target.value.split('\n') })
-                            }
-                          />
-                        </Field>
-                      </div>
-                    )}
-                    <label className="mt-4 flex items-center gap-3 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={f.required}
-                        onChange={(e) => update({ required: e.target.checked })}
-                      />
-                      Resposta obrigatória
-                    </label>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {step === 3 && (
-            <div>
-              <p className="eyebrow">PRÉVIA · AINDA NÃO PUBLICADO</p>
-              <h2 className="text-2xl">{values.title}</h2>
-              <p className="muted mt-3 whitespace-pre-wrap">
-                {values.description || 'Sem descrição.'}
-              </p>
-              <div className="my-6 grid gap-4 sm:grid-cols-3">
-                <div>
-                  <p className="muted text-xs">DATA</p>
-                  <p className="mt-2">{date(isoDate(values.startsAt))}</p>
-                </div>
-                <div>
-                  <p className="muted text-xs">LOCAL</p>
-                  <p className="mt-2">{values.location || 'A confirmar'}</p>
-                </div>
-                <div>
-                  <p className="muted text-xs">INSCRIÇÃO</p>
-                  <p className="mt-2 font-semibold">
-                    {money(toCents(values.price))}
-                  </p>
-                </div>
-              </div>
-              <div className="rounded-xl bg-zinc-50 p-5">
-                <h2 className="mb-4">Prévia do formulário</h2>
-                <div className="space-y-4">
-                  <Field label="Nome completo">
-                    <input disabled placeholder="Nome do participante" />
-                  </Field>
-                  <Field label="E-mail">
-                    <input disabled placeholder="participante@exemplo.com" />
-                  </Field>
-                  {fields.map((f) => (
+                <div className="grid gap-5 md:grid-cols-3">
+                  {(
+                    [
+                      ['startsAt', 'Início'],
+                      ['endsAt', 'Fim'],
+                      ['registrationDeadline', 'Inscrições até'],
+                    ] as const
+                  ).map(([name, label]) => (
                     <Field
-                      key={f.id}
-                      label={`${f.label}${f.required ? ' *' : ''}`}
+                      key={name}
+                      label={label}
+                      hint="Horário de Brasília"
+                      error={err[name]?.message}
                     >
-                      {f.type === 'checkbox' ? (
-                        <input type="checkbox" disabled />
-                      ) : f.type === 'select' ? (
-                        <select disabled>
-                          <option>Selecione</option>
-                          {f.options?.map((o) => (
-                            <option key={o}>{o}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          disabled
-                          type={f.type === 'number' ? 'number' : 'text'}
-                        />
-                      )}
+                      <input type="datetime-local" {...form.register(name)} />
                     </Field>
                   ))}
                 </div>
               </div>
-              <p className="muted mt-4 text-sm">
-                Salvar cria ou atualiza o evento. A publicação acontece
-                separadamente, após as verificações do backend.
-              </p>
-            </div>
-          )}
-        </section>
+            )}
+            {step === 1 && (
+              <div className="space-y-5">
+                <h2>Vagas e pagamento</h2>
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <Field
+                    label="Preço da inscrição (R$)"
+                    error={err.price?.message}
+                  >
+                    <input
+                      inputMode="decimal"
+                      {...form.register('price')}
+                      placeholder="25,00"
+                    />
+                  </Field>
+                  <Field label="Capacidade" error={err.capacity?.message}>
+                    <input
+                      type="number"
+                      min={1}
+                      {...form.register('capacity', { valueAsNumber: true })}
+                    />
+                  </Field>
+                </div>
+                <Field
+                  label="Reserva temporária (minutos)"
+                  hint="Entre 5 e 60 minutos. A API controla a expiração."
+                  error={err.reservationMinutes?.message}
+                >
+                  <input
+                    type="number"
+                    min={5}
+                    max={60}
+                    {...form.register('reservationMinutes', {
+                      valueAsNumber: true,
+                    })}
+                  />
+                </Field>
+                {user?.role === 'admin' && (
+                  <Field label="Organizador responsável">
+                    <select {...form.register('ownerId')}>
+                      <option value="">Selecione o responsável</option>
+                      {users.data
+                        ?.filter((u) => u.role === 'organizer' && u.active)
+                        .map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name}
+                          </option>
+                        ))}
+                    </select>
+                  </Field>
+                )}
+                <p className="muted text-sm">
+                  Após a primeira inscrição, o backend protege preço, formulário
+                  e responsável contra alterações.
+                </p>
+              </div>
+            )}
+            {step === 2 && (
+              <div>
+                <div className="mb-5 flex flex-wrap justify-between gap-4">
+                  <div>
+                    <h2>Perguntas aos participantes</h2>
+                    <p className="muted mt-2 text-sm">
+                      Nome e e-mail já estão incluídos. Adicione até 25
+                      perguntas.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    disabled={fields.length >= 25}
+                    onClick={() => {
+                      setFields([
+                        ...fields,
+                        {
+                          id: `campo_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`,
+                          label: '',
+                          type: 'text',
+                          required: false,
+                        },
+                      ]);
+                      setFieldsDirty(true);
+                    }}
+                  >
+                    <Plus size={17} />
+                    Adicionar pergunta
+                  </button>
+                </div>
+                {fields.length === 0 && (
+                  <p className="muted py-10 text-center">
+                    Nenhuma pergunta extra. Você pode continuar.
+                  </p>
+                )}
+                {fields.map((f, index) => {
+                  const update = (patch: Partial<FormField>) => {
+                    setFields(
+                      fields.map((item, i) =>
+                        i === index ? { ...item, ...patch } : item,
+                      ),
+                    );
+                    setFieldsDirty(true);
+                  };
+                  return (
+                    <div
+                      className="mb-4 rounded-xl border border-zinc-200 p-5"
+                      key={f.id}
+                    >
+                      <div className="mb-4 flex items-center justify-between">
+                        <p className="text-sm font-semibold">
+                          Pergunta {index + 1}
+                        </p>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          aria-label={`Remover pergunta ${index + 1}`}
+                          onClick={() => {
+                            setFields(fields.filter((_, i) => i !== index));
+                            setFieldsDirty(true);
+                          }}
+                        >
+                          <Trash2 size={17} />
+                        </button>
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Field label="Pergunta">
+                          <input
+                            value={f.label}
+                            maxLength={150}
+                            onChange={(e) => update({ label: e.target.value })}
+                          />
+                        </Field>
+                        <Field label="Tipo de resposta">
+                          <select
+                            value={f.type}
+                            onChange={(e) =>
+                              update({
+                                type: e.target.value as FormField['type'],
+                                options:
+                                  e.target.value === 'select'
+                                    ? ['']
+                                    : undefined,
+                              })
+                            }
+                          >
+                            <option value="text">Texto</option>
+                            <option value="number">Número</option>
+                            <option value="select">Seleção</option>
+                            <option value="checkbox">Checkbox</option>
+                          </select>
+                        </Field>
+                      </div>
+                      {f.type === 'select' && (
+                        <div className="mt-4">
+                          <Field label="Opções (uma por linha)">
+                            <textarea
+                              value={f.options?.join('\n') || ''}
+                              onChange={(e) =>
+                                update({ options: e.target.value.split('\n') })
+                              }
+                            />
+                          </Field>
+                        </div>
+                      )}
+                      <label className="mt-4 flex items-center gap-3 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={f.required}
+                          onChange={(e) =>
+                            update({ required: e.target.checked })
+                          }
+                        />
+                        Resposta obrigatória
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {step === 3 && (
+              <div>
+                <p className="eyebrow">PRÉVIA · AINDA NÃO PUBLICADO</p>
+                <h2 className="text-2xl">{values.title}</h2>
+                <p className="muted mt-3 whitespace-pre-wrap">
+                  {values.description || 'Sem descrição.'}
+                </p>
+                <div className="my-6 grid gap-4 sm:grid-cols-3">
+                  <div>
+                    <p className="muted text-xs">DATA</p>
+                    <p className="mt-2">{date(isoDate(values.startsAt))}</p>
+                  </div>
+                  <div>
+                    <p className="muted text-xs">LOCAL</p>
+                    <p className="mt-2">{values.location || 'A confirmar'}</p>
+                  </div>
+                  <div>
+                    <p className="muted text-xs">INSCRIÇÃO</p>
+                    <p className="mt-2 font-semibold">
+                      {money(toCents(values.price))}
+                    </p>
+                  </div>
+                </div>
+                <div className="rounded-xl bg-zinc-50 p-5">
+                  <h2 className="mb-4">Prévia do formulário</h2>
+                  <div className="space-y-4">
+                    <Field label="Nome completo">
+                      <input disabled placeholder="Nome do participante" />
+                    </Field>
+                    <Field label="E-mail">
+                      <input disabled placeholder="participante@exemplo.com" />
+                    </Field>
+                    {fields.map((f) => (
+                      <Field
+                        key={f.id}
+                        label={`${f.label}${f.required ? ' *' : ''}`}
+                      >
+                        {f.type === 'checkbox' ? (
+                          <input type="checkbox" disabled />
+                        ) : f.type === 'select' ? (
+                          <select disabled>
+                            <option>Selecione</option>
+                            {f.options?.map((o) => (
+                              <option key={o}>{o}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            disabled
+                            type={f.type === 'number' ? 'number' : 'text'}
+                          />
+                        )}
+                      </Field>
+                    ))}
+                  </div>
+                </div>
+                <p className="muted mt-4 text-sm">
+                  Salvar cria ou atualiza o evento. A publicação acontece
+                  separadamente, após as verificações do backend.
+                </p>
+              </div>
+            )}
+          </section>
+        </MotionSection>
         <div className="mt-6 flex justify-between gap-4">
           <button
             type="button"

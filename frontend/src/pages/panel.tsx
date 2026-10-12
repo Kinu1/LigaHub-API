@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { api, send, ApiError } from '../api';
 import { useAuth } from '../auth';
+import { MotionSection } from '../experience';
 import {
   Heading,
   Loading,
@@ -104,7 +105,7 @@ export function Dashboard() {
               ].map(([Icon, label, value]) => {
                 const I = Icon as typeof CalendarDays;
                 return (
-                  <div key={String(label)} className="card">
+                  <div key={String(label)} className="card metric-card">
                     <div className="mb-5 flex justify-between">
                       <span className="text-sm text-zinc-500">
                         {String(label)}
@@ -153,7 +154,7 @@ export function Dashboard() {
                     )}
                 </div>
               </section>
-              <section className="card bg-red-50/50">
+              <section className="card attention-panel">
                 <span className="inline-flex rounded-xl bg-white p-3 text-red-700">
                   <CalendarDays />
                 </span>
@@ -488,7 +489,7 @@ export function EventDetails() {
             <Share publicId={event.publicId} />
           </div>
           <div
-            className="my-6 flex gap-2"
+            className="section-tabs"
             role="tablist"
             aria-label="Dados do evento"
           >
@@ -499,7 +500,30 @@ export function EventDetails() {
               <button
                 role="tab"
                 aria-selected={tab === key}
-                className={`btn ${tab === key ? '' : 'secondary'}`}
+                className="section-tab"
+                id={`event-tab-${key}-${id}`}
+                aria-controls={`event-panel-${id}`}
+                tabIndex={tab === key ? 0 : -1}
+                onKeyDown={(event) => {
+                  if (
+                    !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(
+                      event.key,
+                    )
+                  )
+                    return;
+                  event.preventDefault();
+                  const next =
+                    event.key === 'Home'
+                      ? 'inscricoes'
+                      : event.key === 'End'
+                        ? 'historico'
+                        : tab === 'inscricoes'
+                          ? 'historico'
+                          : 'inscricoes';
+                  setTab(next);
+                  setPage(1);
+                  document.getElementById(`event-tab-${next}-${id}`)?.focus();
+                }}
                 key={key}
                 onClick={() => {
                   setTab(key);
@@ -510,135 +534,147 @@ export function EventDetails() {
               </button>
             ))}
           </div>
-          {tab === 'inscricoes' ? (
-            <section className="card">
-              <div className="mb-5 grid gap-3 sm:grid-cols-[1fr_200px]">
-                <input
-                  aria-label="Buscar inscrição"
-                  placeholder="Buscar por nome ou e-mail"
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    setPage(1);
-                  }}
-                />
-                <select
-                  aria-label="Estado da inscrição"
-                  value={status}
-                  onChange={(e) => {
-                    setStatus(e.target.value);
-                    setPage(1);
-                  }}
-                >
-                  <option value="">Todas as inscrições</option>
-                  <option value="confirmed">Confirmadas</option>
-                  <option value="reserved">Reservadas</option>
-                  <option value="expired">Expiradas</option>
-                  <option value="cancellation">Cancelamento solicitado</option>
-                </select>
-              </div>
-              <QueryState query={registrations}>
-                {registrations.data?.items.length ? (
-                  <>
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Participante</th>
-                          <th>Estado</th>
-                          <th>Reserva até</th>
-                          <th>Ação</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {registrations.data.items.map((r) => (
-                          <tr key={r.id}>
-                            <td data-label="Participante">
-                              <div>
-                                <p className="font-medium">{r.name}</p>
-                                <p className="muted mt-1">{r.email}</p>
-                                <details className="mt-2">
-                                  <summary className="cursor-pointer text-xs">
-                                    Respostas do formulário
-                                  </summary>
-                                  {Object.entries(r.answers).map(
-                                    ([key, value]) => (
-                                      <p key={key} className="mt-1 text-xs">
-                                        {event.form.find((f) => f.id === key)
-                                          ?.label || key}
-                                        : {String(value)}
-                                      </p>
-                                    ),
-                                  )}
-                                </details>
-                              </div>
-                            </td>
-                            <td data-label="Estado">
-                              <div>
-                                <Status value={r.status} />
-                                {r.cancellationRequestedAt && (
-                                  <p className="mt-2 text-xs text-amber-800">
-                                    Cancelamento solicitado
-                                  </p>
-                                )}
-                                {r.suspendedAt && (
-                                  <p className="mt-2 text-xs">
-                                    Inscrição suspensa
-                                  </p>
-                                )}
-                              </div>
-                            </td>
-                            <td data-label="Reserva até">
-                              {date(r.reservationExpiresAt)}
-                            </td>
-                            <td data-label="Ação">
-                              <Confirm
-                                title={
-                                  r.suspendedAt
-                                    ? 'Reativar inscrição?'
-                                    : 'Suspender inscrição?'
-                                }
-                                description="A alteração será registrada no histórico do evento."
-                                onConfirm={async () => {
-                                  await send(
-                                    `/registrations/${r.id}/suspension`,
-                                    { suspended: !r.suspendedAt },
-                                    'PATCH',
-                                  );
-                                  await invalidate();
-                                }}
-                              >
-                                {r.suspendedAt ? 'Reativar' : 'Suspender'}
-                              </Confirm>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <Pager
-                      page={page}
-                      total={registrations.data.total}
-                      setPage={setPage}
+          <MotionSection change={tab}>
+            <div
+              role="tabpanel"
+              id={`event-panel-${id}`}
+              aria-labelledby={`event-tab-${tab}-${id}`}
+              tabIndex={0}
+            >
+              {tab === 'inscricoes' ? (
+                <section className="card">
+                  <div className="mb-5 grid gap-3 sm:grid-cols-[1fr_200px]">
+                    <input
+                      aria-label="Buscar inscrição"
+                      placeholder="Buscar por nome ou e-mail"
+                      value={search}
+                      onChange={(e) => {
+                        setSearch(e.target.value);
+                        setPage(1);
+                      }}
                     />
-                  </>
-                ) : (
-                  <Empty title="Nenhuma inscrição encontrada" />
-                )}
-              </QueryState>
-            </section>
-          ) : (
-            <section className="card">
-              <QueryState query={history}>
-                <AuditList data={history.data} />
-                {history.data && (
-                  <Pager
-                    page={page}
-                    total={history.data.total}
-                    setPage={setPage}
-                  />
-                )}
-              </QueryState>
-            </section>
-          )}
+                    <select
+                      aria-label="Estado da inscrição"
+                      value={status}
+                      onChange={(e) => {
+                        setStatus(e.target.value);
+                        setPage(1);
+                      }}
+                    >
+                      <option value="">Todas as inscrições</option>
+                      <option value="confirmed">Confirmadas</option>
+                      <option value="reserved">Reservadas</option>
+                      <option value="expired">Expiradas</option>
+                      <option value="cancellation">
+                        Cancelamento solicitado
+                      </option>
+                    </select>
+                  </div>
+                  <QueryState query={registrations}>
+                    {registrations.data?.items.length ? (
+                      <>
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Participante</th>
+                              <th>Estado</th>
+                              <th>Reserva até</th>
+                              <th>Ação</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {registrations.data.items.map((r) => (
+                              <tr key={r.id}>
+                                <td data-label="Participante">
+                                  <div>
+                                    <p className="font-medium">{r.name}</p>
+                                    <p className="muted mt-1">{r.email}</p>
+                                    <details className="mt-2">
+                                      <summary className="cursor-pointer text-xs">
+                                        Respostas do formulário
+                                      </summary>
+                                      {Object.entries(r.answers).map(
+                                        ([key, value]) => (
+                                          <p key={key} className="mt-1 text-xs">
+                                            {event.form.find(
+                                              (f) => f.id === key,
+                                            )?.label || key}
+                                            : {String(value)}
+                                          </p>
+                                        ),
+                                      )}
+                                    </details>
+                                  </div>
+                                </td>
+                                <td data-label="Estado">
+                                  <div>
+                                    <Status value={r.status} />
+                                    {r.cancellationRequestedAt && (
+                                      <p className="mt-2 text-xs text-amber-800">
+                                        Cancelamento solicitado
+                                      </p>
+                                    )}
+                                    {r.suspendedAt && (
+                                      <p className="mt-2 text-xs">
+                                        Inscrição suspensa
+                                      </p>
+                                    )}
+                                  </div>
+                                </td>
+                                <td data-label="Reserva até">
+                                  {date(r.reservationExpiresAt)}
+                                </td>
+                                <td data-label="Ação">
+                                  <Confirm
+                                    title={
+                                      r.suspendedAt
+                                        ? 'Reativar inscrição?'
+                                        : 'Suspender inscrição?'
+                                    }
+                                    description="A alteração será registrada no histórico do evento."
+                                    onConfirm={async () => {
+                                      await send(
+                                        `/registrations/${r.id}/suspension`,
+                                        { suspended: !r.suspendedAt },
+                                        'PATCH',
+                                      );
+                                      await invalidate();
+                                    }}
+                                  >
+                                    {r.suspendedAt ? 'Reativar' : 'Suspender'}
+                                  </Confirm>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <Pager
+                          page={page}
+                          total={registrations.data.total}
+                          setPage={setPage}
+                        />
+                      </>
+                    ) : (
+                      <Empty title="Nenhuma inscrição encontrada" />
+                    )}
+                  </QueryState>
+                </section>
+              ) : (
+                <section className="card">
+                  <QueryState query={history}>
+                    <AuditList data={history.data} />
+                    {history.data && (
+                      <Pager
+                        page={page}
+                        total={history.data.total}
+                        setPage={setPage}
+                      />
+                    )}
+                  </QueryState>
+                </section>
+              )}
+            </div>
+          </MotionSection>
         </>
       )}
     </QueryState>
