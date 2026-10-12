@@ -147,8 +147,8 @@ export function LoginForm({ inline = false }: { inline?: boolean }) {
 export function LoginPage() {
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
-      <section className="hidden flex-col justify-between bg-red-800 p-12 text-white lg:flex">
-        <Brand />
+      <section className="login-art hidden flex-col justify-between bg-red-800 p-12 text-white lg:flex">
+        <Brand inverse />
         <div className="max-w-lg">
           <p className="mb-5 text-sm uppercase tracking-widest text-red-100">
             Sua liga, mais perto
@@ -168,7 +168,7 @@ export function LoginPage() {
         <div className="mb-12 lg:hidden">
           <Brand />
         </div>
-        <div className="mx-auto w-full max-w-sm">
+        <div className="login-form-panel mx-auto w-full max-w-md">
           <LoginForm />
           <p className="muted mt-8 text-sm">
             Acesso exclusivo para administradores e organizador da liga.

@@ -10,13 +10,13 @@ import {
 } from 'react';
 import { AlertCircle, ArrowLeft, ArrowRight, Check, X } from 'lucide-react';
 import { labels } from './types';
-export function Brand() {
+export function Brand({ inverse = false }: { inverse?: boolean }) {
   return (
     <span className="brand">
       <span className="brand-mark">
         L<span />
       </span>
-      Liga<span className="text-red-700">Hub</span>
+      Liga<span className={inverse ? 'text-red-100' : 'text-red-700'}>Hub</span>
     </span>
   );
 }
