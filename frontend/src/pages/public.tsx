@@ -27,7 +27,13 @@ import {
   Confirm,
   useUnsaved,
 } from '../ui';
-import { money, date, type Event, type Registration } from '../types';
+import {
+  money,
+  date,
+  formatCpf,
+  type Event,
+  type Registration,
+} from '../types';
 const registrationSchema = z.object({
   name: z.string().trim().min(2, 'Informe seu nome completo.').max(120),
   email: z.email('Informe um e-mail válido.').max(254),
@@ -604,6 +610,7 @@ type PaymentBody = {
   method: 'pix' | 'card';
   installments: number;
   cpf: string;
+  payerName: string;
   cardToken?: string;
   paymentMethodId?: string;
   issuerId?: string;
@@ -617,6 +624,7 @@ function Checkout({
 }) {
   const [method, setMethod] = useState<'pix' | 'card'>('pix');
   const [cpf, setCpf] = useState('');
+  const [payerName, setPayerName] = useState(registration.name);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [uncertain, setUncertain] = useState(false);
@@ -716,6 +724,9 @@ function Checkout({
           <p>
             {registration.name} · {registration.email}
           </p>
+          <p>
+            Pagador: {reviewBody.payerName} · CPF {formatCpf(reviewBody.cpf)}
+          </p>
           <p className="font-semibold">
             {money(registration.priceInCents)} ·{' '}
             {reviewBody.method === 'pix'
@@ -767,12 +778,27 @@ function Checkout({
               Cartão
             </button>
           </div>
+          <Field
+            label="Nome completo do pagador"
+            hint="Informe o nome da pessoa responsável por este pagamento."
+          >
+            <input
+              autoComplete="name"
+              value={payerName}
+              maxLength={120}
+              onChange={(e) => setPayerName(e.target.value)}
+            />
+          </Field>
           {method === 'pix' ? (
             <form
               className="space-y-4"
               onSubmit={(e) => {
                 e.preventDefault();
                 const normalized = cpf.replace(/\D/g, '');
+                if (payerName.trim().length < 2) {
+                  setError('Informe o nome completo do pagador.');
+                  return;
+                }
                 if (normalized.length !== 11) {
                   setError('Informe o CPF com 11 dígitos.');
                   return;
@@ -781,6 +807,7 @@ function Checkout({
                 setReviewBody({
                   method: 'pix',
                   cpf: normalized,
+                  payerName: payerName.trim(),
                   installments: 1,
                 });
               }}
@@ -814,6 +841,10 @@ function Checkout({
                 },
               }}
               onSubmit={async (data) => {
+                if (payerName.trim().length < 2) {
+                  setError('Informe o nome completo do pagador.');
+                  return;
+                }
                 setReviewBody({
                   method: 'card',
                   cardToken: data.token,
@@ -823,6 +854,7 @@ function Checkout({
                       ? undefined
                       : String(data.issuer_id),
                   installments: data.installments,
+                  payerName: payerName.trim(),
                   cpf: (data.payer.identification?.number || '').replace(
                     /\D/g,
                     '',

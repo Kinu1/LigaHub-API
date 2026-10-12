@@ -33,12 +33,13 @@ import {
 import {
   money,
   date,
+  formatCpf,
   type Event,
   type Page,
   type Registration,
   type User,
   type Audit,
-  type Payment,
+  type PaymentHistory,
 } from '../types';
 function QueryState({
   query,
@@ -697,7 +698,7 @@ export function FinancePage() {
   });
   const payments = useQuery({
     queryKey: ['payments', page],
-    queryFn: () => api<Page<Payment>>(`/payments?page=${page}`),
+    queryFn: () => api<Page<PaymentHistory>>(`/payments?page=${page}`),
   });
   return (
     <>
@@ -758,10 +759,12 @@ export function FinancePage() {
         <QueryState query={payments}>
           {payments.data?.items.length ? (
             <>
-              <table className="data-table">
+              <table className="data-table payment-history-table">
                 <thead>
                   <tr>
                     <th>Data</th>
+                    <th>Nome completo do pagador</th>
+                    <th>CPF do pagador</th>
                     <th>Forma</th>
                     <th>Valor base</th>
                     <th>Estado</th>
@@ -771,6 +774,18 @@ export function FinancePage() {
                   {payments.data.items.map((p) => (
                     <tr key={p.id}>
                       <td data-label="Data">{date(p.createdAt)}</td>
+                      <td
+                        data-label="Nome completo do pagador"
+                        className="break-words"
+                      >
+                        {p.payer?.name || 'Não informado'}
+                      </td>
+                      <td
+                        data-label="CPF do pagador"
+                        className="whitespace-nowrap tabular-nums"
+                      >
+                        {formatCpf(p.payer?.cpf)}
+                      </td>
                       <td data-label="Forma">
                         {p.method === 'pix'
                           ? 'Pix'
