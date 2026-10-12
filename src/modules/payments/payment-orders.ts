@@ -82,11 +82,15 @@ export function normalizeOrder(order: ProviderOrder): ProviderPayment {
     case 'processed':
       if (
         order.status !== 'processed' ||
+        !['accredited', 'partially_refunded'].includes(order.status_detail) ||
         !['accredited', 'partially_refunded'].includes(detail)
       )
         invalidOrder();
       normalizedStatus =
-        detail === 'partially_refunded' ? 'in_mediation' : 'approved';
+        detail === 'partially_refunded' ||
+        order.status_detail === 'partially_refunded'
+          ? 'in_mediation'
+          : 'approved';
       if (
         normalizedStatus === 'approved' &&
         (amount(order.total_paid_amount ?? '') < total ||

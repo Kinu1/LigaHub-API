@@ -104,6 +104,12 @@ describe('Integração Orders API', () => {
     differentStatus.status = 'processing';
     expect(() => normalizeOrder(differentStatus)).toThrow();
     expect(() => normalizeOrder(order('processed', 'desconhecido'))).toThrow();
+    const invalidOrderDetail = order();
+    invalidOrderDetail.status_detail = 'desconhecido';
+    expect(() => normalizeOrder(invalidOrderDetail)).toThrow();
+    const partialOrder = order();
+    partialOrder.status_detail = 'partially_refunded';
+    expect(normalizeOrder(partialOrder).status).toBe('in_mediation');
   });
   it('deve rejeitar múltiplas transações para uma inscrição', () => {
     const multiple = order();
