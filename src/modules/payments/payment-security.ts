@@ -134,6 +134,7 @@ export function assertProviderPayment(
     !Number.isFinite(Date.parse(payment.date_last_updated))
   )
     throw new BadRequestException('O provedor retornou um pagamento inválido.');
+  if (payment.detailsPending && payment.status === 'in_process') return;
   if (
     (method === 'pix' && payment.payment_method_id !== 'pix') ||
     (method === 'card' &&
@@ -146,6 +147,7 @@ export function assertProviderPayment(
 }
 
 export type ProviderPayment = {
+  detailsPending?: boolean;
   id: string | number;
   external_reference: string;
   collector_id: string | number;
