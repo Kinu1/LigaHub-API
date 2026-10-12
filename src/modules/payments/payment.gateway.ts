@@ -17,9 +17,11 @@ export type OAuthToken = {
   live_mode?: boolean;
 };
 export class PaymentRejectedByProvider extends ServiceUnavailableException {
-  constructor() {
+  constructor(readonly reason = 'invalid_payment_data') {
     super(
-      'O Mercado Pago recusou os dados de pagamento. Confira os dados e gere um novo token para outra tentativa.',
+      reason === 'invalid_transaction_amount'
+        ? 'O Mercado Pago não aceita este valor para o meio de pagamento ou parcelamento escolhido. Escolha outra opção.'
+        : 'O Mercado Pago recusou os dados de pagamento. Confira os dados e gere um novo token para outra tentativa.',
     );
   }
 }
@@ -93,7 +95,7 @@ export class MercadoPagoGateway extends PaymentGateway {
             validationCodes.includes(error.code ?? ''),
           )
         )
-          throw new PaymentRejectedByProvider();
+          throw new PaymentRejectedByProvider(result.errors[0]?.code);
       }
       throw new ServiceUnavailableException(
         `O Mercado Pago não concluiu a operação (HTTP ${response.status}). Consulte a inscrição antes de tentar novamente.`,

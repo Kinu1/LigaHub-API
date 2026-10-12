@@ -47,6 +47,115 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
     searchPayment: vi.fn(),
   };
   const accounts = { accessToken: vi.fn().mockResolvedValue('token-simulado') };
+  it('deve conservar a requisição criptografada de Orders após timeout e repetir exatamente os mesmos dados', async () => {
+    vi.stubEnv(
+      'MERCADO_PAGO_NOTIFICATION_URL',
+      'https://ligahub.test/payments/webhook',
+    );
+    await prisma.paymentAttempt.delete({ where: { id: attemptId } });
+    gateway.searchPayment.mockResolvedValue(null);
+    gateway.createPayment.mockRejectedValueOnce(new Error('Tempo esgotado.'));
+    const newKey = randomUUID();
+    await expect(
+      service.create(registrationId, 'token-participante', newKey, pixInput),
+    ).rejects.toThrow('Tempo esgotado');
+    const saved = await prisma.paymentAttempt.findUniqueOrThrow({
+      where: { idempotencyKey: newKey },
+    });
+    expect(saved.providerApi).toBe('orders');
+    expect(saved.providerRequestEncrypted).not.toContain(pixInput.cpf);
+    const original = JSON.parse(
+      decryptCredential(saved.providerRequestEncrypted!),
+    );
+    expect(original.expiration_time).toMatch(/^PT\d+S$/);
+    await prisma.registration.update({
+      where: { id: registrationId },
+      data: {
+        name: 'Nome alterado',
+        reservationExpiresAt: new Date(Date.now() + 7200000),
+      },
+    });
+    gateway.createPayment.mockResolvedValueOnce({
+      id: 'ORDTST123',
+      external_reference: saved.id,
+      collector_id: '456',
+      currency_id: 'BRL',
+      transaction_amount: 10,
+      status: 'pending',
+      status_detail: 'waiting_payment',
+      date_last_updated: new Date().toISOString(),
+      payment_method_id: 'pix',
+      payment_type_id: 'bank_transfer',
+      installments: 1,
+    });
+    const result = await service.create(
+      registrationId,
+      'token-participante',
+      newKey,
+      pixInput,
+    );
+    expect(result.status).toBe('pending');
+    expect(gateway.createPayment.mock.calls[0]![2]).toEqual(original);
+    expect(gateway.createPayment.mock.calls[1]![2]).toEqual(original);
+    expect(gateway.createPayment.mock.calls[1]![3]).toBe('orders');
+    expect(gateway.searchPayment).toHaveBeenCalledWith(
+      'token-simulado',
+      saved.id,
+      { api: 'orders', createdAt: saved.createdAt },
+    );
+    expect(
+      (
+        await prisma.paymentAttempt.findUniqueOrThrow({
+          where: { id: saved.id },
+        })
+      ).providerRequestEncrypted,
+    ).toBeNull();
+    expect(result).not.toHaveProperty('providerRequestEncrypted');
+  });
+  it('deve consultar Orders em webhook assinado, ignorar o tópico legado e confirmar uma única vez', async () => {
+    const secret = 'segredo-teste-orders';
+    vi.stubEnv('MERCADO_PAGO_WEBHOOK_SECRET', secret);
+    const id = 'ORDTST123';
+    await prisma.paymentAttempt.update({
+      where: { id: attemptId },
+      data: { providerApi: 'orders', providerPaymentId: id },
+    });
+    const ts = String(Date.now());
+    const requestId = randomUUID();
+    const signature = `ts=${ts},v1=${createHmac('sha256', secret).update(`id:${id.toLowerCase()};request-id:${requestId};ts:${ts};`).digest('hex')}`;
+    gateway.getPayment.mockResolvedValue({
+      id,
+      external_reference: attemptId,
+      collector_id: '456',
+      currency_id: 'BRL',
+      transaction_amount: 10,
+      status: 'approved',
+      status_detail: 'accredited',
+      date_last_updated: new Date().toISOString(),
+      payment_method_id: 'pix',
+      payment_type_id: 'bank_transfer',
+      installments: 1,
+    });
+    await service.webhook(signature, requestId, id, id, 'payment');
+    expect(gateway.getPayment).not.toHaveBeenCalled();
+    await service.webhook(signature, requestId, id, id, 'order');
+    await service.webhook(signature, requestId, id, id, 'order');
+    expect(gateway.getPayment).toHaveBeenCalledWith(
+      'token-simulado',
+      id,
+      'orders',
+    );
+    expect(
+      (
+        await prisma.registration.findUniqueOrThrow({
+          where: { id: registrationId },
+        })
+      ).status,
+    ).toBe('confirmed');
+    expect(await prisma.emailOutbox.count({ where: { registrationId } })).toBe(
+      1,
+    );
+  });
   it.each([undefined, 'https://', 'http://localhost/webhook'])(
     'deve rejeitar configuração inválida de webhook sem criar tentativa: %s',
     async (notificationUrl) => {
@@ -565,6 +674,7 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
       expect(gateway.getPayment).toHaveBeenCalledWith(
         'token-simulado',
         providerId,
+        'payments',
       );
       expect(
         (

@@ -36,6 +36,11 @@ export class CreatePaymentDto {
   })
   paymentMethodId?: string;
   @ValidateIf((_input: CreatePaymentDto, value: unknown) => value !== undefined)
+  @IsIn(['credit_card', 'debit_card'], {
+    message: 'Escolha cartão de crédito ou débito.',
+  })
+  paymentTypeId?: 'credit_card' | 'debit_card';
+  @ValidateIf((_input: CreatePaymentDto, value: unknown) => value !== undefined)
   @IsString({ message: 'O emissor do cartão é inválido.' })
   @MaxLength(64, { message: 'O emissor do cartão é inválido.' })
   issuerId?: string;

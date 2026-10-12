@@ -24,9 +24,12 @@ import {
 import {
   assertProviderPayment,
   digest,
+  encryptCredential,
+  decryptCredential,
   verifyWebhook,
   type ProviderPayment,
 } from './payment-security.js';
+import type { ProviderApi } from './payment-orders.js';
 
 const unresolved = [
   'created',
@@ -127,6 +130,10 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       );
     if (input.method === 'pix' && input.installments !== 1)
       throw new BadRequestException('O Pix deve ser pago em uma parcela.');
+    if (input.paymentTypeId === 'debit_card' && input.installments !== 1)
+      throw new BadRequestException(
+        'O cartão de débito deve ser pago em uma parcela.',
+      );
     const registration = await this.participant(registrationId, token);
     const requestHash = digest(
       JSON.stringify({
@@ -136,6 +143,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         issuerId: input.issuerId ?? null,
         installments: input.installments,
         cpf: input.cpf,
+        ...(input.paymentTypeId ? { paymentTypeId: input.paymentTypeId } : {}),
       }),
     );
     const attempt = await this.prisma.$transaction(async (tx) => {
@@ -175,8 +183,9 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         throw new ServiceUnavailableException(
           'O organizador ainda não conectou uma conta de pagamento.',
         );
+      let expiresAt = current.reservationExpiresAt;
       if (input.method === 'pix') {
-        const expiresAt = new Date(
+        expiresAt = new Date(
           Math.max(
             current.reservationExpiresAt.getTime(),
             Date.now() + 30 * 60_000 + 30_000,
@@ -199,9 +208,32 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           },
         });
       }
+      const attemptId = randomUUID();
+      const providerRequest = {
+        transaction_amount: current.priceInCents / 100,
+        external_reference: attemptId,
+        installments: input.installments,
+        payment_method_id:
+          input.method === 'pix' ? 'pix' : input.paymentMethodId,
+        payment_type_id: input.paymentTypeId ?? 'credit_card',
+        payer: {
+          email: current.email,
+          first_name: current.name.slice(0, 100),
+          identification: { type: 'CPF', number: input.cpf },
+        },
+        ...(input.method === 'pix'
+          ? {
+              expiration_time: `PT${Math.min(2_592_000, Math.ceil((expiresAt.getTime() - Date.now()) / 1000))}S`,
+            }
+          : { token: input.cardToken }),
+      };
       const created = await tx.paymentAttempt.create({
         data: {
-          id: randomUUID(),
+          id: attemptId,
+          providerApi: 'orders',
+          providerRequestEncrypted: encryptCredential(
+            JSON.stringify(providerRequest),
+          ),
           registrationId,
           accountId: account.id,
           idempotencyKey,
@@ -227,44 +259,65 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     if (!unresolved.includes(attempt.status))
       return this.publicAttempt(attempt);
     const accessToken = await this.accounts.accessToken(attempt.accountId);
+    const api = this.providerApi(attempt);
     let payment = attempt.providerPaymentId
-      ? await this.gateway.getPayment(accessToken, attempt.providerPaymentId)
-      : await this.gateway.searchPayment(accessToken, attempt.id);
+      ? await this.gateway.getPayment(
+          accessToken,
+          attempt.providerPaymentId,
+          api,
+        )
+      : await this.gateway.searchPayment(accessToken, attempt.id, {
+          api,
+          createdAt: attempt.createdAt,
+        });
     if (!payment) {
       const current = await this.prisma.registration.findUniqueOrThrow({
         where: { id: registrationId },
         include: { event: { include: { owner: true } } },
       });
       this.assertCanPay(current);
-      const body: Record<string, unknown> = {
-        transaction_amount: attempt.amountInCents / 100,
-        description: current.event.title.slice(0, 256),
-        external_reference: attempt.id,
-        installments: attempt.installments,
-        payment_method_id:
-          input.method === 'pix' ? 'pix' : input.paymentMethodId,
-        payer: {
-          email: current.email,
-          first_name: current.name.slice(0, 100),
-          identification: { type: 'CPF', number: input.cpf },
-        },
-        notification_url: this.notificationUrl(),
-      };
-      if (input.method === 'pix') {
-        if (current.reservationExpiresAt.getTime() < Date.now() + 30 * 60_000)
-          throw new ConflictException(
-            'O prazo do Pix não permite reenviar a cobrança. Aguarde a reconciliação do pagamento.',
+      let request: Record<string, unknown>;
+      if (api === 'orders') {
+        if (!attempt.providerRequestEncrypted)
+          throw new ServiceUnavailableException(
+            'A requisição original da order não está disponível. Aguarde a reconciliação.',
           );
-        body.date_of_expiration = current.reservationExpiresAt.toISOString();
+        request = JSON.parse(
+          decryptCredential(attempt.providerRequestEncrypted),
+        ) as Record<string, unknown>;
       } else {
-        body.token = input.cardToken;
-        if (input.issuerId) body.issuer_id = input.issuerId;
+        request = {
+          transaction_amount: attempt.amountInCents / 100,
+          description: current.event.title.slice(0, 256),
+          external_reference: attempt.id,
+          installments: attempt.installments,
+          payment_method_id:
+            input.method === 'pix' ? 'pix' : input.paymentMethodId,
+          payer: {
+            email: current.email,
+            first_name: current.name.slice(0, 100),
+            identification: { type: 'CPF', number: input.cpf },
+          },
+          notification_url: this.notificationUrl(),
+        };
+        if (input.method === 'pix') {
+          if (current.reservationExpiresAt.getTime() < Date.now() + 30 * 60_000)
+            throw new ConflictException(
+              'O prazo do Pix não permite reenviar a cobrança. Aguarde a reconciliação do pagamento.',
+            );
+          request.date_of_expiration =
+            current.reservationExpiresAt.toISOString();
+        } else {
+          request.token = input.cardToken;
+          if (input.issuerId) request.issuer_id = input.issuerId;
+        }
       }
       try {
         payment = await this.gateway.createPayment(
           accessToken,
           attempt.idempotencyKey,
-          body,
+          request,
+          api,
         );
       } catch (error) {
         if (error instanceof PaymentRejectedByProvider) {
@@ -278,7 +331,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
               },
               data: {
                 status: 'rejected',
-                statusDetail: 'invalid_payment_data',
+                statusDetail: error.reason,
+                providerRequestEncrypted: null,
               },
             });
             await tx.auditLog.create({
@@ -402,6 +456,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         where: { id: current.id },
         data: {
           providerPaymentId: String(payment.id),
+          providerRequestEncrypted: null,
           status: payment.status,
           statusDetail: payment.status_detail?.slice(0, 256),
           providerUpdatedAt: updatedAt,
@@ -497,15 +552,18 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       throw new UnauthorizedException(
         'O identificador da notificação é inválido.',
       );
-    if (type && type !== 'payment') return { received: true };
+    if (type && !['payment', 'order'].includes(type)) return { received: true };
     const attempt = await this.prisma.paymentAttempt.findUnique({
       where: { providerPaymentId: dataId! },
     });
     if (attempt) {
+      const api = this.providerApi(attempt);
+      if ((type ?? 'payment') !== (api === 'orders' ? 'order' : 'payment'))
+        return { received: true };
       const token = await this.accounts.accessToken(attempt.accountId);
       await this.applyPayment(
         attempt.id,
-        await this.gateway.getPayment(token, dataId!),
+        await this.gateway.getPayment(token, dataId!, api),
       );
     }
     // Notifications arriving before the creation response are recovered by durable reconciliation.
@@ -553,6 +611,15 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  private providerApi(attempt: PaymentAttempt): ProviderApi {
+    if (!attempt.providerApi || attempt.providerApi === 'payments')
+      return 'payments';
+    if (attempt.providerApi === 'orders') return 'orders';
+    throw new ServiceUnavailableException(
+      'A API da tentativa de pagamento é inválida.',
+    );
+  }
+
   async reconcile(): Promise<void> {
     if (this.syncing) return;
     this.syncing = true;
@@ -568,9 +635,17 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       for (const attempt of attempts) {
         try {
           const token = await this.accounts.accessToken(attempt.accountId);
+          const api = this.providerApi(attempt);
           const payment = attempt.providerPaymentId
-            ? await this.gateway.getPayment(token, attempt.providerPaymentId)
-            : await this.gateway.searchPayment(token, attempt.id);
+            ? await this.gateway.getPayment(
+                token,
+                attempt.providerPaymentId,
+                api,
+              )
+            : await this.gateway.searchPayment(token, attempt.id, {
+                api,
+                createdAt: attempt.createdAt,
+              });
           if (payment) await this.applyPayment(attempt.id, payment);
           await this.prisma.paymentAttempt.update({
             where: { id: attempt.id },

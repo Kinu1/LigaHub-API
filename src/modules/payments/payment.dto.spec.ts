@@ -35,7 +35,7 @@ describe('Validação de pagamento', () => {
     expect(await validate(input)).toHaveLength(0);
     expect(input.installments).toBe(1);
   });
-  it.each(['cpf', 'cardToken', 'paymentMethodId', 'issuerId'])(
+  it.each(['cpf', 'cardToken', 'paymentMethodId', 'issuerId', 'paymentTypeId'])(
     'deve rejeitar null no campo %s de um pagamento com cartão',
     async (field) => {
       const input = plainToInstance(CreatePaymentDto, {
