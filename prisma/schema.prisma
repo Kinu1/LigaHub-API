@@ -141,6 +141,8 @@ model PaymentAttempt {
   idempotencyKey    String         @unique @db.Uuid
   requestHash       String
   providerPaymentId String?        @unique
+  providerApi       String         @default("payments")
+  providerRequestEncrypted String?
   method            String
   installments      Int
   amountInCents     Int

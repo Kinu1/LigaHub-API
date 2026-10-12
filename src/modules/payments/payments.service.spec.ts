@@ -120,6 +120,26 @@ describe('PaymentsService', () => {
     ),
   );
   afterEach(() => vi.unstubAllEnvs());
+  it('deve rejeitar parcelamento no débito antes de criar uma tentativa', async () => {
+    const setup = fixture();
+    await expect(
+      setup.service.create(
+        setup.registration.id,
+        'acesso-participante',
+        randomUUID(),
+        {
+          method: 'card',
+          paymentTypeId: 'debit_card',
+          paymentMethodId: 'debelo',
+          cardToken: 'token-cartao',
+          installments: 3,
+          cpf: input.cpf,
+        },
+      ),
+    ).rejects.toThrow('débito deve ser pago em uma parcela');
+    expect(setup.gateway.createPayment).not.toHaveBeenCalled();
+    expect(setup.prisma.$transaction).not.toHaveBeenCalled();
+  });
   it('deve recusar a mesma chave de idempotência com dados diferentes', async () => {
     const setup = fixture();
     await expect(

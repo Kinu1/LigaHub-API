@@ -114,12 +114,13 @@ Cartão — mesma rota:
   "method": "card",
   "cardToken": "TOKEN_TEMPORARIO_GERADO_PELO_MERCADO_PAGO",
   "paymentMethodId": "visa",
+  "paymentTypeId": "credit_card",
   "installments": 3,
   "cpf": "CPF_DE_TESTE_COM_11_DIGITOS"
 }
 ```
 
-`issuerId` é opcional. A API aceita 1 a 12 parcelas, mas disponibilidade e juros reais dependem do provedor. Número completo do cartão, validade e CVV nunca devem ser enviados à LigaHub API. O token será obtido pelo SDK do Mercado Pago no futuro frontend.
+`paymentTypeId` aceita `credit_card` (padrão quando omitido) ou `debit_card` (somente uma parcela). O checkout deve enviar o tipo retornado pelo SDK, especialmente para débito. `issuerId` permanece aceito por compatibilidade com Payments, mas não é enviado à Orders API. A API aceita 1 a 12 parcelas no crédito; disponibilidade, valor mínimo e juros dependem do provedor. Número completo do cartão, validade e CVV nunca devem ser enviados à LigaHub API. O token é obtido pelo SDK do Mercado Pago.
 
 | Método | Rota | Comportamento |
 | --- | --- | --- |
@@ -133,4 +134,4 @@ Cartão — mesma rota:
 | GET | `/admin/overview` | Indicadores; somente administrador |
 | GET | `/admin/audit?page=1&limit=20` | Histórico global; somente administrador |
 
-O histórico não possui rotas de edição. `payment_review` exige análise do organizador; não equivale a inscrição confirmada nem a reembolso. Estados de pagamento mantêm os códigos do provedor. Listagens de inscrições podem conter `reserved` com data já expirada: consulte `reservationExpiresAt`; a consulta individual calcula `expired` para o participante.
+O histórico não possui rotas de edição. `payment_review` exige análise do organizador; não equivale a inscrição confirmada nem a reembolso. Estados de Orders são traduzidos para o contrato existente: `processed/accredited` vira `approved`, `action_required/waiting_payment` vira `pending`, `processing` vira `in_process`, `failed` vira `rejected` e `canceled` vira `cancelled`. Listagens de inscrições podem conter `reserved` com data já expirada: consulte `reservationExpiresAt`; a consulta individual calcula `expired` para o participante.
