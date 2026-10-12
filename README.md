@@ -64,7 +64,7 @@ Os testes de integração exigem as migrations aplicadas. Criam dados identifica
 
 ## Limites da entrega
 
-A integração com Mercado Pago está implementada, mas a validação ponta a ponta no sandbox depende de aplicação, credenciais e conta de teste configuradas pelo proprietário. Nenhum recebimento real foi validado. A API recebe apenas o token temporário do cartão; o frontend usa o SDK do Mercado Pago para tokenização.
+A integração cria novas cobranças na Orders API e mantém consultas de tentativas legadas na Payments API. Pix e Mastercard em três parcelas foram aprovados no sandbox pela própria LigaHub, com confirmação da inscrição e e-mail capturado no Mailpit local. A entrega automática de webhook pelo Mercado Pago e o envio externo por Resend ainda precisam ser observados; consulte [o relatório e roteiro de testes](docs/MERCADO_PAGO.md). Nenhum recebimento real foi validado. A API recebe apenas o token temporário do cartão; o frontend usa o SDK do Mercado Pago para tokenização.
 
 O histórico é imutável pelas rotas da API; administradores do banco podem editar registros. Reservas expiradas deixam de consumir vagas pela data de expiração, mesmo antes de o estado ser materializado como `expired`.
 

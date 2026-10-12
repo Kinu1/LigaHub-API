@@ -1,6 +1,10 @@
 # Configurar Mercado Pago
 
-A API utiliza Payments API (`/v1/payments`) com Checkout Transparente. A conta recebedora é conectada por OAuth; não há `application_fee` nem split destinado ao dono da LigaHub. A cobrança externa combinada com o organizador permanece fora do sistema.
+A API cria novas cobranças na **Orders API (`/v1/orders`)**, mantendo Checkout Transparente. Tentativas anteriores conservam `providerApi=payments` e continuam sendo consultadas em `/v1/payments`. A conta recebedora é a do organizador; não há `application_fee` nem split destinado ao dono da LigaHub. A cobrança externa combinada com o organizador permanece fora do sistema. [Migração oficial de Payments para Orders](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/resources/migrate-payments-to-orders).
+
+O gateway traduz Orders para os estados já utilizados pela LigaHub. Uma vaga só pode ser confirmada quando a order e sua única transação estão `processed/accredited`, com referência, recebedor, moeda, valor base, valor creditado, meio e parcelas validados. Reembolso parcial é sinalizado como `in_mediation`, preservando a vaga que já estava confirmada; não é tratado como estorno total. Estados desconhecidos e resultados ambíguos não aprovam inscrições.
+
+A requisição original fica criptografada enquanto uma criação tem resultado incerto. Uma repetição conserva a chave e o corpo original, incluindo o prazo do Pix. O conteúdo criptografado é removido quando a order é identificada ou a requisição é explicitamente recusada; tokens e CPF não são expostos no histórico. A reconciliação busca a order pela referência e pelo intervalo de criação obrigatório da Orders API.
 
 ## Configuração local
 
@@ -17,7 +21,7 @@ Não versione o `.env` nem compartilhe os tokens. Para produção, remova as var
 ### Conta conectada por OAuth
 
 1. Crie uma aplicação de Checkout Transparente no painel Mercado Pago Developers. Cadastre a URL HTTPS exata do callback e habilite PKCE.
-2. Configure notificações do tópico `payment` para a URL HTTPS do webhook e obtenha seu segredo de assinatura.
+2. Configure notificações do tópico `order` e mantenha `payment` para as tentativas legadas. Use a URL HTTPS do webhook e obtenha seu segredo completo de assinatura.
 3. Preencha as variáveis abaixo **no `.env` local**, sem enviar credenciais no chat.
 
 ```dotenv
@@ -32,7 +36,7 @@ PAYMENT_RECONCILIATION_ENABLED=true
 
 `npm.cmd run env:init` prepara `CREDENTIALS_ENCRYPTION_KEY`. Preserve essa chave: trocá-la sem migrar as credenciais impede ler contas já conectadas. Não coloque o Access Token do vendedor nessas variáveis. A aplicação obtém e criptografa o token após autorização do organizador.
 
-Para testar uma API local, utilize um endereço HTTPS acessível pelo provedor que encaminhe ao servidor local. Cadastre o mesmo endereço no painel e nas duas variáveis de URL. O endereço local `localhost` sozinho não recebe notificações externas. O túnel ou hospedagem não foram configurados nesta entrega.
+Para testar uma API local, utilize um endereço HTTPS acessível pelo provedor que encaminhe ao servidor local. Cadastre o webhook no painel e em `MERCADO_PAGO_NOTIFICATION_URL`; para OAuth, configure também o callback. `localhost` sozinho não recebe notificações externas. A Orders API não aceita `notification_url` no corpo da cobrança: configure as notificações no painel. Um túnel temporário só funciona enquanto seu processo estiver ativo; se seu endereço mudar, atualize o painel e o `.env` e reinicie a API.
 
 ## Conectar o organizador
 
@@ -60,11 +64,22 @@ Reconectar outra conta desativa a anterior para novas cobranças. Tentativas ant
 - Teste repetição da mesma chave de idempotência, aprovação, rejeição, expiração e reembolso.
 - Confirme chegada de webhook válido e recuperação pela reconciliação se a notificação não chegar.
 
-Não chame isso de pagamento validado até completar esse roteiro. Os testes automatizados do projeto usam um gateway simulado e verificam regras e persistência; não homologam sua aplicação no Mercado Pago. O futuro frontend ainda precisa implementar tokenização e escolha das parcelas disponíveis.
+Os testes automatizados usam um gateway simulado e verificam regras e persistência; não homologam a aplicação no Mercado Pago. A tokenização deve ocorrer pelo SDK do provedor, fora da LigaHub API, e as parcelas apresentadas devem ser as disponíveis para a conta e o cartão.
+
+### Validação local em 12/10/2026
+
+- Pix de R$ 10: criado pela rota da LigaHub, QR Code retornado, aprovação simulada no Mercado Pago e vaga confirmada pela reconciliação. Repetir chave e corpo retornou a mesma tentativa.
+- Mastercard de teste, R$ 50 em três parcelas: tokenização no provedor, pagamento enviado pela LigaHub e inscrição confirmada. Os dados brutos do cartão não passaram pelo backend da LigaHub.
+- R$ 10 em três parcelas foi recusado com `invalid_transaction_amount`. Não deduza um mínimo universal desse resultado: utilize valores e opções aceitos pelo Mercado Pago.
+- Webhook HTTPS de tipo `order`, assinado localmente e encaminhado pelo túnel: HTTP 201, consulta da order no provedor e confirmação sem duplicar a fila de e-mails. Assinatura inválida: rejeitada.
+- Uma confirmação por inscrição foi entregue ao **Mailpit local**, e os tokens de consulta retornaram `confirmed`. Isso não comprova entrega por Resend a uma caixa externa.
+- **Pendente:** observar uma notificação enviada automaticamente pelo Mercado Pago. O diagnóstico do MCP da aplicação não apresentou notificações. A reconciliação funcionou independentemente desse envio.
+
+Nenhuma cobrança real foi efetuada. Para o cenário de cartão aprovado, utilize o comprador `test@testuser.com`, titular `APRO`, CPF de teste `12345678909`, Mastercard `5480 8328 0103 3311`, CVV `123`, validade `11/30`, conforme o [roteiro oficial de cartões](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/integration-test/cards). Para Pix, siga o [roteiro oficial de Pix](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/integration-test/pix). Não tente pagar um QR de sandbox em um aplicativo bancário real.
 
 ## Pix, parcelamento e taxas
 
-O provedor exige vencimento Pix entre 30 minutos e 30 dias. A API estende a reserva ao iniciar Pix para respeitar o mínimo, com margem de transmissão. Não oferece Pix quando não resta tempo suficiente antes do evento. [Documentação Pix da Payments API](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-payments/integration-configuration/integrate-pix?scope=prod).
+O provedor exige vencimento Pix entre 30 minutos e 30 dias, informado em `expiration_time` como duração ISO 8601. A API estende a reserva ao iniciar Pix para respeitar o mínimo, com margem de transmissão. Não oferece Pix quando não resta tempo suficiente antes do evento. [Documentação Pix da Orders API](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/payment-integration/websites/pix).
 
 A API envia o preço base e a quantidade de parcelas, sem inventar juros. O futuro checkout deve consultar e apresentar as opções reais do Mercado Pago. **Juros de parcelamento e tarifa de processamento são conceitos diferentes**: a configuração de parcelas não garante que todas as tarifas da venda sejam repassadas ao participante. Confira as condições da conta recebedora no sandbox e antes de publicar valores. [Regras gerais de tarifas](https://www.mercadopago.com.br/developers/pt/docs/getting-started).
 
@@ -72,7 +87,7 @@ O saldo líquido e os prazos de disponibilização não são calculados pela Lig
 
 ## Webhook
 
-Não simule uma aprovação enviando apenas `{ "status": "approved" }`. A API valida a assinatura e consulta o provedor antes de alterar a inscrição. Confira o formato de assinatura em [Webhooks oficiais](https://www.mercadopago.com.br/developers/en/docs/links-and-debts/additional-content/your-integrations/notifications/webhooks).
+Não simule uma aprovação enviando apenas `{ "status": "approved" }`. A API valida a assinatura e consulta o provedor antes de alterar a inscrição. Orders usa `type: "order"`, `data.id` com o ID da order e o mesmo ID na query `data.id`. O ID é convertido para minúsculas somente na composição da assinatura. Notificações de uma API não são aplicadas a tentativas da outra. Confira [Notificações de Orders](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/notifications).
 
 ## Produção
 
