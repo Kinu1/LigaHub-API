@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { NavLink, Outlet, Navigate, Link } from 'react-router-dom';
 import {
   type LucideIcon,
@@ -17,6 +17,20 @@ import { Brand, Loading, Notice } from './ui';
 export function Layout() {
   const { user, loading, logout } = useAuth();
   const [open, setOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    closeButton.current?.focus();
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+        menuButton.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', dismiss);
+    return () => window.removeEventListener('keydown', dismiss);
+  }, [open]);
   const [desktop, setDesktop] = useState(
     () => window.matchMedia('(min-width:1024px)').matches,
   );
@@ -53,6 +67,7 @@ export function Layout() {
         />
       )}
       <aside
+        id="menu-gestao"
         inert={!open && !desktop}
         className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-zinc-200 bg-white px-5 py-7 transition-transform lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}
       >
@@ -61,6 +76,7 @@ export function Layout() {
             <Brand />
           </Link>
           <button
+            ref={closeButton}
             className="icon-btn lg:hidden"
             aria-label="Fechar menu"
             onClick={() => setOpen(false)}
@@ -116,6 +132,9 @@ export function Layout() {
         <header className="flex h-20 items-center justify-between border-b border-zinc-200 bg-white px-5 sm:px-9">
           <div className="flex items-center gap-3">
             <button
+              ref={menuButton}
+              aria-expanded={open}
+              aria-controls="menu-gestao"
               className="icon-btn lg:hidden"
               aria-label="Abrir menu"
               onClick={() => setOpen(true)}
@@ -134,7 +153,11 @@ export function Layout() {
             Página inicial <ArrowUpRight size={15} />
           </Link>
         </header>
-        <main id="conteudo" className="mx-auto max-w-7xl p-5 sm:p-9">
+        <main
+          id="conteudo"
+          tabIndex={-1}
+          className="mx-auto max-w-7xl p-5 sm:p-9"
+        >
           {error && <Notice>{error}</Notice>}
           <Outlet />
         </main>
@@ -145,6 +168,9 @@ export function Layout() {
 export function PublicLayout() {
   return (
     <>
+      <a href="#conteudo-publico" className="sr-only focus:not-sr-only">
+        Ir para o conteúdo
+      </a>
       <header className="border-b border-zinc-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between p-5">
           <Link to="/">
@@ -155,7 +181,11 @@ export function PublicLayout() {
           </Link>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl p-5 py-10 sm:p-9">
+      <main
+        id="conteudo-publico"
+        tabIndex={-1}
+        className="mx-auto max-w-6xl p-5 py-10 sm:p-9"
+      >
         <Outlet />
       </main>
       <footer className="mx-auto max-w-6xl border-t border-zinc-200 p-6 text-sm text-zinc-500">
