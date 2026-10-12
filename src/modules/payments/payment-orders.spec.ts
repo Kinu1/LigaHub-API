@@ -42,6 +42,62 @@ function order(status = 'processed', detail = 'accredited'): ProviderOrder {
 
 describe('Integração Orders API', () => {
   afterEach(() => vi.unstubAllGlobals());
+  it.each([true, false])(
+    'deve consultar a order após HTTP 402 antes de registrar recusa (id presente: %s)',
+    async (hasId) => {
+      const failed = order('failed', 'rejected_by_issuer');
+      const mock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify(
+              hasId ? { id: failed.id } : { errors: [{ code: 'failed' }] },
+            ),
+            { status: 402 },
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify(
+              hasId ? failed : { data: [failed], paging: { total: 1 } },
+            ),
+          ),
+        );
+      vi.stubGlobal('fetch', mock);
+      const payment = await new MercadoPagoGateway().createPayment(
+        'token',
+        'chave',
+        { transaction_amount: 10.25, external_reference: 'tentativa' },
+        'orders',
+      );
+      expect(payment).toMatchObject({
+        id: failed.id,
+        status: 'rejected',
+        status_detail: 'rejected_by_issuer',
+      });
+      expect(mock).toHaveBeenCalledTimes(2);
+      expect(mock.mock.calls[1]?.[1]).toMatchObject({ method: 'GET' });
+    },
+  );
+  it('deve preservar incerteza após HTTP 402 quando a consulta não encontra a order', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response('{}', { status: 402 }))
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ data: [], paging: { total: 0 } })),
+        ),
+    );
+    await expect(
+      new MercadoPagoGateway().createPayment(
+        'token',
+        'chave',
+        { transaction_amount: 10.25, external_reference: 'tentativa' },
+        'orders',
+      ),
+    ).rejects.toThrow('Consulte a inscrição');
+  });
   it('deve confirmar apenas uma order processada com transação creditada', () => {
     const payment = normalizeOrder(order());
     expect(payment.status).toBe('approved');

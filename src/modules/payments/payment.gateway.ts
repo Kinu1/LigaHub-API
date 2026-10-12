@@ -16,6 +16,11 @@ export type OAuthToken = {
   public_key: string;
   live_mode?: boolean;
 };
+class OrderTransactionFailed extends Error {
+  constructor(readonly orderId?: string) {
+    super('A order foi criada com falha na transação.');
+  }
+}
 export class PaymentRejectedByProvider extends ServiceUnavailableException {
   constructor(readonly reason = 'invalid_payment_data') {
     super(
@@ -74,6 +79,16 @@ export class MercadoPagoGateway extends PaymentGateway {
       );
     }
     if (!response.ok) {
+      if (path === '/v1/orders' && body && response.status === 402) {
+        const result = (await response.json().catch(() => null)) as {
+          id?: unknown;
+        } | null;
+        throw new OrderTransactionFailed(
+          typeof result?.id === 'string' && /^ORD[A-Z0-9]+$/.test(result.id)
+            ? result.id
+            : undefined,
+        );
+      }
       if (path === '/v1/payments' && [400, 422].includes(response.status))
         throw new PaymentRejectedByProvider();
       if (path === '/v1/orders' && [400, 422].includes(response.status)) {
@@ -150,15 +165,36 @@ export class MercadoPagoGateway extends PaymentGateway {
     body: Record<string, unknown>,
     api: ProviderApi = 'payments',
   ): Promise<ProviderPayment> {
-    if (api === 'orders')
-      return normalizeOrder(
-        await this.request<ProviderOrder>(
-          '/v1/orders',
-          accessToken,
-          orderRequest(body),
-          key,
-        ),
-      );
+    if (api === 'orders') {
+      try {
+        return normalizeOrder(
+          await this.request<ProviderOrder>(
+            '/v1/orders',
+            accessToken,
+            orderRequest(body),
+            key,
+          ),
+        );
+      } catch (error) {
+        if (!(error instanceof OrderTransactionFailed)) throw error;
+        // HTTP 402 pode criar uma order: consulte antes de permitir outra cobrança.
+        const payment = error.orderId
+          ? await this.getPayment(accessToken, error.orderId, 'orders')
+          : await this.searchPayment(
+              accessToken,
+              String(body.external_reference),
+              {
+                api: 'orders',
+                createdAt: new Date(),
+              },
+            );
+        if (!payment)
+          throw new ServiceUnavailableException(
+            'Não foi possível confirmar a order recusada. Consulte a inscrição antes de tentar novamente.',
+          );
+        return payment;
+      }
+    }
     return this.request('/v1/payments', accessToken, body, key);
   }
   async getPayment(
