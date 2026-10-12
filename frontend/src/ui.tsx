@@ -1,13 +1,22 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  cloneElement,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+  type ReactElement,
+  type InputHTMLAttributes,
+} from 'react';
 import { AlertCircle, ArrowLeft, ArrowRight, Check, X } from 'lucide-react';
 import { labels } from './types';
-export function Brand() {
+export function Brand({ inverse = false }: { inverse?: boolean }) {
   return (
     <span className="brand">
       <span className="brand-mark">
         L<span />
       </span>
-      Liga<span className="text-red-700">Hub</span>
+      Liga<span className={inverse ? 'text-red-100' : 'text-red-700'}>Hub</span>
     </span>
   );
 }
@@ -92,20 +101,38 @@ export function Field({
 }: {
   label: string;
   error?: string;
-  children: ReactNode;
+  children: ReactElement<InputHTMLAttributes<HTMLInputElement>>;
   hint?: string;
 }) {
+  const generatedId = useId();
+  const id = children.props.id || generatedId;
+  const description =
+    [
+      children.props['aria-describedby'],
+      hint && `${id}-hint`,
+      error && `${id}-error`,
+    ]
+      .filter(Boolean)
+      .join(' ') || undefined;
   return (
-    <label className="field">
-      <span>{label}</span>
-      {children}
-      {hint && <small className="muted">{hint}</small>}
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      {cloneElement(children, {
+        id,
+        'aria-describedby': description,
+        'aria-invalid': error ? true : children.props['aria-invalid'],
+      })}
+      {hint && (
+        <small id={`${id}-hint`} className="muted">
+          {hint}
+        </small>
+      )}
       {error && (
-        <small className="field-error" role="alert">
+        <small id={`${id}-error`} className="field-error" role="alert">
           {error}
         </small>
       )}
-    </label>
+    </div>
   );
 }
 export function Pager({
@@ -158,6 +185,8 @@ export function Confirm({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const id = useId();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   return (
@@ -167,13 +196,22 @@ export function Confirm({
         onClick={() => {
           setError('');
           ref.current?.showModal();
+          cancelRef.current?.focus();
         }}
       >
         {children}
       </button>
-      <dialog ref={ref} className="dialog">
+      <dialog
+        ref={ref}
+        className="dialog"
+        aria-labelledby={`${id}-title`}
+        aria-describedby={`${id}-description`}
+        onCancel={(event) => {
+          if (busy) event.preventDefault();
+        }}
+      >
         <div className="flex justify-between gap-4">
-          <h2>{title}</h2>
+          <h2 id={`${id}-title`}>{title}</h2>
           <button
             className="icon-btn"
             aria-label="Fechar"
@@ -183,11 +221,14 @@ export function Confirm({
             <X />
           </button>
         </div>
-        <p className="muted my-5">{description}</p>
+        <p id={`${id}-description`} className="muted my-5">
+          {description}
+        </p>
         {error && <Notice>{error}</Notice>}
         <div className="flex justify-end gap-3 mt-5">
           <button
             className="btn secondary"
+            ref={cancelRef}
             disabled={busy}
             onClick={() => ref.current?.close()}
           >
@@ -226,4 +267,13 @@ export function useUnsaved(dirty: boolean) {
     window.addEventListener('beforeunload', listener);
     return () => window.removeEventListener('beforeunload', listener);
   }, [dirty]);
+}
+
+export function useDebounced<T>(value: T, delay = 350): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettled(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [value, delay]);
+  return settled;
 }

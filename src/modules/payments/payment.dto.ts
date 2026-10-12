@@ -11,6 +11,7 @@ import {
   NotEquals,
   ValidateIf,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class AuthorizeAccountDto {
   @IsOptional()
@@ -18,6 +19,15 @@ export class AuthorizeAccountDto {
   ownerId?: string;
 }
 export class CreatePaymentDto {
+  // Optional for existing API clients; the web checkout explicitly supplies it.
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString({ message: 'Informe o nome completo do pagador.' })
+  @Matches(/\S.{1,}/u, { message: 'Informe o nome completo do pagador.' })
+  @MaxLength(120, { message: 'O nome do pagador deve ter até 120 caracteres.' })
+  payerName?: string;
   @IsIn(['pix', 'card'], { message: 'Escolha Pix ou cartão.' }) method!:
     'pix' | 'card';
   @ValidateIf((input: CreatePaymentDto) => input.method === 'card')

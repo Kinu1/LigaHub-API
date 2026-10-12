@@ -46,51 +46,8 @@ const StatusPage = React.lazy(() =>
 );
 import { Heading, Notice, Loading } from './ui';
 import './styles.css';
-function Home() {
-  return (
-    <div className="py-14">
-      <p className="eyebrow">ENCONTROS QUE APROXIMAM</p>
-      <h1 className="max-w-2xl text-4xl sm:text-6xl">
-        Conhecimento compartilhado.
-        <br />
-        <span className="text-red-700">Experiências que ficam.</span>
-      </h1>
-      <p className="muted mt-6 max-w-xl text-lg">
-        Recebeu um convite da sua liga? Abra o link do evento para conhecer a
-        programação e fazer sua inscrição.
-      </p>
-      <div className="mt-8 flex flex-wrap gap-3">
-        <Link className="btn" to="/recuperar">
-          Acompanhar minha inscrição →
-        </Link>
-        <Link className="btn secondary" to="/login">
-          Sou organizador
-        </Link>
-      </div>
-      <div className="mt-16 grid gap-5 md:grid-cols-3">
-        {[
-          ['01', 'Inscreva-se', 'Preencha seus dados no link do evento.'],
-          [
-            '02',
-            'Escolha como pagar',
-            'Pix ou cartão, com processamento pelo Mercado Pago.',
-          ],
-          [
-            '03',
-            'Acompanhe sua vaga',
-            'Consulte sua inscrição pelo link pessoal recebido por e-mail.',
-          ],
-        ].map(([n, title, text]) => (
-          <div className="card" key={n}>
-            <p className="eyebrow">{n}</p>
-            <h2>{title}</h2>
-            <p className="muted mt-3">{text}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+import { ExperienceProvider } from './experience';
+import { HomePage } from './pages/home';
 function NotFound() {
   return (
     <>
@@ -138,7 +95,7 @@ const router = createBrowserRouter([
     element: <PublicLayout />,
     errorElement: <RouteError />,
     children: [
-      { path: '/', element: <Home /> },
+      { path: '/', element: <HomePage /> },
       { path: '/eventos/:publicId', element: <PublicEvent /> },
       { path: '/inscricao/:id', element: <ParticipantPage /> },
       { path: '/inscricoes/:id', element: <StatusPage /> },
@@ -156,11 +113,13 @@ const client = new QueryClient({
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={client}>
-      <AuthProvider>
-        <React.Suspense fallback={<Loading />}>
-          <RouterProvider router={router} />
-        </React.Suspense>
-      </AuthProvider>
+      <ExperienceProvider>
+        <AuthProvider>
+          <React.Suspense fallback={<Loading />}>
+            <RouterProvider router={router} />
+          </React.Suspense>
+        </AuthProvider>
+      </ExperienceProvider>
     </QueryClientProvider>
   </React.StrictMode>,
 );

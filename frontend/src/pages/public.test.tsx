@@ -11,7 +11,29 @@ vi.mock('../api', async (importOriginal) => {
 });
 vi.mock('@mercadopago/sdk-react', () => ({
   initMercadoPago: vi.fn(),
-  CardPayment: () => null,
+  CardPayment: ({
+    onSubmit,
+  }: {
+    onSubmit: (data: {
+      token: string;
+      payment_method_id: string;
+      installments: number;
+      payer: { identification: { number: string } };
+    }) => Promise<void>;
+  }) => (
+    <button
+      onClick={() =>
+        onSubmit({
+          token: 'token-simulado',
+          payment_method_id: 'visa',
+          installments: 3,
+          payer: { identification: { number: '123.456.789-09' } },
+        })
+      }
+    >
+      Revisar cartão simulado
+    </button>
+  ),
 }));
 const event = {
   publicId: '7610c4b6-ec08-4fce-9335-b2357ca2eaba',
@@ -150,6 +172,9 @@ describe('Inscrição e pagamento', () => {
       .mockResolvedValueOnce({ status: 'pending' });
     show(<ParticipantPage />, '/acompanhar/:id', '/acompanhar/r');
     const user = userEvent.setup();
+    const name = await screen.findByLabelText('Nome completo do pagador');
+    await user.clear(name);
+    await user.type(name, 'Mariana Souza Oliveira');
     await user.type(
       await screen.findByLabelText(/CPF do pagador/),
       '12345678901',
@@ -167,5 +192,60 @@ describe('Inscrição e pagamento', () => {
     expect(vi.mocked(send).mock.calls[0]).toEqual(
       vi.mocked(send).mock.calls[1],
     );
+    expect(vi.mocked(send).mock.calls[0][1]).toMatchObject({
+      payerName: 'Mariana Souza Oliveira',
+      cpf: '12345678901',
+    });
+  });
+  it('valida o nome no checkout e envia o pagador revisado também no cartão', async () => {
+    const registration = {
+      id: 'r',
+      name: 'Ana Silva',
+      email: 'ana@exemplo.com',
+      status: 'reserved',
+      answers: {},
+      priceInCents: 2500,
+      reservationExpiresAt: '2030-10-08T15:00:00Z',
+      event: {
+        title: 'Jornada',
+        publicId: event.publicId,
+        status: 'published',
+      },
+      payments: [],
+    };
+    vi.mocked(api).mockImplementation(async (path) =>
+      path.endsWith('/checkout')
+        ? { publicKey: 'TEST', amountInCents: 2500, maxInstallments: 12 }
+        : registration,
+    );
+    vi.mocked(send).mockResolvedValue({ status: 'pending' });
+    show(<ParticipantPage />, '/acompanhar/:id', '/acompanhar/r');
+    const user = userEvent.setup();
+    const name = await screen.findByLabelText('Nome completo do pagador');
+    await user.clear(name);
+    await user.click(
+      screen.getByRole('button', { name: 'Revisar pagamento Pix' }),
+    );
+    await screen.findByText('Informe o nome completo do pagador.');
+    expect(send).not.toHaveBeenCalled();
+    await user.type(name, 'Bruno Souza Lima');
+    await user.click(
+      screen.getByRole('button', { name: /^Cartão$/ }),
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Revisar cartão simulado' }),
+    );
+    await screen.findByText('Pagador: Bruno Souza Lima · CPF 123.456.789-09');
+    expect(send).not.toHaveBeenCalled();
+    await user.click(
+      screen.getByRole('button', { name: 'Confirmar pagamento' }),
+    );
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(send).mock.calls[0][1]).toMatchObject({
+      method: 'card',
+      payerName: 'Bruno Souza Lima',
+      cpf: '12345678909',
+      installments: 3,
+    });
   });
 });

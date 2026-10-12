@@ -63,6 +63,13 @@ export type Registration = {
   event: Pick<Event, 'title' | 'publicId' | 'status'>;
   payments: Payment[];
 };
+export type PaymentHistory = Payment & {
+  payer: { name: string; cpf: string } | null;
+};
+export const formatCpf = (value?: string | null) =>
+  value && /^\d{11}$/.test(value)
+    ? value.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4')
+    : 'Não informado';
 export type Audit = {
   id: string;
   action: string;

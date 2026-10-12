@@ -143,6 +143,9 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         issuerId: input.issuerId ?? null,
         installments: input.installments,
         cpf: input.cpf,
+        ...(input.payerName !== undefined
+          ? { payerName: input.payerName }
+          : {}),
         ...(input.paymentTypeId ? { paymentTypeId: input.paymentTypeId } : {}),
       }),
     );
@@ -209,6 +212,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         });
       }
       const attemptId = randomUUID();
+      const payer = { name: input.payerName ?? current.name, cpf: input.cpf };
       const providerRequest = {
         transaction_amount: current.priceInCents / 100,
         external_reference: attemptId,
@@ -218,7 +222,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         payment_type_id: input.paymentTypeId ?? 'credit_card',
         payer: {
           email: current.email,
-          first_name: current.name.slice(0, 100),
+          first_name: payer.name.slice(0, 100),
           identification: { type: 'CPF', number: input.cpf },
         },
         ...(input.method === 'pix'
@@ -231,6 +235,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         data: {
           id: attemptId,
           providerApi: 'orders',
+          payerEncrypted: encryptCredential(JSON.stringify(payer)),
           providerRequestEncrypted: encryptCredential(
             JSON.stringify(providerRequest),
           ),
@@ -333,6 +338,9 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
                 status: 'rejected',
                 statusDetail: error.reason,
                 providerRequestEncrypted: null,
+                ...(!attempt.payerEncrypted && attempt.providerRequestEncrypted
+                  ? { payerEncrypted: this.encryptOriginalPayer(attempt) }
+                  : {}),
               },
             });
             await tx.auditLog.create({
@@ -457,6 +465,10 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         data: {
           providerPaymentId: String(payment.id),
           providerRequestEncrypted: null,
+          // Preserve legacy pending requests before discarding their card token.
+          ...(!current.payerEncrypted && current.providerRequestEncrypted
+            ? { payerEncrypted: this.encryptOriginalPayer(current) }
+            : {}),
           status: payment.status,
           statusDetail: payment.status_detail?.slice(0, 256),
           providerUpdatedAt: updatedAt,
@@ -590,7 +602,10 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       take: 50,
       orderBy: { createdAt: 'desc' },
     });
-    const items = records.map((attempt) => this.publicAttempt(attempt));
+    const items = records.map((attempt) => ({
+      ...this.publicAttempt(attempt),
+      payer: this.historyPayer(attempt),
+    }));
     if (!paginated) return items;
     const total = await this.prisma.paymentAttempt.count({ where });
     return { items, total, page, limit: 50 };
@@ -609,6 +624,53 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       createdAt: attempt.createdAt,
       updatedAt: attempt.updatedAt,
     };
+  }
+
+  private historyPayer(
+    attempt: PaymentAttempt,
+  ): { name: string; cpf: string } | null {
+    const encrypted =
+      attempt.payerEncrypted ?? attempt.providerRequestEncrypted;
+    if (!encrypted) return null;
+    try {
+      const stored = JSON.parse(decryptCredential(encrypted)) as {
+        name?: unknown;
+        cpf?: unknown;
+        payer?: {
+          first_name?: unknown;
+          last_name?: unknown;
+          identification?: { type?: unknown; number?: unknown };
+        };
+      } | null;
+      if (!stored || typeof stored !== 'object') return null;
+      const name = attempt.payerEncrypted
+        ? stored.name
+        : [stored.payer?.first_name, stored.payer?.last_name]
+            .filter((part) => typeof part === 'string' && part.trim())
+            .join(' ');
+      const cpf = attempt.payerEncrypted
+        ? stored.cpf
+        : stored.payer?.identification?.type === 'CPF'
+          ? stored.payer.identification.number
+          : undefined;
+      if (
+        typeof name !== 'string' ||
+        !name.trim() ||
+        typeof cpf !== 'string' ||
+        !/^\d{11}$/.test(cpf)
+      )
+        return null;
+      return { name: name.trim(), cpf };
+    } catch {
+      throw new ServiceUnavailableException(
+        'Não foi possível consultar os dados do pagador.',
+      );
+    }
+  }
+
+  private encryptOriginalPayer(attempt: PaymentAttempt): string | null {
+    const payer = this.historyPayer(attempt);
+    return payer ? encryptCredential(JSON.stringify(payer)) : null;
   }
 
   private providerApi(attempt: PaymentAttempt): ProviderApi {
