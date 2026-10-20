@@ -30,59 +30,63 @@ const scheduleValue = z.string().superRefine((value, context) => {
   const message = scheduleError(value);
   if (message) context.addIssue({ code: 'custom', message });
 });
-const schema = z
-  .object({
-    title: z.string().trim().min(1, 'Informe o título.').max(200),
-    description: z.string().max(10000),
-    location: z.string().max(500),
-    startsAt: scheduleValue,
-    endsAt: scheduleValue,
-    registrationDeadline: scheduleValue,
-    price: z
-      .string()
-      .regex(
-        /^\d+(?:[.,]\d{1,2})?$/,
-        'Informe um valor positivo, com até duas casas decimais.',
+const createSchema = (existingPriceInCents?: number) =>
+  z
+    .object({
+      title: z.string().trim().min(1, 'Informe o título.').max(200),
+      description: z.string().max(10000),
+      location: z.string().max(500),
+      startsAt: scheduleValue,
+      endsAt: scheduleValue,
+      registrationDeadline: scheduleValue,
+      price: z
+        .string()
+        .regex(
+          /^\d+(?:[.,]\d{1,2})?$/,
+          'Informe um valor positivo, com até duas casas decimais.',
+        )
+        .refine(
+          (v) =>
+            Number(v.replace(',', '.')) >= 0.5 ||
+            (existingPriceInCents !== undefined &&
+              toCents(v) === existingPriceInCents),
+          'O preço mínimo da inscrição é R$ 0,50.',
+        ),
+      capacity: z
+        .number()
+        .int()
+        .min(1, 'Informe pelo menos uma vaga.')
+        .max(2147483647),
+      reservationMinutes: z.number().int().min(5).max(60),
+      ownerId: z.string(),
+    })
+    .superRefine((value, context) => {
+      if (
+        value.endsAt &&
+        !scheduleError(value.endsAt) &&
+        (!value.startsAt ||
+          (!scheduleError(value.startsAt) && value.endsAt <= value.startsAt))
       )
-      .refine(
-        (v) => Number(v.replace(',', '.')) > 0,
-        'O preço deve ser positivo.',
-      ),
-    capacity: z
-      .number()
-      .int()
-      .min(1, 'Informe pelo menos uma vaga.')
-      .max(2147483647),
-    reservationMinutes: z.number().int().min(5).max(60),
-    ownerId: z.string(),
-  })
-  .superRefine((value, context) => {
-    if (
-      value.endsAt &&
-      !scheduleError(value.endsAt) &&
-      (!value.startsAt ||
-        (!scheduleError(value.startsAt) && value.endsAt <= value.startsAt))
-    )
-      context.addIssue({
-        code: 'custom',
-        path: ['endsAt'],
-        message: 'O término deve ser depois do início do evento.',
-      });
-    if (
-      value.registrationDeadline &&
-      !scheduleError(value.registrationDeadline) &&
-      (!value.startsAt ||
-        (!scheduleError(value.startsAt) &&
-          value.registrationDeadline > value.startsAt))
-    )
-      context.addIssue({
-        code: 'custom',
-        path: ['registrationDeadline'],
-        message:
-          'Defina o início do evento e encerre as inscrições até esse horário.',
-      });
-  });
-type Values = z.infer<typeof schema>;
+        context.addIssue({
+          code: 'custom',
+          path: ['endsAt'],
+          message: 'O término deve ser depois do início do evento.',
+        });
+      if (
+        value.registrationDeadline &&
+        !scheduleError(value.registrationDeadline) &&
+        (!value.startsAt ||
+          (!scheduleError(value.startsAt) &&
+            value.registrationDeadline > value.startsAt))
+      )
+        context.addIssue({
+          code: 'custom',
+          path: ['registrationDeadline'],
+          message:
+            'Defina o início do evento e encerre as inscrições até esse horário.',
+        });
+    });
+type Values = z.infer<ReturnType<typeof createSchema>>;
 export function toCents(value: string) {
   const [whole, decimal = ''] = value.replace(',', '.').split('.');
   return Number(whole) * 100 + Number(decimal.padEnd(2, '0'));
@@ -127,7 +131,7 @@ export function EventEditor() {
     enabled: user?.role === 'admin',
   });
   const form = useForm<Values>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(createSchema(query.data?.priceInCents)),
     defaultValues: {
       title: '',
       description: '',
@@ -227,7 +231,9 @@ export function EventEditor() {
           endsAt: isoDate(v.endsAt) ?? (id ? null : undefined),
           registrationDeadline:
             isoDate(v.registrationDeadline) ?? (id ? null : undefined),
-          priceInCents: toCents(v.price),
+          ...(id && query.data?.priceInCents === toCents(v.price)
+            ? {}
+            : { priceInCents: toCents(v.price) }),
           capacity: v.capacity,
           reservationMinutes: v.reservationMinutes,
           ...(user?.role === 'admin' ? { ownerId: v.ownerId } : {}),
@@ -367,6 +373,7 @@ export function EventEditor() {
                 <div className="grid gap-5 sm:grid-cols-2">
                   <Field
                     label="Preço da inscrição (R$)"
+                    hint="Valor mínimo: R$ 0,50."
                     error={err.price?.message}
                   >
                     <input
