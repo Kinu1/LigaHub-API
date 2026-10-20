@@ -12,11 +12,20 @@ import { AlertCircle, ArrowLeft, ArrowRight, Check, X } from 'lucide-react';
 import { labels } from './types';
 export function Brand({ inverse = false }: { inverse?: boolean }) {
   return (
-    <span className="brand">
-      <span className="brand-mark">
-        L<span />
+    <span className={`brand ${inverse ? 'brand-inverse' : ''}`}>
+      <img
+        className="brand-logo"
+        src="/logo-lauen.png"
+        width={52}
+        height={52}
+        alt="Liga Acadêmica de Urgência e Emergência LAUEN · FABA"
+      />
+      <span className="brand-copy">
+        <span>
+          Liga<span className="brand-accent">Hub</span>
+        </span>
+        <span className="brand-caption">LAUEN · FABA</span>
       </span>
-      Liga<span className={inverse ? 'text-red-100' : 'text-red-700'}>Hub</span>
     </span>
   );
 }
