@@ -14,6 +14,10 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import type { FormField } from './forms.js';
+import {
+  MIN_EVENT_PRICE_IN_CENTS,
+  MIN_EVENT_PRICE_MESSAGE,
+} from '../events/entities/academic-event.entity.js';
 
 export class CreateEventDto {
   @ApiProperty()
@@ -21,9 +25,12 @@ export class CreateEventDto {
   @MinLength(1, { message: 'O título é obrigatório.' })
   @MaxLength(200, { message: 'O título deve conter até 200 caracteres.' })
   title: string;
-  @ApiProperty()
+  @ApiProperty({
+    minimum: MIN_EVENT_PRICE_IN_CENTS,
+    description: 'Preço em centavos. Mínimo de R$ 0,50.',
+  })
   @IsInt({ message: 'O preço deve ser inteiro em centavos.' })
-  @Min(1, { message: 'O preço deve ser positivo.' })
+  @Min(MIN_EVENT_PRICE_IN_CENTS, { message: MIN_EVENT_PRICE_MESSAGE })
   @Max(2147483647, { message: 'O preço excede o limite permitido.' })
   priceInCents: number;
   @ApiProperty()

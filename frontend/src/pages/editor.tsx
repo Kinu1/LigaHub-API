@@ -2,10 +2,20 @@ import { MotionSection } from '../experience';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useBlocker } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
+import {
+  ScheduleField,
+  ScheduleSection,
+  scheduleError,
+} from './event-schedule';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Plus, Trash2, ArrowLeft, ArrowRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
+import {
+  EventQuestions,
+  questionError,
+  QuestionsPreview,
+} from './event-questions';
 import { api, send, ApiError } from '../api';
 import { useAuth } from '../auth';
 import { Heading, Loading, Notice, Field, useUnsaved } from '../ui';
@@ -16,32 +26,67 @@ import {
   type Field as FormField,
   type User,
 } from '../types';
-const schema = z.object({
-  title: z.string().trim().min(1, 'Informe o título.').max(200),
-  description: z.string().max(10000),
-  location: z.string().max(500),
-  startsAt: z.string(),
-  endsAt: z.string(),
-  registrationDeadline: z.string(),
-  price: z
-    .string()
-    .regex(
-      /^\d+(?:[.,]\d{1,2})?$/,
-      'Informe um valor positivo, com até duas casas decimais.',
-    )
-    .refine(
-      (v) => Number(v.replace(',', '.')) > 0,
-      'O preço deve ser positivo.',
-    ),
-  capacity: z
-    .number()
-    .int()
-    .min(1, 'Informe pelo menos uma vaga.')
-    .max(2147483647),
-  reservationMinutes: z.number().int().min(5).max(60),
-  ownerId: z.string(),
+const scheduleValue = z.string().superRefine((value, context) => {
+  const message = scheduleError(value);
+  if (message) context.addIssue({ code: 'custom', message });
 });
-type Values = z.infer<typeof schema>;
+const createSchema = (existingPriceInCents?: number) =>
+  z
+    .object({
+      title: z.string().trim().min(1, 'Informe o título.').max(200),
+      description: z.string().max(10000),
+      location: z.string().max(500),
+      startsAt: scheduleValue,
+      endsAt: scheduleValue,
+      registrationDeadline: scheduleValue,
+      price: z
+        .string()
+        .regex(
+          /^\d+(?:[.,]\d{1,2})?$/,
+          'Informe um valor positivo, com até duas casas decimais.',
+        )
+        .refine(
+          (v) =>
+            Number(v.replace(',', '.')) >= 0.5 ||
+            (existingPriceInCents !== undefined &&
+              toCents(v) === existingPriceInCents),
+          'O preço mínimo da inscrição é R$ 0,50.',
+        ),
+      capacity: z
+        .number()
+        .int()
+        .min(1, 'Informe pelo menos uma vaga.')
+        .max(2147483647),
+      reservationMinutes: z.number().int().min(5).max(60),
+      ownerId: z.string(),
+    })
+    .superRefine((value, context) => {
+      if (
+        value.endsAt &&
+        !scheduleError(value.endsAt) &&
+        (!value.startsAt ||
+          (!scheduleError(value.startsAt) && value.endsAt <= value.startsAt))
+      )
+        context.addIssue({
+          code: 'custom',
+          path: ['endsAt'],
+          message: 'O término deve ser depois do início do evento.',
+        });
+      if (
+        value.registrationDeadline &&
+        !scheduleError(value.registrationDeadline) &&
+        (!value.startsAt ||
+          (!scheduleError(value.startsAt) &&
+            value.registrationDeadline > value.startsAt))
+      )
+        context.addIssue({
+          code: 'custom',
+          path: ['registrationDeadline'],
+          message:
+            'Defina o início do evento e encerre as inscrições até esse horário.',
+        });
+    });
+type Values = z.infer<ReturnType<typeof createSchema>>;
 export function toCents(value: string) {
   const [whole, decimal = ''] = value.replace(',', '.').split('.');
   return Number(whole) * 100 + Number(decimal.padEnd(2, '0'));
@@ -71,6 +116,7 @@ export function EventEditor() {
   const [step, setStep] = useState(0);
   const [fields, setFields] = useState<FormField[]>([]);
   const [fieldsDirty, setFieldsDirty] = useState(false);
+  const [showQuestionErrors, setShowQuestionErrors] = useState(false);
   const [saved, setSaved] = useState(false);
   const [savedId, setSavedId] = useState('');
   const [error, setError] = useState('');
@@ -85,7 +131,7 @@ export function EventEditor() {
     enabled: user?.role === 'admin',
   });
   const form = useForm<Values>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(createSchema(query.data?.priceInCents)),
     defaultValues: {
       title: '',
       description: '',
@@ -133,7 +179,12 @@ export function EventEditor() {
   }, [savedId, navigate]);
   const values = form.watch();
   const err = form.formState.errors;
-  const steps = ['Informações', 'Vagas e preço', 'Formulário', 'Revisão'];
+  const steps = [
+    'Informações',
+    'Vagas e preço',
+    'Perguntas da inscrição',
+    'Revisão',
+  ];
   const group: (keyof Values)[][] = [
     [
       'title',
@@ -147,15 +198,13 @@ export function EventEditor() {
     [],
   ];
   const validateFields = () => {
-    if (
-      fields.some(
-        (f) =>
-          !f.label.trim() ||
-          (f.type === 'select' &&
-            (!f.options?.length || f.options.some((o) => !o.trim()))),
-      )
-    ) {
-      setError('Preencha o nome de cada pergunta e as opções de seleção.');
+    setShowQuestionErrors(true);
+    const invalidIndex = fields.findIndex((field) => questionError(field));
+    if (invalidIndex !== -1) {
+      setError(
+        `Pergunta ${invalidIndex + 1}: ${questionError(fields[invalidIndex])}`,
+      );
+      setStep(2);
       return false;
     }
     if (new Set(fields.map((f) => f.id)).size !== fields.length) {
@@ -182,11 +231,18 @@ export function EventEditor() {
           endsAt: isoDate(v.endsAt) ?? (id ? null : undefined),
           registrationDeadline:
             isoDate(v.registrationDeadline) ?? (id ? null : undefined),
-          priceInCents: toCents(v.price),
+          ...(id && query.data?.priceInCents === toCents(v.price)
+            ? {}
+            : { priceInCents: toCents(v.price) }),
           capacity: v.capacity,
           reservationMinutes: v.reservationMinutes,
           ...(user?.role === 'admin' ? { ownerId: v.ownerId } : {}),
-          form: fields,
+          form: fields.map(({ options, ...field }) => ({
+            ...field,
+            ...(field.type === 'select'
+              ? { options: options?.map((option) => option.trim()) }
+              : {}),
+          })),
         },
         id ? 'PATCH' : 'POST',
       );
@@ -252,24 +308,63 @@ export function EventEditor() {
                 <Field label="Local" error={err.location?.message}>
                   <input {...form.register('location')} />
                 </Field>
-                <div className="grid gap-5 md:grid-cols-3">
-                  {(
-                    [
-                      ['startsAt', 'Início'],
-                      ['endsAt', 'Fim'],
-                      ['registrationDeadline', 'Inscrições até'],
-                    ] as const
-                  ).map(([name, label]) => (
-                    <Field
-                      key={name}
-                      label={label}
-                      hint="Horário de Brasília"
-                      error={err[name]?.message}
-                    >
-                      <input type="datetime-local" {...form.register(name)} />
-                    </Field>
-                  ))}
-                </div>
+                <ScheduleSection
+                  deadline={
+                    <Controller
+                      name="registrationDeadline"
+                      control={form.control}
+                      render={({ field, fieldState }) => (
+                        <ScheduleField
+                          title="Encerramento das inscrições"
+                          description="Pode ser antes ou no mesmo horário de início do evento."
+                          {...field}
+                          onChange={(value) => {
+                            form.setValue(field.name, value, {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            });
+                          }}
+                          error={fieldState.error?.message}
+                        />
+                      )}
+                    />
+                  }
+                >
+                  <Controller
+                    name="startsAt"
+                    control={form.control}
+                    render={({ field, fieldState }) => (
+                      <ScheduleField
+                        title="Início do evento"
+                        {...field}
+                        onChange={(value) => {
+                          form.setValue(field.name, value, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          });
+                        }}
+                        error={fieldState.error?.message}
+                      />
+                    )}
+                  />
+                  <Controller
+                    name="endsAt"
+                    control={form.control}
+                    render={({ field, fieldState }) => (
+                      <ScheduleField
+                        title="Término do evento"
+                        {...field}
+                        onChange={(value) => {
+                          form.setValue(field.name, value, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          });
+                        }}
+                        error={fieldState.error?.message}
+                      />
+                    )}
+                  />
+                </ScheduleSection>
               </div>
             )}
             {step === 1 && (
@@ -278,6 +373,7 @@ export function EventEditor() {
                 <div className="grid gap-5 sm:grid-cols-2">
                   <Field
                     label="Preço da inscrição (R$)"
+                    hint="Valor mínimo: R$ 0,50."
                     error={err.price?.message}
                   >
                     <input
@@ -296,7 +392,7 @@ export function EventEditor() {
                 </div>
                 <Field
                   label="Reserva temporária (minutos)"
-                  hint="Entre 5 e 60 minutos. A API controla a expiração."
+                  hint="Tempo para concluir o pagamento antes de liberar a vaga. Entre 5 e 60 minutos."
                   error={err.reservationMinutes?.message}
                 >
                   <input
@@ -323,131 +419,21 @@ export function EventEditor() {
                   </Field>
                 )}
                 <p className="muted text-sm">
-                  Após a primeira inscrição, o backend protege preço, formulário
-                  e responsável contra alterações.
+                  Após a primeira inscrição, o preço, as perguntas e o
+                  responsável não poderão ser alterados.
                 </p>
               </div>
             )}
             {step === 2 && (
-              <div>
-                <div className="mb-5 flex flex-wrap justify-between gap-4">
-                  <div>
-                    <h2>Perguntas aos participantes</h2>
-                    <p className="muted mt-2 text-sm">
-                      Nome e e-mail já estão incluídos. Adicione até 25
-                      perguntas.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn secondary"
-                    disabled={fields.length >= 25}
-                    onClick={() => {
-                      setFields([
-                        ...fields,
-                        {
-                          id: `campo_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`,
-                          label: '',
-                          type: 'text',
-                          required: false,
-                        },
-                      ]);
-                      setFieldsDirty(true);
-                    }}
-                  >
-                    <Plus size={17} />
-                    Adicionar pergunta
-                  </button>
-                </div>
-                {fields.length === 0 && (
-                  <p className="muted py-10 text-center">
-                    Nenhuma pergunta extra. Você pode continuar.
-                  </p>
-                )}
-                {fields.map((f, index) => {
-                  const update = (patch: Partial<FormField>) => {
-                    setFields(
-                      fields.map((item, i) =>
-                        i === index ? { ...item, ...patch } : item,
-                      ),
-                    );
-                    setFieldsDirty(true);
-                  };
-                  return (
-                    <div
-                      className="mb-4 rounded-xl border border-zinc-200 p-5"
-                      key={f.id}
-                    >
-                      <div className="mb-4 flex items-center justify-between">
-                        <p className="text-sm font-semibold">
-                          Pergunta {index + 1}
-                        </p>
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          aria-label={`Remover pergunta ${index + 1}`}
-                          onClick={() => {
-                            setFields(fields.filter((_, i) => i !== index));
-                            setFieldsDirty(true);
-                          }}
-                        >
-                          <Trash2 size={17} />
-                        </button>
-                      </div>
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <Field label="Pergunta">
-                          <input
-                            value={f.label}
-                            maxLength={150}
-                            onChange={(e) => update({ label: e.target.value })}
-                          />
-                        </Field>
-                        <Field label="Tipo de resposta">
-                          <select
-                            value={f.type}
-                            onChange={(e) =>
-                              update({
-                                type: e.target.value as FormField['type'],
-                                options:
-                                  e.target.value === 'select'
-                                    ? ['']
-                                    : undefined,
-                              })
-                            }
-                          >
-                            <option value="text">Texto</option>
-                            <option value="number">Número</option>
-                            <option value="select">Seleção</option>
-                            <option value="checkbox">Checkbox</option>
-                          </select>
-                        </Field>
-                      </div>
-                      {f.type === 'select' && (
-                        <div className="mt-4">
-                          <Field label="Opções (uma por linha)">
-                            <textarea
-                              value={f.options?.join('\n') || ''}
-                              onChange={(e) =>
-                                update({ options: e.target.value.split('\n') })
-                              }
-                            />
-                          </Field>
-                        </div>
-                      )}
-                      <label className="mt-4 flex items-center gap-3 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={f.required}
-                          onChange={(e) =>
-                            update({ required: e.target.checked })
-                          }
-                        />
-                        Resposta obrigatória
-                      </label>
-                    </div>
-                  );
-                })}
-              </div>
+              <EventQuestions
+                fields={fields}
+                showErrors={showQuestionErrors}
+                onChange={(next) => {
+                  setFields(next);
+                  setFieldsDirty(true);
+                  setError('');
+                }}
+              />
             )}
             {step === 3 && (
               <div>
@@ -474,40 +460,11 @@ export function EventEditor() {
                 </div>
                 <div className="rounded-xl bg-zinc-50 p-5">
                   <h2 className="mb-4">Prévia do formulário</h2>
-                  <div className="space-y-4">
-                    <Field label="Nome completo">
-                      <input disabled placeholder="Nome do participante" />
-                    </Field>
-                    <Field label="E-mail">
-                      <input disabled placeholder="participante@exemplo.com" />
-                    </Field>
-                    {fields.map((f) => (
-                      <Field
-                        key={f.id}
-                        label={`${f.label}${f.required ? ' *' : ''}`}
-                      >
-                        {f.type === 'checkbox' ? (
-                          <input type="checkbox" disabled />
-                        ) : f.type === 'select' ? (
-                          <select disabled>
-                            <option>Selecione</option>
-                            {f.options?.map((o) => (
-                              <option key={o}>{o}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            disabled
-                            type={f.type === 'number' ? 'number' : 'text'}
-                          />
-                        )}
-                      </Field>
-                    ))}
-                  </div>
+                  <QuestionsPreview fields={fields} />
                 </div>
                 <p className="muted mt-4 text-sm">
                   Salvar cria ou atualiza o evento. A publicação acontece
-                  separadamente, após as verificações do backend.
+                  separadamente, na página do evento.
                 </p>
               </div>
             )}
@@ -525,6 +482,7 @@ export function EventEditor() {
           </button>
           {step < 3 ? (
             <button
+              key="continue"
               type="button"
               className="btn"
               onClick={async () => {
@@ -537,7 +495,12 @@ export function EventEditor() {
               Continuar <ArrowRight size={17} />
             </button>
           ) : (
-            <button className="btn" disabled={form.formState.isSubmitting}>
+            <button
+              key="save"
+              type="submit"
+              className="btn"
+              disabled={form.formState.isSubmitting}
+            >
               {form.formState.isSubmitting ? 'Salvando…' : 'Salvar evento'}
             </button>
           )}

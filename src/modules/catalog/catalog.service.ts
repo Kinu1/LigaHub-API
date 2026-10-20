@@ -16,6 +16,10 @@ import type {
   UpdateEventDto,
 } from './catalog.dto.js';
 import { validateForm } from './forms.js';
+import {
+  MIN_EVENT_PRICE_IN_CENTS,
+  MIN_EVENT_PRICE_MESSAGE,
+} from '../events/entities/academic-event.entity.js';
 
 export function assertOwnership(
   event: { ownerId: string | null },
@@ -61,6 +65,11 @@ export class CatalogService {
       if (input[field] === null)
         throw new BadRequestException(`O campo ${field} não pode ser nulo.`);
     }
+    if (
+      input.priceInCents !== undefined &&
+      input.priceInCents < MIN_EVENT_PRICE_IN_CENTS
+    )
+      throw new BadRequestException(MIN_EVENT_PRICE_MESSAGE);
   }
 
   private async owner(

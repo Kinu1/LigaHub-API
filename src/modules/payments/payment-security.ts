@@ -61,6 +61,26 @@ export function decryptCredential(value: string): string {
   }
 }
 
+type WebhookRejectionReason =
+  | 'invalid_fields'
+  | 'invalid_signature_format'
+  | 'invalid_timestamp'
+  | 'expired_timestamp'
+  | 'signature_mismatch';
+
+export class WebhookValidationError extends UnauthorizedException {
+  constructor(
+    readonly reason: WebhookRejectionReason,
+    readonly ageSeconds?: number,
+  ) {
+    super(
+      reason === 'expired_timestamp'
+        ? 'A notificação está fora do prazo permitido.'
+        : 'Assinatura de notificação inválida.',
+    );
+  }
+}
+
 export function verifyWebhook(
   signature: string | undefined,
   requestId: string | undefined,
@@ -84,27 +104,35 @@ export function verifyWebhook(
     dataId.length > 128 ||
     !/^[a-z0-9-]+$/i.test(dataId)
   )
-    throw new UnauthorizedException('Assinatura de notificação inválida.');
+    throw new WebhookValidationError('invalid_fields');
   const entries = signature.split(',').map((entry) => entry.trim().split('='));
   if (
     entries.filter(([key]) => key === 'ts').length !== 1 ||
     entries.filter(([key]) => key === 'v1').length !== 1
   )
-    throw new UnauthorizedException('Assinatura de notificação inválida.');
+    throw new WebhookValidationError('invalid_signature_format');
   const ts = entries.find(([key]) => key === 'ts')?.[1];
   const v1 = entries.find(([key]) => key === 'v1')?.[1];
-  if (!ts || !/^\d{10,13}$/.test(ts) || !v1 || !/^[a-f0-9]{64}$/i.test(v1))
-    throw new UnauthorizedException('Assinatura de notificação inválida.');
+  if (!ts || !/^\d{10,13}$/.test(ts))
+    throw new WebhookValidationError('invalid_timestamp');
+  if (!v1 || !/^[a-f0-9]{64}$/i.test(v1))
+    throw new WebhookValidationError('invalid_signature_format');
   const milliseconds = ts.length <= 10 ? Number(ts) * 1000 : Number(ts);
   if (Math.abs(now - milliseconds) > 300_000)
-    throw new UnauthorizedException(
-      'A notificação está fora do prazo permitido.',
+    throw new WebhookValidationError(
+      'expired_timestamp',
+      Math.round((now - milliseconds) / 1000),
     );
-  const expected = createHmac('sha256', secret)
-    .update(`id:${dataId.toLowerCase()};request-id:${requestId};ts:${ts};`)
-    .digest();
-  if (!timingSafeEqual(expected, Buffer.from(v1, 'hex')))
-    throw new UnauthorizedException('Assinatura de notificação inválida.');
+  const received = Buffer.from(v1, 'hex');
+  // O SDK atual preserva o ID; integrações anteriores normalizavam para minúsculas.
+  // Nos dois formatos, todos os campos e a chave continuam vinculados ao HMAC.
+  const matches = [...new Set([dataId, dataId.toLowerCase()])].some((id) => {
+    const expected = createHmac('sha256', secret)
+      .update(`id:${id};request-id:${requestId};ts:${ts};`)
+      .digest();
+    return timingSafeEqual(expected, received);
+  });
+  if (!matches) throw new WebhookValidationError('signature_mismatch');
 }
 
 export function assertProviderPayment(

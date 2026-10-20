@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaService } from '../../prisma.service.js';
 import type { PaymentAccountsService } from './payment-accounts.service.js';
@@ -113,6 +114,32 @@ function fixture(capacity = 1, occupied = 0) {
 }
 
 describe('PaymentsService', () => {
+  it('deve registrar somente diagnóstico seguro ao rejeitar webhook', async () => {
+    vi.stubEnv('MERCADO_PAGO_WEBHOOK_SECRET', 'segredo-privado');
+    const warn = vi
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => {});
+    try {
+      const { service, gateway } = fixture();
+      await expect(
+        service.webhook(undefined, 'identificador-privado', '123'),
+      ).rejects.toThrow('Assinatura');
+      expect(warn).toHaveBeenCalledWith({
+        event: 'payment.webhook.rejected',
+        reason: 'invalid_fields',
+        signaturePresent: false,
+        requestIdPresent: true,
+        dataIdPresent: true,
+      });
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('segredo-privado');
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(
+        'identificador-privado',
+      );
+      expect(gateway.getPayment).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
   beforeEach(() =>
     vi.stubEnv(
       'CREDENTIALS_ENCRYPTION_KEY',

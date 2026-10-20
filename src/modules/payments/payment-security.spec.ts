@@ -5,6 +5,7 @@ import {
   decryptCredential,
   encryptCredential,
   verifyWebhook,
+  WebhookValidationError,
   type ProviderPayment,
 } from './payment-security.js';
 
@@ -50,6 +51,22 @@ describe('Segurança de pagamentos', () => {
       verifyWebhook(signature(), 'pedido', '123', now),
     ).not.toThrow();
   });
+  it.each(['ORDTST123', 'ordtst123'])(
+    'deve validar ID alfanumérico assinado como %s sem perder compatibilidade',
+    (signedId) => {
+      const signed = `ts=${ts},v1=${createHmac('sha256', 'segredo-de-teste').update(`id:${signedId};request-id:pedido;ts:${ts};`).digest('hex')}`;
+      expect(() =>
+        verifyWebhook(signed, 'pedido', 'ORDTST123', now),
+      ).not.toThrow();
+      expect(() => verifyWebhook(signed, 'pedido', 'ORDTST999', now)).toThrow(
+        'Assinatura',
+      );
+      vi.stubEnv('MERCADO_PAGO_WEBHOOK_SECRET', 'outra-chave');
+      expect(() => verifyWebhook(signed, 'pedido', 'ORDTST123', now)).toThrow(
+        'Assinatura',
+      );
+    },
+  );
   it('deve rejeitar a troca do identificador do pagamento', () => {
     expect(() => verifyWebhook(signature(), 'pedido', '999', now)).toThrow(
       'Assinatura de notificação inválida.',
@@ -70,6 +87,31 @@ describe('Segurança de pagamentos', () => {
       verifyWebhook(`${signature()},ts=${ts}`, 'pedido', '123', now),
     ).toThrow('Assinatura de notificação inválida.');
   });
+  it.each([
+    [undefined, 'pedido', '123', now, 'invalid_fields'],
+    ['sem-assinatura', 'pedido', '123', now, 'invalid_signature_format'],
+    ['ts=ontem,v1=invalida', 'pedido', '123', now, 'invalid_timestamp'],
+    [`ts=${ts},v1=invalida`, 'pedido', '123', now, 'invalid_signature_format'],
+    [signature(), 'pedido', '123', now + 300_001, 'expired_timestamp'],
+    [signature(), 'outro-pedido', '123', now, 'signature_mismatch'],
+  ] as const)(
+    'deve classificar a rejeição sem expor metadados na resposta: %s',
+    (header, requestId, dataId, currentTime, reason) => {
+      try {
+        verifyWebhook(header, requestId, dataId, currentTime);
+        expect.fail('A notificação deveria ter sido rejeitada.');
+      } catch (error) {
+        expect(error).toBeInstanceOf(WebhookValidationError);
+        const rejected = error as WebhookValidationError;
+        expect(rejected.reason).toBe(reason);
+        expect(rejected.getStatus()).toBe(401);
+        expect(rejected.getResponse()).not.toHaveProperty('reason');
+        expect(JSON.stringify(rejected.getResponse())).not.toContain(
+          'segredo-de-teste',
+        );
+      }
+    },
+  );
   const payment: ProviderPayment = {
     id: 123,
     external_reference: 'tentativa',

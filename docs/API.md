@@ -68,6 +68,8 @@ Campos do formulário: `{ id, label, type, required, options? }`. Tipos: `text`,
 | GET | `/events/:id/registrations?page=1&limit=20` | Listar participantes com autorização |
 | GET | `/events/:id/history?page=1&limit=20` | Consultar auditoria daquele evento |
 
+O preço mínimo para criar um evento ou definir um novo preço é R$ 0,50 (`priceInCents: 50`). Valores abaixo desse limite são rejeitados pela API. Eventos antigos não têm seu preço alterado automaticamente; ao editar outros dados, omita `priceInCents` se não houver mudança de preço.
+
 Após a primeira inscrição, preço, formulário e responsável ficam protegidos contra alteração. A capacidade pode aumentar; não pode cair abaixo das vagas ocupadas. Não existe uma rota pública para listar todos os eventos.
 
 ## Inscrever um participante

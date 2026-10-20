@@ -87,7 +87,17 @@ O saldo líquido e os prazos de disponibilização não são calculados pela Lig
 
 ## Webhook
 
-Não simule uma aprovação enviando apenas `{ "status": "approved" }`. A API valida a assinatura e consulta o provedor antes de alterar a inscrição. Orders usa `type: "order"`, `data.id` com o ID da order e o mesmo ID na query `data.id`. O ID é convertido para minúsculas somente na composição da assinatura. Notificações de uma API não são aplicadas a tentativas da outra. Confira [Notificações de Orders](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/notifications).
+Não simule uma aprovação enviando apenas `{ "status": "approved" }`. A API valida a assinatura e consulta o provedor antes de alterar a inscrição. Orders usa `type: "order"`, `data.id` com o ID da order e o mesmo ID na query `data.id`. A composição da assinatura preserva o ID original, conforme o SDK Node.js oficial atual, e mantém compatibilidade com assinaturas anteriores calculadas com o ID em minúsculas. Os dois formatos exigem HMAC-SHA256 válido com a chave configurada, identificador da requisição e timestamp dentro da tolerância. Notificações de uma API não são aplicadas a tentativas da outra. Confira [Notificações de Orders](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/notifications) e a [implementação oficial do SDK](https://github.com/mercadopago/sdk-nodejs/blob/master/src/utils/webhook/index.ts).
+
+### Diagnóstico e simulação em 20/10/2026
+
+A primeira falha de configuração tinha uma chave local divergente da aplicação. Depois da atualização do segredo e reinício da API, a simulação ainda recebeu HTTP 401. O diagnóstico seguro identificou `signature_mismatch`, com todos os campos presentes e timestamp dentro da tolerância. A implementação anterior convertia o ID alfanumérico para minúsculas; o SDK atual preserva seu valor original.
+
+Após ajustar essa compatibilidade, o proprietário executou novamente a simulação no painel do Mercado Pago e confirmou sucesso. Testes públicos assinados localmente também retornaram HTTP 201 com ID original e normalizado, HTTP 401 com assinatura inválida e mantiveram uma única tarefa de confirmação na outbox.
+
+Rejeições agora registram categoria e presença dos campos, sem gravar segredo, assinatura, corpo ou valores recebidos. As categorias distinguem campos inválidos, formato da assinatura, timestamp inválido, timestamp vencido e HMAC divergente. As respostas públicas continuam sem esses detalhes internos.
+
+O sucesso da simulação comprova o recebimento desse teste enviado pelo painel. Não comprova, sozinho, entrega automática de uma atualização espontânea de pagamento; o diagnóstico do plugin continuou sem notificações registradas nesta aplicação. Não foram feitas cobranças reais.
 
 ## Produção
 

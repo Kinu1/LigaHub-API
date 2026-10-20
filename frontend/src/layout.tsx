@@ -144,8 +144,8 @@ export function Layout() {
               <Menu />
             </button>
             <span className="text-sm text-zinc-500">
-              <span className="font-semibold text-red-800 sm:hidden">
-                LigaHub
+              <span className="sm:hidden">
+                <Brand />
               </span>
               <span className="hidden sm:inline">
                 Gestão <span className="mx-2 text-zinc-300">/</span> Liga
