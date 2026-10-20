@@ -5,7 +5,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Plus, Trash2, ArrowLeft, ArrowRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
+import {
+  EventQuestions,
+  questionError,
+  QuestionsPreview,
+} from './event-questions';
 import { api, send, ApiError } from '../api';
 import { useAuth } from '../auth';
 import { Heading, Loading, Notice, Field, useUnsaved } from '../ui';
@@ -71,6 +76,7 @@ export function EventEditor() {
   const [step, setStep] = useState(0);
   const [fields, setFields] = useState<FormField[]>([]);
   const [fieldsDirty, setFieldsDirty] = useState(false);
+  const [showQuestionErrors, setShowQuestionErrors] = useState(false);
   const [saved, setSaved] = useState(false);
   const [savedId, setSavedId] = useState('');
   const [error, setError] = useState('');
@@ -133,7 +139,12 @@ export function EventEditor() {
   }, [savedId, navigate]);
   const values = form.watch();
   const err = form.formState.errors;
-  const steps = ['Informações', 'Vagas e preço', 'Formulário', 'Revisão'];
+  const steps = [
+    'Informações',
+    'Vagas e preço',
+    'Perguntas da inscrição',
+    'Revisão',
+  ];
   const group: (keyof Values)[][] = [
     [
       'title',
@@ -147,15 +158,13 @@ export function EventEditor() {
     [],
   ];
   const validateFields = () => {
-    if (
-      fields.some(
-        (f) =>
-          !f.label.trim() ||
-          (f.type === 'select' &&
-            (!f.options?.length || f.options.some((o) => !o.trim()))),
-      )
-    ) {
-      setError('Preencha o nome de cada pergunta e as opções de seleção.');
+    setShowQuestionErrors(true);
+    const invalidIndex = fields.findIndex((field) => questionError(field));
+    if (invalidIndex !== -1) {
+      setError(
+        `Pergunta ${invalidIndex + 1}: ${questionError(fields[invalidIndex])}`,
+      );
+      setStep(2);
       return false;
     }
     if (new Set(fields.map((f) => f.id)).size !== fields.length) {
@@ -186,7 +195,12 @@ export function EventEditor() {
           capacity: v.capacity,
           reservationMinutes: v.reservationMinutes,
           ...(user?.role === 'admin' ? { ownerId: v.ownerId } : {}),
-          form: fields,
+          form: fields.map(({ options, ...field }) => ({
+            ...field,
+            ...(field.type === 'select'
+              ? { options: options?.map((option) => option.trim()) }
+              : {}),
+          })),
         },
         id ? 'PATCH' : 'POST',
       );
@@ -296,7 +310,7 @@ export function EventEditor() {
                 </div>
                 <Field
                   label="Reserva temporária (minutos)"
-                  hint="Entre 5 e 60 minutos. A API controla a expiração."
+                  hint="Tempo para concluir o pagamento antes de liberar a vaga. Entre 5 e 60 minutos."
                   error={err.reservationMinutes?.message}
                 >
                   <input
@@ -323,131 +337,21 @@ export function EventEditor() {
                   </Field>
                 )}
                 <p className="muted text-sm">
-                  Após a primeira inscrição, o backend protege preço, formulário
-                  e responsável contra alterações.
+                  Após a primeira inscrição, o preço, as perguntas e o
+                  responsável não poderão ser alterados.
                 </p>
               </div>
             )}
             {step === 2 && (
-              <div>
-                <div className="mb-5 flex flex-wrap justify-between gap-4">
-                  <div>
-                    <h2>Perguntas aos participantes</h2>
-                    <p className="muted mt-2 text-sm">
-                      Nome e e-mail já estão incluídos. Adicione até 25
-                      perguntas.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn secondary"
-                    disabled={fields.length >= 25}
-                    onClick={() => {
-                      setFields([
-                        ...fields,
-                        {
-                          id: `campo_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`,
-                          label: '',
-                          type: 'text',
-                          required: false,
-                        },
-                      ]);
-                      setFieldsDirty(true);
-                    }}
-                  >
-                    <Plus size={17} />
-                    Adicionar pergunta
-                  </button>
-                </div>
-                {fields.length === 0 && (
-                  <p className="muted py-10 text-center">
-                    Nenhuma pergunta extra. Você pode continuar.
-                  </p>
-                )}
-                {fields.map((f, index) => {
-                  const update = (patch: Partial<FormField>) => {
-                    setFields(
-                      fields.map((item, i) =>
-                        i === index ? { ...item, ...patch } : item,
-                      ),
-                    );
-                    setFieldsDirty(true);
-                  };
-                  return (
-                    <div
-                      className="mb-4 rounded-xl border border-zinc-200 p-5"
-                      key={f.id}
-                    >
-                      <div className="mb-4 flex items-center justify-between">
-                        <p className="text-sm font-semibold">
-                          Pergunta {index + 1}
-                        </p>
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          aria-label={`Remover pergunta ${index + 1}`}
-                          onClick={() => {
-                            setFields(fields.filter((_, i) => i !== index));
-                            setFieldsDirty(true);
-                          }}
-                        >
-                          <Trash2 size={17} />
-                        </button>
-                      </div>
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <Field label="Pergunta">
-                          <input
-                            value={f.label}
-                            maxLength={150}
-                            onChange={(e) => update({ label: e.target.value })}
-                          />
-                        </Field>
-                        <Field label="Tipo de resposta">
-                          <select
-                            value={f.type}
-                            onChange={(e) =>
-                              update({
-                                type: e.target.value as FormField['type'],
-                                options:
-                                  e.target.value === 'select'
-                                    ? ['']
-                                    : undefined,
-                              })
-                            }
-                          >
-                            <option value="text">Texto</option>
-                            <option value="number">Número</option>
-                            <option value="select">Seleção</option>
-                            <option value="checkbox">Checkbox</option>
-                          </select>
-                        </Field>
-                      </div>
-                      {f.type === 'select' && (
-                        <div className="mt-4">
-                          <Field label="Opções (uma por linha)">
-                            <textarea
-                              value={f.options?.join('\n') || ''}
-                              onChange={(e) =>
-                                update({ options: e.target.value.split('\n') })
-                              }
-                            />
-                          </Field>
-                        </div>
-                      )}
-                      <label className="mt-4 flex items-center gap-3 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={f.required}
-                          onChange={(e) =>
-                            update({ required: e.target.checked })
-                          }
-                        />
-                        Resposta obrigatória
-                      </label>
-                    </div>
-                  );
-                })}
-              </div>
+              <EventQuestions
+                fields={fields}
+                showErrors={showQuestionErrors}
+                onChange={(next) => {
+                  setFields(next);
+                  setFieldsDirty(true);
+                  setError('');
+                }}
+              />
             )}
             {step === 3 && (
               <div>
@@ -474,40 +378,11 @@ export function EventEditor() {
                 </div>
                 <div className="rounded-xl bg-zinc-50 p-5">
                   <h2 className="mb-4">Prévia do formulário</h2>
-                  <div className="space-y-4">
-                    <Field label="Nome completo">
-                      <input disabled placeholder="Nome do participante" />
-                    </Field>
-                    <Field label="E-mail">
-                      <input disabled placeholder="participante@exemplo.com" />
-                    </Field>
-                    {fields.map((f) => (
-                      <Field
-                        key={f.id}
-                        label={`${f.label}${f.required ? ' *' : ''}`}
-                      >
-                        {f.type === 'checkbox' ? (
-                          <input type="checkbox" disabled />
-                        ) : f.type === 'select' ? (
-                          <select disabled>
-                            <option>Selecione</option>
-                            {f.options?.map((o) => (
-                              <option key={o}>{o}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            disabled
-                            type={f.type === 'number' ? 'number' : 'text'}
-                          />
-                        )}
-                      </Field>
-                    ))}
-                  </div>
+                  <QuestionsPreview fields={fields} />
                 </div>
                 <p className="muted mt-4 text-sm">
                   Salvar cria ou atualiza o evento. A publicação acontece
-                  separadamente, após as verificações do backend.
+                  separadamente, na página do evento.
                 </p>
               </div>
             )}
@@ -525,6 +400,7 @@ export function EventEditor() {
           </button>
           {step < 3 ? (
             <button
+              key="continue"
               type="button"
               className="btn"
               onClick={async () => {
@@ -537,7 +413,12 @@ export function EventEditor() {
               Continuar <ArrowRight size={17} />
             </button>
           ) : (
-            <button className="btn" disabled={form.formState.isSubmitting}>
+            <button
+              key="save"
+              type="submit"
+              className="btn"
+              disabled={form.formState.isSubmitting}
+            >
               {form.formState.isSubmitting ? 'Salvando…' : 'Salvar evento'}
             </button>
           )}
