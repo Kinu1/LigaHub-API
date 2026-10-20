@@ -32,14 +32,14 @@ describe('AcademicEvent', () => {
     expect(event.title).toBe('Jornada Acadêmica');
   });
 
-  it('deve aceitar um preço de um centavo e uma capacidade de um participante', () => {
+  it('deve aceitar um preço de cinquenta centavos e uma capacidade de um participante', () => {
     const event = AcademicEvent.create({
       ...validInput,
-      priceInCents: 1,
+      priceInCents: 50,
       capacity: 1,
     });
 
-    expect(event.priceInCents).toBe(1);
+    expect(event.priceInCents).toBe(50);
     expect(event.capacity).toBe(1);
   });
 
@@ -62,6 +62,8 @@ describe('AcademicEvent', () => {
   });
 
   it.each([
+    1,
+    49,
     0,
     -1,
     1.5,
@@ -75,7 +77,9 @@ describe('AcademicEvent', () => {
         ...validInput,
         priceInCents,
       }),
-    ).toThrow('O preço do evento deve estar entre 1 e 2.147.483.647 centavos.');
+    ).toThrow(
+      'O preço do evento deve estar entre 50 e 2.147.483.647 centavos.',
+    );
   });
 
   it.each([

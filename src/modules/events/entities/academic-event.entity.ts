@@ -6,6 +6,8 @@ export type CreateAcademicEventInput = {
 };
 
 const MAX_DATABASE_INT = 2_147_483_647;
+export const MIN_EVENT_PRICE_IN_CENTS = 50;
+export const MIN_EVENT_PRICE_MESSAGE = 'O preço mínimo da inscrição é R$ 0,50.';
 
 export class AcademicEvent {
   public readonly status = 'draft' as const;
@@ -31,11 +33,11 @@ export class AcademicEvent {
 
     if (
       !Number.isSafeInteger(input.priceInCents) ||
-      input.priceInCents <= 0 ||
+      input.priceInCents < MIN_EVENT_PRICE_IN_CENTS ||
       input.priceInCents > MAX_DATABASE_INT
     ) {
       throw new Error(
-        'O preço do evento deve estar entre 1 e 2.147.483.647 centavos.',
+        'O preço do evento deve estar entre 50 e 2.147.483.647 centavos.',
       );
     }
 

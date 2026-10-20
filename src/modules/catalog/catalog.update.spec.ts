@@ -50,6 +50,20 @@ describe('Proteção dos dados de eventos com inscrições', () => {
     ).rejects.toThrow('O preço não pode ser alterado');
     expect(tx.academicEvent.update).not.toHaveBeenCalled();
   });
+  it('deve impedir um preço abaixo do mínimo antes de acessar o banco', async () => {
+    const { service, tx } = setup();
+    await expect(
+      service.create(
+        { title: 'Evento', capacity: 10, priceInCents: 49 },
+        actor,
+      ),
+    ).rejects.toThrow('O preço mínimo da inscrição é R$ 0,50.');
+    await expect(
+      service.update('evento', { priceInCents: 49 }, actor),
+    ).rejects.toThrow('O preço mínimo da inscrição é R$ 0,50.');
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
+    expect(tx.academicEvent.update).not.toHaveBeenCalled();
+  });
   it('deve rejeitar mudança de formulário após a primeira inscrição', async () => {
     const { service, tx } = setup();
     await expect(
