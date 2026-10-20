@@ -27,6 +27,7 @@ import {
   encryptCredential,
   decryptCredential,
   verifyWebhook,
+  WebhookValidationError,
   type ProviderPayment,
 } from './payment-security.js';
 import type { ProviderApi } from './payment-orders.js';
@@ -559,7 +560,22 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     bodyId?: string,
     type?: string,
   ): Promise<{ received: true }> {
-    verifyWebhook(signature, requestId, dataId);
+    try {
+      verifyWebhook(signature, requestId, dataId);
+    } catch (error) {
+      if (error instanceof WebhookValidationError)
+        this.logger.warn({
+          event: 'payment.webhook.rejected',
+          reason: error.reason,
+          signaturePresent: typeof signature === 'string' && !!signature,
+          requestIdPresent: typeof requestId === 'string' && !!requestId,
+          dataIdPresent: typeof dataId === 'string' && !!dataId,
+          ...(error.ageSeconds !== undefined
+            ? { ageSeconds: error.ageSeconds }
+            : {}),
+        });
+      throw error;
+    }
     if (bodyId !== undefined && bodyId !== dataId)
       throw new UnauthorizedException(
         'O identificador da notificação é inválido.',
