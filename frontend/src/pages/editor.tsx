@@ -2,7 +2,12 @@ import { MotionSection } from '../experience';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useBlocker } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
+import {
+  ScheduleField,
+  ScheduleSection,
+  scheduleError,
+} from './event-schedule';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
@@ -21,31 +26,62 @@ import {
   type Field as FormField,
   type User,
 } from '../types';
-const schema = z.object({
-  title: z.string().trim().min(1, 'Informe o título.').max(200),
-  description: z.string().max(10000),
-  location: z.string().max(500),
-  startsAt: z.string(),
-  endsAt: z.string(),
-  registrationDeadline: z.string(),
-  price: z
-    .string()
-    .regex(
-      /^\d+(?:[.,]\d{1,2})?$/,
-      'Informe um valor positivo, com até duas casas decimais.',
-    )
-    .refine(
-      (v) => Number(v.replace(',', '.')) > 0,
-      'O preço deve ser positivo.',
-    ),
-  capacity: z
-    .number()
-    .int()
-    .min(1, 'Informe pelo menos uma vaga.')
-    .max(2147483647),
-  reservationMinutes: z.number().int().min(5).max(60),
-  ownerId: z.string(),
+const scheduleValue = z.string().superRefine((value, context) => {
+  const message = scheduleError(value);
+  if (message) context.addIssue({ code: 'custom', message });
 });
+const schema = z
+  .object({
+    title: z.string().trim().min(1, 'Informe o título.').max(200),
+    description: z.string().max(10000),
+    location: z.string().max(500),
+    startsAt: scheduleValue,
+    endsAt: scheduleValue,
+    registrationDeadline: scheduleValue,
+    price: z
+      .string()
+      .regex(
+        /^\d+(?:[.,]\d{1,2})?$/,
+        'Informe um valor positivo, com até duas casas decimais.',
+      )
+      .refine(
+        (v) => Number(v.replace(',', '.')) > 0,
+        'O preço deve ser positivo.',
+      ),
+    capacity: z
+      .number()
+      .int()
+      .min(1, 'Informe pelo menos uma vaga.')
+      .max(2147483647),
+    reservationMinutes: z.number().int().min(5).max(60),
+    ownerId: z.string(),
+  })
+  .superRefine((value, context) => {
+    if (
+      value.endsAt &&
+      !scheduleError(value.endsAt) &&
+      (!value.startsAt ||
+        (!scheduleError(value.startsAt) && value.endsAt <= value.startsAt))
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['endsAt'],
+        message: 'O término deve ser depois do início do evento.',
+      });
+    if (
+      value.registrationDeadline &&
+      !scheduleError(value.registrationDeadline) &&
+      (!value.startsAt ||
+        (!scheduleError(value.startsAt) &&
+          value.registrationDeadline > value.startsAt))
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['registrationDeadline'],
+        message:
+          'Defina o início do evento e encerre as inscrições até esse horário.',
+      });
+  });
 type Values = z.infer<typeof schema>;
 export function toCents(value: string) {
   const [whole, decimal = ''] = value.replace(',', '.').split('.');
@@ -266,24 +302,63 @@ export function EventEditor() {
                 <Field label="Local" error={err.location?.message}>
                   <input {...form.register('location')} />
                 </Field>
-                <div className="grid gap-5 md:grid-cols-3">
-                  {(
-                    [
-                      ['startsAt', 'Início'],
-                      ['endsAt', 'Fim'],
-                      ['registrationDeadline', 'Inscrições até'],
-                    ] as const
-                  ).map(([name, label]) => (
-                    <Field
-                      key={name}
-                      label={label}
-                      hint="Horário de Brasília"
-                      error={err[name]?.message}
-                    >
-                      <input type="datetime-local" {...form.register(name)} />
-                    </Field>
-                  ))}
-                </div>
+                <ScheduleSection
+                  deadline={
+                    <Controller
+                      name="registrationDeadline"
+                      control={form.control}
+                      render={({ field, fieldState }) => (
+                        <ScheduleField
+                          title="Encerramento das inscrições"
+                          description="Pode ser antes ou no mesmo horário de início do evento."
+                          {...field}
+                          onChange={(value) => {
+                            form.setValue(field.name, value, {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            });
+                          }}
+                          error={fieldState.error?.message}
+                        />
+                      )}
+                    />
+                  }
+                >
+                  <Controller
+                    name="startsAt"
+                    control={form.control}
+                    render={({ field, fieldState }) => (
+                      <ScheduleField
+                        title="Início do evento"
+                        {...field}
+                        onChange={(value) => {
+                          form.setValue(field.name, value, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          });
+                        }}
+                        error={fieldState.error?.message}
+                      />
+                    )}
+                  />
+                  <Controller
+                    name="endsAt"
+                    control={form.control}
+                    render={({ field, fieldState }) => (
+                      <ScheduleField
+                        title="Término do evento"
+                        {...field}
+                        onChange={(value) => {
+                          form.setValue(field.name, value, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          });
+                        }}
+                        error={fieldState.error?.message}
+                      />
+                    )}
+                  />
+                </ScheduleSection>
               </div>
             )}
             {step === 1 && (
