@@ -957,6 +957,7 @@ export function StatusPage() {
         name: string;
         status: string;
         suspended: boolean;
+        cancellationRequested: boolean;
         event: { title: string; location: string; startsAt: string };
       }>(`/public/registrations/${id}/status`, {
         headers: { 'x-registration-status-token': token || '' },
@@ -987,6 +988,18 @@ export function StatusPage() {
       <Heading title={query.data?.event.title || 'Sua inscrição'} />
       <section className="card">
         <Status value={query.data?.status || ''} />
+        {query.data?.suspended && (
+          <Notice>
+            Sua inscrição está suspensa. Entre em contato com a organização do
+            evento.
+          </Notice>
+        )}
+        {query.data?.cancellationRequested && (
+          <Notice>
+            O cancelamento da sua inscrição foi solicitado. Entre em contato com a
+            organização para acompanhar a solicitação.
+          </Notice>
+        )}
         <p className="mt-5">Olá, {query.data?.name}.</p>
         <p className="muted mt-3">
           {date(query.data?.event.startsAt)} · {query.data?.event.location}
