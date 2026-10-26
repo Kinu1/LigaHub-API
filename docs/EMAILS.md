@@ -6,12 +6,15 @@ O envio usa Resend por uma interface `EmailGateway`. Configure no `.env` local:
 
 ```dotenv
 EMAIL_DELIVERY_ENABLED=true
+EMAIL_PROVIDER=resend
 RESEND_API_KEY=sua-chave-local
 EMAIL_FROM=LigaHub <confirmacoes@seu-dominio.com>
 FRONTEND_URL=https://seu-frontend.com
 ```
 
 Verifique o domínio e remetente no Resend antes de ativar. As restrições de destinatários do ambiente de teste do provedor devem ser respeitadas. Sem configuração, as tarefas permanecem pendentes; o pagamento e a vaga não dependem da disponibilidade do serviço de e-mail. Nenhum teste automatizado envia mensagens reais.
+
+Defina `EMAIL_PROVIDER=resend` para usar o Resend ou `EMAIL_PROVIDER=smtp` para usar SMTP. A seleção é compartilhada pelo envio e pela fila: com Resend selecionado, `SMTP_HOST` não substitui a exigência de `RESEND_API_KEY`; com SMTP selecionado, a chave do Resend não substitui `SMTP_HOST`. Se a configuração exigida estiver ausente, a fila permanece pendente sem consumir tentativas. Para compatibilidade, sem `EMAIL_PROVIDER`, a presença de `SMTP_HOST` seleciona SMTP; caso contrário, Resend.
 
 O worker consulta a fila a cada 15 segundos, processando até 10 itens por rodada. `FOR UPDATE SKIP LOCKED` e uma concessão de 90 segundos impedem que instâncias reivindiquem simultaneamente o mesmo item. Uma interrupção libera o item após expirar a concessão. O mesmo corpo e chave de idempotência são preservados em todas as tentativas, inclusive se o provedor aceitar o e-mail e a resposta se perder.
 

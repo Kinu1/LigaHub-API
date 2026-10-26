@@ -1,11 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import nodemailer from 'nodemailer';
-import { EmailGateway, ResendEmailGateway } from './email.gateway.js';
+import {
+  EmailGateway,
+  ResendEmailGateway,
+  selectedEmailProvider,
+} from './email.gateway.js';
 import type { EmailMessage } from './confirmation-email.js';
 @Injectable()
 export class ConfigurableEmailGateway extends EmailGateway {
   async send(message: EmailMessage, idempotencyKey: string): Promise<string> {
-    if (process.env.EMAIL_PROVIDER === 'resend' || (!process.env.EMAIL_PROVIDER && !process.env.SMTP_HOST))
+    if (selectedEmailProvider() === 'resend')
       return new ResendEmailGateway().send(message, idempotencyKey);
     if (!process.env.SMTP_HOST) throw new Error('Configure SMTP_HOST.');
     const transport = nodemailer.createTransport({

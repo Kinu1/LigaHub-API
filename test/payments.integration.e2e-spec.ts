@@ -416,6 +416,46 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
       worker: new EmailOutboxService(prisma, { send } as EmailGateway),
     };
   }
+  it.each([
+    { provider: 'resend', smtpHost: 'localhost', resendKey: undefined },
+    { provider: 'smtp', smtpHost: undefined, resendKey: 'chave-simulada' },
+  ])(
+    'não deve consumir tentativas sem configurar o provedor selecionado: $provider',
+    async ({ provider, smtpHost, resendKey }) => {
+      await service.applyPayment(attemptId, payment());
+      const { worker, send } = mailWorker();
+      vi.stubEnv('EMAIL_PROVIDER', provider);
+      vi.stubEnv('SMTP_HOST', smtpHost);
+      vi.stubEnv('RESEND_API_KEY', resendKey);
+      await worker.processBatch(registrationId);
+      expect(send).not.toHaveBeenCalled();
+      expect(
+        await prisma.emailOutbox.findUniqueOrThrow({
+          where: { registrationId },
+        }),
+      ).toMatchObject({ status: 'pending', attempts: 0, firstAttemptAt: null });
+    },
+  );
+  it.each([
+    { provider: 'resend', smtpHost: 'localhost', resendKey: 'chave-simulada' },
+    { provider: 'smtp', smtpHost: 'localhost', resendKey: undefined },
+  ])(
+    'deve processar a fila com o provedor selecionado configurado: $provider',
+    async ({ provider, smtpHost, resendKey }) => {
+      await service.applyPayment(attemptId, payment());
+      const { worker, send } = mailWorker();
+      vi.stubEnv('EMAIL_PROVIDER', provider);
+      vi.stubEnv('SMTP_HOST', smtpHost);
+      vi.stubEnv('RESEND_API_KEY', resendKey);
+      await worker.processBatch(registrationId);
+      expect(send).toHaveBeenCalledOnce();
+      expect(
+        await prisma.emailOutbox.findUniqueOrThrow({
+          where: { registrationId },
+        }),
+      ).toMatchObject({ status: 'sent', attempts: 1 });
+    },
+  );
   it('deve desfazer a confirmação se não conseguir registrar a tarefa de e-mail', async () => {
     vi.stubEnv('CREDENTIALS_ENCRYPTION_KEY', 'invalida');
     await expect(service.applyPayment(attemptId, payment())).rejects.toThrow(
