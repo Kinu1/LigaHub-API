@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     globals: true,
     root: './',
-    include: ['**/*.e2e-spec.ts'],
+    include: ['test/**/*.e2e-spec.ts'],
     fileParallelism: false,
     env: {
       JWT_SECRET: 'segredo-exclusivo-testes-ligahub-nao-usar-em-producao',
