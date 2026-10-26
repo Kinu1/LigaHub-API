@@ -41,15 +41,18 @@ import {
   type Audit,
   type PaymentHistory,
 } from '../types';
+import { AuditList, auditCategories } from './audit-list';
 function QueryState({
   query,
   children,
+  hasData = false,
 }: {
   query: { isPending: boolean; error: Error | null; refetch: () => unknown };
   children: ReactNode;
+  hasData?: boolean;
 }) {
   if (query.isPending) return <Loading />;
-  if (query.error)
+  if (query.error && !hasData)
     return (
       <>
         <Notice>{query.error.message}</Notice>
@@ -58,7 +61,20 @@ function QueryState({
         </button>
       </>
     );
-  return <>{children}</>;
+  return (
+    <>
+      {query.error && (
+        <Notice>
+          Não foi possível atualizar os registros. Os dados anteriores continuam
+          disponíveis.{' '}
+          <button className="underline" onClick={() => query.refetch()}>
+            Tentar novamente
+          </button>
+        </Notice>
+      )}
+      {children}
+    </>
+  );
 }
 type Overview = {
   events: number;
@@ -942,44 +958,59 @@ export function UsersPage() {
     </>
   );
 }
-function AuditList({ data }: { data?: Page<Audit> }) {
-  return data?.items.length ? (
-    <div className="space-y-4">
-      {data.items.map((a) => (
-        <div
-          className="flex flex-wrap justify-between gap-3 border-b border-zinc-100 pb-4"
-          key={a.id}
-        >
-          <div>
-            <p className="font-medium">{a.action}</p>
-            <p className="muted text-xs">{a.entityType}</p>
-          </div>
-          <time className="text-sm text-zinc-500">{date(a.createdAt)}</time>
-        </div>
-      ))}
-    </div>
-  ) : (
-    <Empty title="Nenhum registro no histórico" />
-  );
-}
 export function AuditPage() {
   const { user } = useAuth();
   const [page, setPage] = useState(1);
+  const [entityType, setEntityType] = useState('');
   const query = useQuery({
-    queryKey: ['audit', page],
-    queryFn: () => api<Page<Audit>>(`/admin/audit?page=${page}`),
+    queryKey: ['audit', page, entityType],
+    queryFn: () =>
+      api<Page<Audit>>(
+        `/admin/audit?page=${page}${entityType ? `&entityType=${entityType}` : ''}`,
+      ),
     enabled: user?.role === 'admin',
   });
   if (user?.role !== 'admin')
     return <Notice>Você não tem acesso a esta área.</Notice>;
   return (
     <>
-      <Heading title="Auditoria">Histórico de ações da plataforma.</Heading>
+      <Heading title="Auditoria">
+        Ações, responsáveis e registros afetados na plataforma.
+      </Heading>
       <section className="card">
-        <QueryState query={query}>
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-zinc-100 pb-5">
+          <label className="block w-full text-sm font-medium sm:w-64">
+            Tipo de registro
+            <select
+              value={entityType}
+              onChange={(event) => {
+                setEntityType(event.target.value);
+                setPage(1);
+              }}
+              className="mt-2 w-full"
+            >
+              <option value="">Todos os tipos</option>
+              {Object.entries(auditCategories).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="muted max-w-md text-xs">
+            Mais recentes primeiro. Horários de Brasília. Nomes e perfis
+            refletem o cadastro atual.
+          </p>
+        </div>
+        <QueryState query={query} hasData={!!query.data}>
           <AuditList data={query.data} />
           {query.data && (
-            <Pager page={page} total={query.data.total} setPage={setPage} />
+            <Pager
+              page={page}
+              total={query.data.total}
+              limit={query.data.limit}
+              setPage={setPage}
+            />
           )}
         </QueryState>
       </section>

@@ -74,6 +74,11 @@ export type Audit = {
   id: string;
   action: string;
   entityType: string;
+  entityId?: string;
+  actorId?: string | null;
+  actor?: { id: string; name: string; email: string; role: string } | null;
+  subject?: { name: string; eventTitle?: string } | null;
+  metadata?: Record<string, unknown>;
   createdAt: string;
 };
 export const money = (value: number) =>
