@@ -59,6 +59,12 @@ A rotina real de reconciliação, restrita à tentativa `12f912bb-7192-4b81-b99f
 
 Referência: [reembolsar uma order](https://www.mercadopago.com.br/developers/pt/reference/online-payments/checkout-api/refund-order/post).
 
+#### Regressão automatizada do fluxo
+
+Dois testes adicionais em `test/payments.integration.e2e-spec.ts` usam PostgreSQL e provedor simulado, sem chamadas financeiras externas. Eles verificam a consulta do participante com pagamento reembolsado e inscrição cancelada, o bloqueio de nova cobrança, a reutilização da vaga por outro participante e o descarte de confirmação ainda não enviada após cancelamento. Também conferem que repetir o reembolso ou receber nova aprovação para a tentativa já reembolsada não reabre a inscrição nem duplica a auditoria.
+
+Quando existe outra tentativa aprovada, o segundo teste preserva a confirmação e impede a ocupação da mesma vaga por outro participante. Esses testes complementam a evidência real de sandbox; não representam novos reembolsos no provedor.
+
 ### Expiração no provedor permanece pendente
 
 A documentação do Pix estabelece vencimento entre 30 minutos e 30 dias após a emissão. Também informa que o estado cancelado ou expirado pode ocorrer 30 dias após o vencimento de um pagamento não realizado. Portanto, o vencimento do QR Code e a mudança terminal de estado não devem ser tratados como o mesmo instante. Não foi realizada alteração artificial do estado remoto nem cancelamento manual para apresentar como expiração.
