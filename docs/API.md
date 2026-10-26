@@ -134,6 +134,8 @@ Cartão — mesma rota:
 | POST | `/payments/webhook` | Notificação com assinatura Mercado Pago |
 | GET | `/payments?page=1` | Histórico; administrador global, organizador somente próprios; 50 itens/página |
 | GET | `/admin/overview` | Indicadores; somente administrador |
-| GET | `/admin/audit?page=1&limit=20` | Histórico global; somente administrador |
+| GET | `/admin/audit?page=1&limit=20&entityType=event` | Histórico global com responsável, contexto e detalhes conhecidos; filtro de tipo opcional; somente administrador |
+
+Tipos aceitos em `entityType`: `user`, `event`, `registration`, `payment` e `payment_account`. O filtro também se aplica ao total e à paginação. Nomes e perfis refletem o cadastro atual. Consulte [os detalhes e limites da auditoria](AUDITORIA.md).
 
 O histórico não possui rotas de edição. `payment_review` exige análise do organizador; não equivale a inscrição confirmada nem a reembolso. Estados de Orders são traduzidos para o contrato existente: `processed/accredited` vira `approved`, `action_required/waiting_payment` vira `pending`, `processing` vira `in_process`, `failed` vira `rejected` e `canceled` vira `cancelled`. Listagens de inscrições podem conter `reserved` com data já expirada: consulte `reservationExpiresAt`; a consulta individual calcula `expired` para o participante.
