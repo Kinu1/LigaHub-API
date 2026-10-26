@@ -1,6 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import type { EmailMessage } from './confirmation-email.js';
 
+export function selectedEmailProvider(): 'resend' | 'smtp' {
+  return process.env.EMAIL_PROVIDER === 'resend' ||
+    (!process.env.EMAIL_PROVIDER && !process.env.SMTP_HOST)
+    ? 'resend'
+    : 'smtp';
+}
+
 export abstract class EmailGateway {
   abstract send(message: EmailMessage, idempotencyKey: string): Promise<string>;
 }

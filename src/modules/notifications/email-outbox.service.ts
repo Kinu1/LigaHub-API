@@ -12,7 +12,7 @@ import {
   encryptCredential,
 } from '../payments/payment-security.js';
 import { renderConfirmation, type EmailMessage } from './confirmation-email.js';
-import { EmailGateway } from './email.gateway.js';
+import { EmailGateway, selectedEmailProvider } from './email.gateway.js';
 
 @Injectable()
 export class EmailOutboxService implements OnModuleInit, OnModuleDestroy {
@@ -38,7 +38,7 @@ export class EmailOutboxService implements OnModuleInit, OnModuleDestroy {
   async processBatch(registrationId?: string) {
     if (
       process.env.EMAIL_DELIVERY_ENABLED !== 'true' ||
-      !(process.env.EMAIL_PROVIDER === 'smtp' || process.env.SMTP_HOST
+      !(selectedEmailProvider() === 'smtp'
         ? process.env.SMTP_HOST
         : process.env.RESEND_API_KEY) ||
       !process.env.EMAIL_FROM ||
