@@ -75,6 +75,8 @@ Os testes automatizados usam um gateway simulado e verificam regras e persistên
 - Uma confirmação por inscrição foi entregue ao **Mailpit local**, e os tokens de consulta retornaram `confirmed`. Isso não comprova entrega por Resend a uma caixa externa.
 - **Pendente:** observar uma notificação enviada automaticamente pelo Mercado Pago. O diagnóstico do MCP da aplicação não apresentou notificações. A reconciliação funcionou independentemente desse envio.
 
+Em 26/10/2026, o envio externo por Resend, a confirmação pela outbox e a recuperação de acesso foram validados separadamente com dados locais de homologação, sem cobrança. Consulte [as evidências e os limites do teste de e-mails](HOMOLOGACAO_EMAILS.md). Essa validação não comprova o fluxo completo desde uma atualização espontânea de pagamento até o e-mail.
+
 Nenhuma cobrança real foi efetuada. Para o cenário de cartão aprovado, utilize o comprador `test@testuser.com`, titular `APRO`, CPF de teste `12345678909`, Mastercard `5480 8328 0103 3311`, CVV `123`, validade `11/30`, conforme o [roteiro oficial de cartões](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/integration-test/cards). Para Pix, siga o [roteiro oficial de Pix](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/integration-test/pix). Não tente pagar um QR de sandbox em um aplicativo bancário real.
 
 ## Pix, parcelamento e taxas
