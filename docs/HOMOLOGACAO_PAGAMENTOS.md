@@ -43,11 +43,29 @@ A simulação pelo painel e a observação do webhook automático foram adiadas 
 2. Executar a simulação pelo painel, com evento Order e o identificador `ORDTST01M5WXSBB1Z11GQ76R3H1P01ZS`. O endereço temporário depende do processo local e não deve ser reutilizado como endereço de produção.
 3. Conferir o resultado do envio no painel e no receptor local. A simulação comprova o recebimento desse teste, mas não substitui uma notificação automática decorrente de pagamento.
 4. Inspecionar o monitoramento de Webhooks no ambiente Teste. Se não houver notificações automáticas, investigar com o suporte do provedor, como orientado na documentação oficial, sem trocar credenciais por suposição.
-5. Validar a expiração da cobrança no provedor e o reembolso de teste. A recusa, a expiração da reserva local e a recuperação de Pix por reconciliação estão descritas acima.
+5. Validar a expiração da cobrança no provedor. O reembolso de teste foi concluído conforme a seção abaixo; a recusa, a expiração da reserva local e a recuperação de Pix por reconciliação estão descritas acima.
 
 Referência: [configuração, simulação e monitoramento de notificações de orders](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/notifications).
 
 ## Limites adicionais
+
+### Reembolso integral em sandbox
+
+Em 26/10/2026, às 18h41 de Brasília, a order de cartão `ORDTST01M5WXSBB1Z11GQ76R3H1P01ZS` recebeu reembolso integral pelo endpoint `POST /v1/orders/{order_id}/refund`, com chave de idempotência estável e sem valor parcial no corpo. O provedor retornou HTTP 201 e `refunded/refunded`.
+
+Antes da operação foram revalidados o modo de teste, a identificação `test_user` do recebedor, o vínculo local `isTest`, a correspondência da credencial criptografada e a referência externa da order à tentativa local. Somente a order sandbox previamente registrada foi utilizada.
+
+A rotina real de reconciliação, restrita à tentativa `12f912bb-7192-4b81-b99f-5e7071ac1562`, consultou o provedor e atualizou o pagamento para `refunded` e a inscrição para `canceled`. Uma segunda execução manteve a quantidade de registros `payment.updated` na auditoria. O teste não dependeu de webhook e não implementou uma funcionalidade de reembolso automático na LigaHub.
+
+Referência: [reembolsar uma order](https://www.mercadopago.com.br/developers/pt/reference/online-payments/checkout-api/refund-order/post).
+
+### Expiração no provedor permanece pendente
+
+A documentação do Pix estabelece vencimento entre 30 minutos e 30 dias após a emissão. Também informa que o estado cancelado ou expirado pode ocorrer 30 dias após o vencimento de um pagamento não realizado. Portanto, o vencimento do QR Code e a mudança terminal de estado não devem ser tratados como o mesmo instante. Não foi realizada alteração artificial do estado remoto nem cancelamento manual para apresentar como expiração.
+
+Referência: [integração Pix e prazo de vencimento](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/payment-integration/websites/pix).
+
+### Avaliação e operação contínua
 
 A tokenização desta execução foi realizada diretamente na API do Mercado Pago, fora do backend da LigaHub. A avaliação dessa order pelo conector retornou pontuação 33, abaixo do mínimo 73, incluindo ausência de evidência de SDK frontend e Device ID nesse teste. O frontend do projeto possui integração com o SDK; esta execução não passou pela interface e não homologa esse caminho. Não foi aplicada uma alteração de código para mascarar os critérios da avaliação.
 
