@@ -21,7 +21,7 @@ Há até oito tentativas, com espera progressiva de 1 a 64 minutos. Como as chav
 
 Antes de cada tentativa, inclusive após falha ou timeout, o worker verifica se a inscrição continua confirmada, sem suspensão e com token válido. Caso contrário, descarta a tarefa como `skipped`. Um e-mail já aceito pelo provedor não pode ser desfeito por essa verificação.
 
-O e-mail aponta para `/inscricoes/UUID#token=TOKEN` no frontend. O token fica no fragmento, não na query enviada ao servidor. A futura página deve lê-lo, removê-lo do endereço com `history.replaceState`, mantê-lo apenas em memória e chamar:
+O e-mail aponta para `/inscricoes/UUID#token=TOKEN` no frontend. O token fica no fragmento, não na query enviada ao servidor. A página captura o token em memória, remove o fragmento do endereço com `history.replaceState` e chama:
 
 ```http
 GET /public/registrations/UUID/status
@@ -30,7 +30,9 @@ x-registration-status-token: TOKEN
 
 A resposta mostra nome, situação da inscrição, suspensão, solicitação de cancelamento e dados do evento. Não inclui CPF, respostas do formulário ou credenciais. O token aleatório possui 256 bits, é guardado como hash na inscrição, expira 90 dias após a confirmação e não funciona nas rotas de alteração, cancelamento ou pagamento. A resposta usa `Cache-Control: no-store`.
 
-A página do frontend ainda não foi implementada. Não ative envio para participantes reais antes de publicá-la e configurar `FRONTEND_URL`. O link mostra a situação atual; um reembolso posterior pode mudar o status para cancelado.
+A página de consulta está implementada e mostra a situação da inscrição, nome e dados do evento, além de avisos de suspensão e solicitação de cancelamento quando presentes. Solicitar cancelamento não comprova reembolso: o estado da inscrição continua sendo apresentado separadamente. Links sem token, inválidos ou expirados oferecem acesso à recuperação.
+
+A publicação da página e a entrega externa por e-mail ainda precisam ser verificadas no ambiente de destino. Antes de ativar envio para participantes reais, publique o frontend, configure `FRONTEND_URL` e valide o recebimento de um e-mail com link funcional. O link mostra a situação atual; um reembolso posterior pode mudar o status para cancelado.
 
 ## Hospedagem
 
