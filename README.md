@@ -74,6 +74,8 @@ O histórico é imutável pelas rotas da API; administradores do banco podem edi
 
 ## Versionamento
 
+O roteiro de hospedagem escolhido para a Vercel está em [docs/VERCEL.md](docs/VERCEL.md), incluindo banco, proxy do frontend e a adaptação pendente dos processadores de e-mail e pagamentos.
+
 Branches de autenticação, eventos, inscrições, pagamentos e administração são encadeadas porque uma funcionalidade depende da anterior. Revise e integre na mesma ordem. `.github/workflows/backend.yml` verifica lint, compilação, testes e dependências a cada push ou PR.
 
 ## Homologação AWS
