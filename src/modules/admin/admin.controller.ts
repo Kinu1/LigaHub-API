@@ -14,6 +14,7 @@ import {
 } from '../auth/auth.decorators.js';
 import { PaginationDto } from '../../common/pagination.js';
 import { AdminService } from './admin.service.js';
+import { AuditQueryDto } from './audit-query.dto.js';
 
 @Controller()
 export class AdminController {
@@ -32,7 +33,7 @@ export class AdminController {
 
   @Get('admin/audit')
   @Roles('admin')
-  audit(@Query() query: PaginationDto) {
+  audit(@Query() query: AuditQueryDto) {
     return this.admin.audit(query);
   }
 
