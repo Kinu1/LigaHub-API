@@ -119,6 +119,34 @@ describe('Acesso administrativo e histórico imutável', () => {
     );
   });
 
+  it('deve enriquecer auditoria administrativa e filtrar o tipo sem expor credenciais', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/admin/audit?entityType=user&limit=100')
+      .auth(jwt, { type: 'bearer' })
+      .expect(200);
+    expect(response.body.items.length).toBeGreaterThan(0);
+    expect(
+      response.body.items.every(
+        (item: { entityType: string }) => item.entityType === 'user',
+      ),
+    ).toBe(true);
+    const login = response.body.items.find(
+      (item: { entityId: string; action: string }) =>
+        item.entityId === ownerId && item.action === 'login',
+    );
+    expect(login).toMatchObject({
+      actor: { id: ownerId, name: 'Administrador dos testes', role: 'admin' },
+      subject: { name: 'Administrador dos testes' },
+    });
+    expect(JSON.stringify(response.body)).not.toMatch(
+      /passwordHash|tokenVersion|accessToken/,
+    );
+    await request(app.getHttpServer())
+      .get('/admin/audit?entityType=tipo-invalido')
+      .auth(jwt, { type: 'bearer' })
+      .expect(400);
+  });
+
   it('deve impedir que um organizador consulte histórico de outro responsável', async () => {
     await expect(
       service.eventHistory(
