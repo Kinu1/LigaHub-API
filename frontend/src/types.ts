@@ -101,6 +101,7 @@ export const labels: Record<string, string> = {
   reserved: 'Reservada',
   expired: 'Expirada',
   confirmed: 'Confirmada',
+  canceled: 'Cancelada',
   pending: 'Pendente',
   approved: 'Aprovado',
   created: 'Processando',

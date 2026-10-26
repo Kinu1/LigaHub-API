@@ -35,7 +35,11 @@ beforeEach(() => {
   vi.resetAllMocks();
   history.replaceState(null, '', '/inscricoes/consulta');
   forgetAccessFragment('token');
-  history.replaceState(null, '', '/inscricoes/consulta#token=token-de-consulta');
+  history.replaceState(
+    null,
+    '',
+    '/inscricoes/consulta#token=token-de-consulta',
+  );
 });
 
 afterEach(() => {
@@ -44,6 +48,29 @@ afterEach(() => {
 });
 
 describe('Consulta da inscrição pelo link do e-mail', () => {
+  it.each([false, true])(
+    'mostra cancelamento concluído sem aviso de solicitação pendente: %s',
+    async (cancellationRequested) => {
+      vi.mocked(api).mockResolvedValue({
+        name: 'Ana Silva',
+        status: 'canceled',
+        suspended: false,
+        cancellationRequested,
+        event: {
+          title: 'Jornada acadêmica',
+          location: 'Auditório',
+          startsAt: '2030-10-08T15:00:00Z',
+        },
+      });
+      show();
+      expect(await screen.findByText('Cancelada')).toBeTruthy();
+      expect(
+        screen.getByText(/Sua inscrição foi cancelada e não garante vaga/),
+      ).toBeTruthy();
+      expect(screen.queryByText(cancellationNotice)).toBeNull();
+      expect(screen.queryByText(/pagamento foi reembolsado/)).toBeNull();
+    },
+  );
   it.each([
     { suspended: false, cancellationRequested: false },
     { suspended: true, cancellationRequested: false },
@@ -74,9 +101,12 @@ describe('Consulta da inscrição pelo link do e-mail', () => {
       expect(screen.queryAllByRole('alert')).toHaveLength(
         Number(suspended) + Number(cancellationRequested),
       );
-      expect(api).toHaveBeenCalledWith('/public/registrations/consulta/status', {
-        headers: { 'x-registration-status-token': 'token-de-consulta' },
-      });
+      expect(api).toHaveBeenCalledWith(
+        '/public/registrations/consulta/status',
+        {
+          headers: { 'x-registration-status-token': 'token-de-consulta' },
+        },
+      );
       expect(location.hash).toBe('');
     },
   );
@@ -90,7 +120,9 @@ describe('Consulta da inscrição pelo link do e-mail', () => {
       await screen.findByText('O link de consulta é inválido ou expirou.'),
     ).toBeTruthy();
     expect(
-      screen.getByRole('link', { name: 'Solicitar novo link' }).getAttribute('href'),
+      screen
+        .getByRole('link', { name: 'Solicitar novo link' })
+        .getAttribute('href'),
     ).toBe('/recuperar');
     expect(screen.queryByText('Confirmada')).toBeNull();
   });

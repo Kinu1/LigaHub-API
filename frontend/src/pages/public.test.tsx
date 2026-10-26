@@ -72,6 +72,94 @@ function show(
 }
 beforeEach(() => vi.resetAllMocks());
 describe('Inscrição e pagamento', () => {
+  it.each([null, '2026-10-26T12:00:00Z'])(
+    'explica o cancelamento após reembolso sem oferecer nova solicitação: %s',
+    async (cancellationRequestedAt) => {
+      vi.mocked(api).mockResolvedValue({
+        id: 'r',
+        name: 'Ana',
+        email: 'ana@exemplo.com',
+        status: 'canceled',
+        answers: {},
+        priceInCents: 2500,
+        reservationExpiresAt: '2030-10-08T15:00:00Z',
+        cancellationRequestedAt,
+        event: {
+          title: 'Jornada',
+          publicId: event.publicId,
+          status: 'published',
+        },
+        payments: [
+          {
+            id: 'p',
+            method: 'pix',
+            installments: 1,
+            status: 'refunded',
+            amountInCents: 2500,
+            checkout: { qrCode: 'pix-antigo' },
+          },
+        ],
+      });
+      show(<ParticipantPage />, '/acompanhar/:id', '/acompanhar/r');
+      expect(await screen.findByText('Cancelada')).toBeTruthy();
+      expect(
+        screen.getByText(/Esta inscrição foi cancelada e não garante vaga/),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(/Este pagamento foi reembolsado pelo Mercado Pago/),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: 'Solicitar cancelamento' }),
+      ).toBeNull();
+      expect(
+        screen.queryByText(/Solicitação de cancelamento registrada/),
+      ).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: 'Revisar pagamento Pix' }),
+      ).toBeNull();
+      expect(screen.queryByText('pix-antigo')).toBeNull();
+    },
+  );
+  it('mantém a confirmação quando outro pagamento continua aprovado após um reembolso', async () => {
+    vi.mocked(api).mockResolvedValue({
+      id: 'r',
+      name: 'Ana',
+      email: 'ana@exemplo.com',
+      status: 'confirmed',
+      answers: {},
+      priceInCents: 2500,
+      reservationExpiresAt: '2030-10-08T15:00:00Z',
+      cancellationRequestedAt: null,
+      event: {
+        title: 'Jornada',
+        publicId: event.publicId,
+        status: 'published',
+      },
+      payments: [
+        {
+          id: 'p1',
+          method: 'pix',
+          installments: 1,
+          status: 'refunded',
+          amountInCents: 2500,
+        },
+        {
+          id: 'p2',
+          method: 'pix',
+          installments: 1,
+          status: 'approved',
+          amountInCents: 2500,
+        },
+      ],
+    });
+    show(<ParticipantPage />, '/acompanhar/:id', '/acompanhar/r');
+    expect(await screen.findByText('Confirmada')).toBeTruthy();
+    expect(screen.getByText(/Sua vaga está garantida/)).toBeTruthy();
+    expect(
+      screen.getByText(/Este pagamento foi reembolsado pelo Mercado Pago/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Esta inscrição foi cancelada/)).toBeNull();
+  });
   it('valida perguntas obrigatórias e mantém dados ao voltar da revisão', async () => {
     vi.mocked(api).mockResolvedValue(event);
     show(<PublicEvent />);
@@ -229,9 +317,7 @@ describe('Inscrição e pagamento', () => {
     await screen.findByText('Informe o nome completo do pagador.');
     expect(send).not.toHaveBeenCalled();
     await user.type(name, 'Bruno Souza Lima');
-    await user.click(
-      screen.getByRole('button', { name: /^Cartão$/ }),
-    );
+    await user.click(screen.getByRole('button', { name: /^Cartão$/ }));
     await user.click(
       await screen.findByRole('button', { name: 'Revisar cartão simulado' }),
     );
