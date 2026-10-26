@@ -10,21 +10,23 @@
 - A confirmação foi gerada pela aplicação na resposta de criação da order. A outbox foi processada somente para essa inscrição; o Resend informou `delivered` para o e-mail identificado explicitamente como sandbox.
 - Não foi recebido callback automático pelo proxy durante a observação. Não foi gerada uma assinatura local para apresentar como notificação do provedor.
 
-## Divergência encontrada
+## Identificadores e credenciais conferidos
 
 A aplicação principal acessível pelo conector é `4694337772388028`. O campo `integration_data.application_id` da order de teste, porém, identifica a aplicação `2620982604520894`.
 
-O callback sandbox foi atualizado na aplicação principal, mas o conector recusou sua atualização na aplicação efetiva de teste com `OAuth ownership validation failed`: o proprietário OAuth conectado não é o proprietário dessa aplicação.
+O callback sandbox foi atualizado na LigaHub. A tentativa de configurar diretamente o outro identificador foi recusada pelo conector com `OAuth ownership validation failed`.
 
-Essa diferença de aplicação é uma causa provável da ausência de notificações e deve ser resolvida antes de concluir a homologação. A configuração da aplicação principal não comprova que o webhook da aplicação efetiva de teste esteja configurado.
+Uma verificação posterior comparou, por SHA-256, o Access Token e a Public Key locais com as credenciais de teste retornadas pelo conector para a LigaHub. Ambas coincidiram. Portanto, a diferença de identificador na order não demonstra uso de credenciais incorretas, e a hipótese anterior de que seria necessário localizar outra aplicação no painel foi retirada. A ausência de callbacks automáticos continua sem causa comprovada.
 
 ## Próxima ação necessária
 
-1. Acessar a aplicação `2620982604520894` no painel da conta de teste que a possui, ou disponibilizar uma conexão OAuth do proprietário correto.
-2. Configurar nessa aplicação o callback HTTPS de sandbox, com tópicos `order` e `payment`. O endereço temporário depende do processo local e deve ser obtido da sessão ativa, não reutilizado como endereço de produção.
-3. Conferir o segredo de assinatura dessa aplicação e atualizá-lo somente no `.env` local, em `MERCADO_PAGO_WEBHOOK_SECRET`, se for diferente. Não compartilhar o segredo em mensagens ou commits. Reiniciar a API para carregar a configuração.
-4. Criar uma nova order sandbox e observar o POST autenticado enviado automaticamente pelo provedor, sua resposta HTTP e o estado local. A confirmação síncrona já demonstrada não substitui essa evidência.
+1. Abrir a aplicação LigaHub `4694337772388028`, acessar Configuração de Webhooks e selecionar Teste. O callback sandbox e os tópicos `order` e `payment` já foram configurados pelo conector.
+2. Executar a simulação pelo painel, com evento Order e o identificador `ORDTST01M5WXSBB1Z11GQ76R3H1P01ZS`. O endereço temporário depende do processo local e não deve ser reutilizado como endereço de produção.
+3. Conferir o resultado do envio no painel e no receptor local. A simulação comprova o recebimento desse teste, mas não substitui uma notificação automática decorrente de pagamento.
+4. Inspecionar o monitoramento de Webhooks no ambiente Teste. Se não houver notificações automáticas, investigar com o suporte do provedor, como orientado na documentação oficial, sem trocar credenciais por suposição.
 5. Validar também o estado pendente seguido de aprovação, a recuperação por reconciliação, recusa, expiração e reembolso de teste.
+
+Referência: [configuração, simulação e monitoramento de notificações de orders](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/notifications).
 
 ## Limites adicionais
 
