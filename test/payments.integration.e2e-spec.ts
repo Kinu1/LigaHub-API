@@ -419,7 +419,10 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
       status: 'refunded',
       date_last_updated: new Date(Date.now() + 1000).toISOString(),
     };
-    await service.applyPayment(attemptId, refunded);
+    await Promise.all([
+      service.applyPayment(attemptId, refunded),
+      service.applyPayment(attemptId, refunded),
+    ]);
     const registrations = new RegistrationsService(prisma);
     expect(
       await registrations.participantDetails(registrationId, participantToken),
@@ -439,6 +442,15 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
     expect(
       await prisma.auditLog.count({ where: { entityId: attemptId } }),
     ).toBe(auditBefore);
+    const cancellations = await prisma.auditLog.findMany({
+      where: { entityId: registrationId, action: 'registration.canceled' },
+    });
+    expect(cancellations).toHaveLength(1);
+    expect(cancellations[0]?.metadata).toEqual({
+      paymentId: attemptId,
+      status: 'canceled',
+      reason: 'payment_refunded',
+    });
     expect(
       await prisma.paymentAttempt.findUniqueOrThrow({
         where: { id: attemptId },
@@ -486,6 +498,14 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
       date_last_updated: new Date(Date.now() + 1000).toISOString(),
     });
     const registrations = new RegistrationsService(prisma);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          entityId: registrationId,
+          action: 'registration.canceled',
+        },
+      }),
+    ).toBe(0);
     expect(
       await registrations.participantDetails(registrationId, participantToken),
     ).toMatchObject({ status: 'confirmed' });

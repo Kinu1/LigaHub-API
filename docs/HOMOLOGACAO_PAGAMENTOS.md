@@ -69,6 +69,8 @@ Quando existe outra tentativa aprovada, o segundo teste preserva a confirmação
 
 O frontend traduz o estado de inscrição `canceled` como “Cancelada”, informa que a inscrição não garante vaga e oculta nova solicitação de cancelamento e etapas de pagamento nessa situação. O aviso de solicitação pendente deixa de aparecer quando o cancelamento já foi concluído, tanto na gestão quanto na consulta pelo link do e-mail.
 
+A sincronização agora registra também o cancelamento da inscrição na auditoria, vinculado ao pagamento, distinguindo reembolso integral e devolução por contestação. O teste PostgreSQL envia duas atualizações de reembolso concorrentes e verifica um único registro de cancelamento. Essa alteração foi verificada com provedor simulado; a execução real de sandbox descrita acima ocorreu antes da inclusão desse novo registro e não foi repetida para apresentá-lo como evidência remota.
+
 Cada pagamento com estado `refunded` apresenta seu próprio aviso de devolução. A inscrição continua apresentada como confirmada quando outro pagamento aprovado preserva a vaga. O link de consulta, que não retorna detalhes financeiros, não atribui reembolso ao cancelamento. Cinco casos adicionais de componente verificam esses comportamentos; a suíte frontend passou com 40 testes. A inspeção visual em navegador continua pendente.
 
 ### Expiração no provedor permanece pendente

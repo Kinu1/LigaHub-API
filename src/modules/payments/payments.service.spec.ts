@@ -297,18 +297,36 @@ describe('PaymentsService', () => {
     });
     expect(setup.tx.registration.update).not.toHaveBeenCalled();
   });
-  it('deve cancelar a inscrição após devolução sem outra tentativa aprovada', async () => {
-    const setup = fixture();
-    setup.registration.status = 'confirmed';
-    await setup.service.applyPayment(setup.attempt.id, {
-      ...setup.payment,
-      status: 'refunded',
-    });
-    expect(setup.tx.registration.update).toHaveBeenCalledWith({
-      where: { id: setup.registration.id },
-      data: { status: 'canceled' },
-    });
-  });
+  it.each(['refunded', 'charged_back'])(
+    'deve cancelar e auditar a inscrição após %s sem outra tentativa aprovada',
+    async (status) => {
+      const setup = fixture();
+      setup.registration.status = 'confirmed';
+      await setup.service.applyPayment(setup.attempt.id, {
+        ...setup.payment,
+        status,
+      });
+      expect(setup.tx.registration.update).toHaveBeenCalledWith({
+        where: { id: setup.registration.id },
+        data: { status: 'canceled' },
+      });
+      expect(setup.tx.auditLog.create).toHaveBeenCalledWith({
+        data: {
+          entityType: 'registration',
+          entityId: setup.registration.id,
+          action: 'registration.canceled',
+          metadata: {
+            paymentId: setup.attempt.id,
+            status: 'canceled',
+            reason:
+              status === 'refunded'
+                ? 'payment_refunded'
+                : 'payment_charged_back',
+          },
+        },
+      });
+    },
+  );
   it('deve recusar parcelas diferentes das autorizadas na tentativa', async () => {
     const setup = fixture();
     await expect(
