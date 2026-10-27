@@ -22,6 +22,8 @@ const actions: Record<string, string> = {
   'event:reservations.expired': 'Reservas vencidas marcadas como expiradas',
   'registration:registration.reserved': 'Inscrição reservada',
   'registration:cancellation.requested': 'Cancelamento da inscrição solicitado',
+  'registration:registration.email_retry_authorized':
+    'Retomada do envio de confirmação autorizada',
   'registration:registration.canceled':
     'Inscrição cancelada após devolução do pagamento',
   'registration:reservation.renewed': 'Reserva da inscrição renovada',
@@ -117,6 +119,8 @@ function details(audit: Audit) {
     ]);
   if (typeof metadata.count === 'number')
     values.push(['Reservas afetadas', String(metadata.count)]);
+  if (typeof metadata.attempt === 'number')
+    values.push(['Tentativa de envio', String(metadata.attempt)]);
   if (typeof metadata.expiresAt === 'string')
     values.push([
       'Novo prazo da reserva',
@@ -227,6 +231,7 @@ export function AuditList({ data }: { data?: Page<Audit> }) {
                     'paymentId',
                     'providerPaymentId',
                     'merchantId',
+                    'outboxId',
                   ].map((key) => {
                     const value = audit.metadata?.[key];
                     const names: Record<string, string> = {
@@ -234,6 +239,7 @@ export function AuditList({ data }: { data?: Page<Audit> }) {
                       paymentId: 'Identificador do pagamento',
                       providerPaymentId: 'Identificador no provedor',
                       merchantId: 'Identificador do recebedor',
+                      outboxId: 'Identificador da tarefa de e-mail',
                     };
                     return typeof value === 'string' ||
                       typeof value === 'number' ? (

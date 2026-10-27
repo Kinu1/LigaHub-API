@@ -1,3 +1,5 @@
+import { OutboxAdminController } from './outbox-admin.controller.js';
+import { OutboxAdminService } from './outbox-admin.service.js';
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma.module.js';
 import { EmailGateway } from './email.gateway.js';
@@ -6,7 +8,9 @@ import { EmailOutboxService } from './email-outbox.service.js';
 
 @Module({
   imports: [PrismaModule],
+  controllers: [OutboxAdminController],
   providers: [
+    OutboxAdminService,
     EmailOutboxService,
     { provide: EmailGateway, useClass: ConfigurableEmailGateway },
   ],
