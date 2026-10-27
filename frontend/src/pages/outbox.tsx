@@ -156,21 +156,35 @@ function AdminOutbox() {
                   {statuses[item.status] ?? 'Status não reconhecido'}
                 </h2>
                 <p>Tentativas: {item.attempts}</p>
-                <p>
-                  Classificação atual:{' '}
-                  {item.reason
-                    ? (reasons[item.reason] ?? 'Não disponível')
-                    : 'Sem classificação informada'}
-                  . Esta classificação não comprova a causa histórica da falha.
-                </p>
+                {item.status === 'failed' && (
+                  <p>
+                    Classificação atual:{' '}
+                    {item.reason
+                      ? (reasons[item.reason] ?? 'Não disponível')
+                      : 'Sem classificação informada'}
+                    . Esta classificação não comprova a causa histórica da
+                    falha.
+                  </p>
+                )}
                 <dl className="grid gap-3 text-sm sm:grid-cols-2">
                   {(
                     [
                       ['Criado em', item.createdAt],
                       ['Primeira tentativa', item.firstAttemptAt],
-                      ['Próxima tentativa', item.nextAttemptAt],
-                      ['Fim da reserva de processamento', item.leaseExpiresAt],
-                      ['Aceito pelo provedor em', item.sentAt],
+                      ...(item.status === 'pending'
+                        ? [['Próxima tentativa', item.nextAttemptAt] as const]
+                        : []),
+                      ...(item.status === 'processing'
+                        ? [
+                            [
+                              'Fim da reserva de processamento',
+                              item.leaseExpiresAt,
+                            ] as const,
+                          ]
+                        : []),
+                      ...(item.sentAt
+                        ? [['Aceito pelo provedor em', item.sentAt] as const]
+                        : []),
                     ] as const
                   ).map(([label, value]) => (
                     <div key={label}>
