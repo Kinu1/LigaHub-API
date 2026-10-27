@@ -981,6 +981,51 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
       accounts as unknown as PaymentAccountsService,
     );
   }
+  it('distingue consulta concluída, falha segura e recuperação sem alterar o estado financeiro', async () => {
+    const worker = ownReconciliation();
+    gateway.searchPayment.mockResolvedValue(null);
+    expect(await worker.reconcile()).toMatchObject({
+      status: 'completed',
+      processed: 1,
+      succeeded: 1,
+      failed: 0,
+    });
+    const initial = await prisma.paymentAttempt.findUniqueOrThrow({
+      where: { id: attemptId },
+    });
+    expect(initial.status).toBe('created');
+    expect(initial.lastSyncSucceededAt).toBeInstanceOf(Date);
+    gateway.searchPayment.mockRejectedValueOnce(
+      new Error('token-sensivel-nao-persistir'),
+    );
+    expect(await worker.reconcile()).toMatchObject({
+      status: 'failed',
+      processed: 1,
+      succeeded: 0,
+      failed: 1,
+    });
+    const failed = await prisma.paymentAttempt.findUniqueOrThrow({
+      where: { id: attemptId },
+    });
+    expect(failed.lastSyncSucceededAt).toEqual(initial.lastSyncSucceededAt);
+    expect(failed.lastSyncErrorCode).toBe('provider_unavailable');
+    expect(failed.lastSyncAttemptAt!.getTime()).toBeGreaterThanOrEqual(
+      initial.lastSyncAttemptAt!.getTime(),
+    );
+    expect(JSON.stringify(failed)).not.toContain(
+      'token-sensivel-nao-persistir',
+    );
+    gateway.searchPayment.mockResolvedValue(null);
+    expect(await worker.reconcile()).toMatchObject({
+      status: 'completed',
+      succeeded: 1,
+    });
+    expect(
+      await prisma.paymentAttempt.findUniqueOrThrow({
+        where: { id: attemptId },
+      }),
+    ).toMatchObject({ status: 'created', lastSyncErrorCode: null });
+  });
   it('deve encerrar uma tentativa nunca enviada após expiração e permitir renovar sem criar cobrança', async () => {
     const token = 'a'.repeat(43);
     await prisma.registration.update({

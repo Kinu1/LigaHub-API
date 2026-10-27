@@ -205,6 +205,30 @@ test('administrador filtra o financeiro e a API recusa filtros inválidos', asyn
     path: info.outputPath('filtros-financeiros.png'),
     fullPage: true,
   });
+  expect(
+    (await request.get('http://127.0.0.1:3100/admin/operations')).status(),
+  ).toBe(401);
+  await page.goto('/painel/operacao');
+  await expect(
+    page.getByRole('heading', { name: 'Operação e rotinas' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Links de acesso e gestão' }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      'Aceito pelo provedor não significa entregue na caixa de entrada do participante.',
+    ),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: info.outputPath('operacao.png'),
+    fullPage: true,
+  });
 });
 
 test.afterEach(async ({ request }) => {
