@@ -38,6 +38,7 @@ export class RegistrationsService {
         id: true,
         name: true,
         status: true,
+        reviewReason: true,
         suspendedAt: true,
         cancellationRequestedAt: true,
         statusTokenHash: true,
@@ -64,6 +65,7 @@ export class RegistrationsService {
       );
     return {
       id: registration.id,
+      reviewReason: registration.reviewReason,
       name: registration.name,
       status: registration.status,
       suspended: Boolean(registration.suspendedAt),
@@ -218,6 +220,7 @@ export class RegistrationsService {
     });
     return {
       id: registration.id,
+      reviewReason: registration.reviewReason,
       name: registration.name,
       email: registration.email,
       answers: registration.answers,
@@ -419,6 +422,7 @@ export class RegistrationsService {
           email: true,
           answers: true,
           formSnapshot: true,
+          reviewReason: true,
           priceInCents: true,
           status: true,
           reservationExpiresAt: true,

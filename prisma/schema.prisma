@@ -63,6 +63,7 @@ model Registration {
   formSnapshot            Json
   priceInCents            Int
   status                  String           @default("reserved")
+  reviewReason            String?
   reservationExpiresAt    DateTime
   manageTokenHash         String
   manageTokenEncrypted    String?

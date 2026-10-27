@@ -1,6 +1,11 @@
 import {
+  confirmationBlock,
+  reviewMessages,
+} from '../registrations/payment-review.policy.js';
+import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -384,6 +389,165 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     return this.publicAttempt(await this.applyPayment(attempt.id, payment));
   }
 
+  async confirmPaymentReview(id: string, actor: AuthenticatedUser) {
+    const load = (db: Prisma.TransactionClient | PrismaService) =>
+      db.registration.findUnique({
+        where: { id },
+        include: { event: { include: { owner: true } } },
+      });
+    const authorize = async (
+      db: Prisma.TransactionClient | PrismaService,
+      ownerId: string | null,
+    ) => {
+      const user = await db.user.findUnique({ where: { id: actor.id } });
+      if (
+        !user?.active ||
+        !['admin', 'organizer'].includes(user.role) ||
+        (user.role !== 'admin' && ownerId !== user.id)
+      )
+        throw new ForbiddenException('Você não pode reavaliar esta inscrição.');
+    };
+    const safe = (record: {
+      id: string;
+      status: string;
+      reviewReason: string | null;
+    }) => ({
+      id: record.id,
+      status: record.status,
+      reviewReason: record.reviewReason,
+    });
+    const registration = await load(this.prisma);
+    if (!registration) throw new NotFoundException('Inscrição não encontrada.');
+    const version = (record: NonNullable<Awaited<ReturnType<typeof load>>>) => {
+      const { event: _event, ...fields } = record;
+      return digest(JSON.stringify(fields));
+    };
+    await authorize(this.prisma, registration.event.ownerId);
+    if (registration.status === 'confirmed') return safe(registration);
+    if (registration.status !== 'payment_review')
+      throw new ConflictException(
+        registration.status === 'canceled'
+          ? reviewMessages.registration_canceled
+          : 'O estado da inscrição não permite reavaliação de pagamento.',
+      );
+    const attempts = await this.prisma.paymentAttempt.findMany({
+      where: { registrationId: id },
+    });
+    const relevant = attempts.filter((a) =>
+      ['approved', 'in_mediation'].includes(a.status),
+    );
+    const attempt = relevant[0];
+    const financialConflict = () =>
+      new ConflictException(
+        'Não há um único pagamento aprovado verificável. Confira e ajuste o pagamento na conta do provedor e depois sincronize.',
+      );
+    if (
+      relevant.length !== 1 ||
+      attempt.status !== 'approved' ||
+      !attempt.providerPaymentId
+    )
+      throw financialConflict();
+    let payment: ProviderPayment;
+    try {
+      const token = await this.accounts.accessToken(attempt.accountId);
+      payment = await this.gateway.getPayment(
+        token,
+        attempt.providerPaymentId,
+        this.providerApi(attempt),
+      );
+    } catch {
+      throw new ServiceUnavailableException(
+        'Não foi possível consultar o provedor. Tente reavaliar novamente mais tarde.',
+      );
+    }
+    // Compartilha a validação de estados terminais e datas com a reconciliação.
+    const synced = await this.applyPayment(attempt.id, payment, true, attempt);
+    return this.prisma
+      .$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM academic_events WHERE id = ${registration.eventId}::uuid FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM registrations WHERE id = ${id}::uuid FOR UPDATE`;
+        const current = await load(tx);
+        if (!current) throw new NotFoundException('Inscrição não encontrada.');
+        await authorize(tx, current.event.ownerId);
+        if (current.status === 'confirmed') return safe(current);
+        const latest = await tx.paymentAttempt.findMany({
+          where: { registrationId: id },
+        });
+        const approved = latest.filter((a) =>
+          ['approved', 'in_mediation'].includes(a.status),
+        );
+        const saved = latest.find((a) => a.id === attempt.id);
+        if (
+          payment.status !== 'approved' ||
+          !saved ||
+          saved.status !== 'approved' ||
+          approved.length !== 1 ||
+          approved[0].id !== attempt.id ||
+          saved.updatedAt.getTime() !== synced.updatedAt.getTime() ||
+          saved.providerUpdatedAt?.getTime() !==
+            new Date(payment.date_last_updated).getTime() ||
+          saved.providerPaymentId !== String(payment.id)
+        )
+          throw financialConflict();
+        if (version(current) !== version(registration))
+          throw new ConflictException(
+            'A inscrição mudou durante a consulta. Atualize a página e reavalie.',
+          );
+        const occupied = await tx.registration.count({
+          where: {
+            eventId: current.eventId,
+            id: { not: id },
+            OR: [
+              { status: 'confirmed' },
+              { status: 'reserved', reservationExpiresAt: { gt: new Date() } },
+            ],
+          },
+        });
+        const reason = confirmationBlock(current, occupied, new Date(), true);
+        if (reason) {
+          await tx.registration.update({
+            where: { id },
+            data: {
+              reviewReason: current.status === 'canceled' ? null : reason,
+            },
+          });
+          await tx.auditLog.create({
+            data: {
+              entityType: 'registration',
+              entityId: id,
+              action: 'registration.payment_review_blocked',
+              actorId: actor.id,
+              metadata: { paymentId: attempt.id, reason },
+            },
+          });
+          return { blocked: reason } as const;
+        }
+        const confirmed = await tx.registration.update({
+          where: { id },
+          data: { status: 'confirmed', reviewReason: null },
+        });
+        await enqueueConfirmation(tx, current);
+        await tx.auditLog.create({
+          data: {
+            entityType: 'registration',
+            entityId: id,
+            action: 'registration.payment_review_confirmed',
+            actorId: actor.id,
+            metadata: {
+              paymentId: attempt.id,
+              reason: current.reviewReason ?? 'reason_not_recorded',
+            },
+          },
+        });
+        return safe(confirmed);
+      })
+      .then((result) => {
+        if ('blocked' in result)
+          throw new ConflictException(reviewMessages[result.blocked]);
+        return result;
+      });
+  }
+
   private notificationUrl(): string {
     const value = process.env.MERCADO_PAGO_NOTIFICATION_URL;
     try {
@@ -429,6 +593,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   async applyPayment(
     attemptId: string,
     payment: ProviderPayment,
+    reviewOnly = false,
+    expectedAttempt?: PaymentAttempt,
   ): Promise<PaymentAttempt> {
     const attempt = await this.prisma.paymentAttempt.findUnique({
       where: { id: attemptId },
@@ -456,6 +622,13 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       const current = await tx.paymentAttempt.findUniqueOrThrow({
         where: { id: attempt.id },
       });
+      if (
+        expectedAttempt &&
+        current.updatedAt.getTime() !== expectedAttempt.updatedAt.getTime()
+      )
+        throw new ConflictException(
+          'O pagamento mudou durante a consulta. Atualize a página e reavalie.',
+        );
       if (
         current.providerPaymentId &&
         current.providerPaymentId !== String(payment.id)
@@ -503,6 +676,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         },
       });
       if (
+        !reviewOnly &&
         payment.status === 'approved' &&
         registration.status !== 'confirmed'
       ) {
@@ -516,19 +690,21 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
             ],
           },
         });
-        const canConfirm =
-          ['reserved', 'expired'].includes(registration.status) &&
-          !registration.suspendedAt &&
-          !registration.cancellationRequestedAt &&
-          registration.event.owner?.active &&
-          registration.event.status === 'published' &&
-          (!registration.event.startsAt ||
-            registration.event.startsAt > new Date()) &&
-          occupied < registration.event.capacity;
-        const status = canConfirm ? 'confirmed' : 'payment_review';
+        const block = confirmationBlock(registration, occupied, new Date());
+        const reason =
+          block === 'invalid_registration_state' &&
+          registration.status === 'payment_review'
+            ? registration.reviewReason
+            : block;
+        const canConfirm = block === null;
+        const status = canConfirm
+          ? 'confirmed'
+          : registration.status === 'canceled'
+            ? 'canceled'
+            : 'payment_review';
         await tx.registration.update({
           where: { id: registration.id },
-          data: { status },
+          data: { status, reviewReason: status === 'canceled' ? null : reason },
         });
         if (canConfirm) await enqueueConfirmation(tx, registration);
         await tx.auditLog.create({
@@ -540,9 +716,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
               : 'registration.payment_review',
             metadata: {
               paymentId: current.id,
-              reason: canConfirm
-                ? 'payment_approved'
-                : 'capacity_or_registration_unavailable',
+              reason: canConfirm ? 'payment_approved' : reason,
             },
           },
         });
@@ -560,7 +734,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         if (otherApproved === 0) {
           await tx.registration.update({
             where: { id: registration.id },
-            data: { status: 'canceled' },
+            data: { status: 'canceled', reviewReason: null },
           });
           await tx.auditLog.create({
             data: {
