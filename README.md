@@ -62,9 +62,11 @@ npm.cmd audit
 
 Os testes de integração exigem as migrations aplicadas. Criam dados identificados por UUID e removem somente esses dados; prefira um banco separado para testes. Pagamentos usam provedor simulado, sem cobrança real. O GitHub Actions usa um PostgreSQL exclusivo do job.
 
+O fluxo completo no Chromium, em desktop e celular, é verificado com `npm.cmd run test:browser`, após compilar a API e instalar o navegador. Consulte [o roteiro de testes de navegador](docs/TESTES_NAVEGADOR.md). A fila de e-mails tem consulta e retomada controlada em `/painel/emails`, exclusiva de administradores; critérios em [docs/EMAILS.md](docs/EMAILS.md).
+
 ## Limites da entrega
 
-A integração cria novas cobranças na Orders API e mantém consultas de tentativas legadas na Payments API. Pix e Mastercard em três parcelas foram aprovados no sandbox pela própria LigaHub, com confirmação da inscrição e e-mail capturado no Mailpit local. A entrega automática de webhook pelo Mercado Pago e o envio externo por Resend ainda precisam ser observados; consulte [o relatório e roteiro de testes](docs/MERCADO_PAGO.md). Nenhum recebimento real foi validado. A API recebe apenas o token temporário do cartão; o frontend usa o SDK do Mercado Pago para tokenização.
+A integração cria novas cobranças na Orders API e mantém consultas de tentativas legadas na Payments API. Pix e Mastercard em três parcelas foram aprovados no sandbox pela própria LigaHub. O envio externo por Resend foi validado em testes controlados, descritos em [docs/HOMOLOGACAO_EMAILS.md](docs/HOMOLOGACAO_EMAILS.md). A entrega automática de webhook pelo Mercado Pago permanece pendente; consulte [o relatório e roteiro de testes](docs/MERCADO_PAGO.md). Nenhum recebimento real foi validado. A API recebe apenas o token temporário do cartão; o frontend usa o SDK do Mercado Pago para tokenização.
 
 O histórico é imutável pelas rotas da API; administradores do banco podem editar registros. Reservas expiradas deixam de consumir vagas pela data de expiração, mesmo antes de o estado ser materializado como `expired`.
 

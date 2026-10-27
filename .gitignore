@@ -26,3 +26,7 @@ coverage/
 src/generated/prisma/
 
 .test-temp/
+
+# Artefatos locais dos testes com navegador
+playwright-report/
+test-results/

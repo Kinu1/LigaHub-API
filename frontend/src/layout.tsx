@@ -7,6 +7,7 @@ import {
   Wallet,
   Users,
   History,
+  Mail,
   LogOut,
   Menu,
   X,
@@ -53,6 +54,7 @@ export function Layout() {
       ? ([
           ['/painel/usuarios', 'Usuários', Users],
           ['/painel/auditoria', 'Auditoria', History],
+          ['/painel/emails', 'Fila de e-mails', Mail],
         ] as [string, string, LucideIcon][])
       : []),
   ];

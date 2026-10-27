@@ -627,8 +627,12 @@ export function EventDetails() {
                                   <div>
                                     <Status value={r.status} />
                                     {r.cancellationRequestedAt && (
-                                      <p className="mt-2 text-xs text-amber-800">
-                                        Cancelamento solicitado
+                                      <p
+                                        className={`mt-2 text-xs ${r.status === 'canceled' ? 'text-zinc-500' : 'text-amber-800'}`}
+                                      >
+                                        {r.status === 'canceled'
+                                          ? 'Solicitação de cancelamento concluída'
+                                          : 'Cancelamento solicitado'}
                                       </p>
                                     )}
                                     {r.suspendedAt && (

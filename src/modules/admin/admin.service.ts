@@ -29,7 +29,11 @@ export class AdminService {
       this.prisma.academicEvent.count({ where: { ...event, status: 'draft' } }),
       this.prisma.registration.count({ where: { event, status: 'confirmed' } }),
       this.prisma.registration.count({
-        where: { event, cancellationRequestedAt: { not: null } },
+        where: {
+          event,
+          cancellationRequestedAt: { not: null },
+          status: { not: 'canceled' },
+        },
       }),
       this.prisma.paymentAttempt.count({
         where: {

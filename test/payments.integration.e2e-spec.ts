@@ -67,6 +67,7 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
       where: { idempotencyKey: newKey },
     });
     expect(saved.providerApi).toBe('orders');
+    expect(saved.submissionStarted).toBe(true);
     expect(saved.providerRequestEncrypted).not.toContain(pixInput.cpf);
     const original = JSON.parse(
       decryptCredential(saved.providerRequestEncrypted!),
@@ -377,6 +378,106 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
       ...overrides,
     };
   }
+  function ownReconciliation() {
+    const scoped = new Proxy(prisma, {
+      get(target, property) {
+        if (property === 'paymentAttempt')
+          return new Proxy(target.paymentAttempt, {
+            get(model, method) {
+              if (method === 'findMany')
+                return (args: Parameters<typeof model.findMany>[0]) =>
+                  model.findMany({
+                    ...args,
+                    where: { AND: [args?.where ?? {}, { id: attemptId }] },
+                  });
+              const value = Reflect.get(model, method);
+              return typeof value === 'function' ? value.bind(model) : value;
+            },
+          });
+        const value = Reflect.get(target, property);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    return new PaymentsService(
+      scoped,
+      gateway as unknown as PaymentGateway,
+      accounts as unknown as PaymentAccountsService,
+    );
+  }
+  it('deve encerrar uma tentativa nunca enviada após expiração e permitir renovar sem criar cobrança', async () => {
+    const token = 'a'.repeat(43);
+    await prisma.registration.update({
+      where: { id: registrationId },
+      data: {
+        reservationExpiresAt: new Date(Date.now() - 1000),
+        manageTokenHash: digest(token),
+      },
+    });
+    await prisma.paymentAttempt.update({
+      where: { id: attemptId },
+      data: {
+        submissionStarted: false,
+        providerApi: 'orders',
+        providerRequestEncrypted: encryptCredential(
+          JSON.stringify({ token: 'token-ficticio' }),
+        ),
+      },
+    });
+    await Promise.all([
+      ownReconciliation().reconcile(),
+      service.create(registrationId, token, key, pixInput),
+    ]);
+    const saved = await prisma.paymentAttempt.findUniqueOrThrow({
+      where: { id: attemptId },
+    });
+    expect(saved).toMatchObject({
+      status: 'cancelled',
+      statusDetail: 'not_submitted_before_expiration',
+      providerRequestEncrypted: null,
+    });
+    expect(gateway.createPayment).not.toHaveBeenCalled();
+    expect(gateway.searchPayment).not.toHaveBeenCalled();
+    expect(
+      await prisma.auditLog.count({
+        where: { entityId: attemptId, action: 'payment.updated' },
+      }),
+    ).toBe(1);
+    const renewed = await new RegistrationsService(prisma).renew(
+      registrationId,
+      token,
+    );
+    expect(renewed.status).toBe('reserved');
+    expect(renewed.reservationExpiresAt.getTime()).toBeGreaterThan(Date.now());
+  });
+  it.each([null, true])(
+    'não deve presumir ausência de cobrança para envio incerto ou legado: %s',
+    async (submissionStarted) => {
+      await prisma.registration.update({
+        where: { id: registrationId },
+        data: {
+          reservationExpiresAt: new Date(Date.now() - 1000),
+        },
+      });
+      await prisma.paymentAttempt.update({
+        where: { id: attemptId },
+        data: { submissionStarted },
+      });
+      gateway.searchPayment.mockResolvedValue(null);
+      await ownReconciliation().reconcile();
+      expect(
+        await prisma.paymentAttempt.findUniqueOrThrow({
+          where: { id: attemptId },
+        }),
+      ).toMatchObject({ status: 'created', submissionStarted });
+      expect(gateway.searchPayment).toHaveBeenCalled();
+      expect(gateway.createPayment).not.toHaveBeenCalled();
+      expect(
+        await prisma.auditLog.count({
+          where: { entityId: attemptId, action: 'payment.updated' },
+        }),
+      ).toBe(0);
+    },
+  );
   it('deve confirmar uma vez e retornar a cobrança salva ao repetir a chave', async () => {
     const approvedPayment = payment();
     await service.applyPayment(attemptId, approvedPayment);
@@ -530,6 +631,46 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
       worker: new EmailOutboxService(prisma, { send } as EmailGateway),
     };
   }
+  it.each([
+    { provider: 'resend', smtpHost: 'localhost', resendKey: undefined },
+    { provider: 'smtp', smtpHost: undefined, resendKey: 'chave-simulada' },
+  ])(
+    'não deve consumir tentativas sem configurar o provedor selecionado: $provider',
+    async ({ provider, smtpHost, resendKey }) => {
+      await service.applyPayment(attemptId, payment());
+      const { worker, send } = mailWorker();
+      vi.stubEnv('EMAIL_PROVIDER', provider);
+      vi.stubEnv('SMTP_HOST', smtpHost);
+      vi.stubEnv('RESEND_API_KEY', resendKey);
+      await worker.processBatch(registrationId);
+      expect(send).not.toHaveBeenCalled();
+      expect(
+        await prisma.emailOutbox.findUniqueOrThrow({
+          where: { registrationId },
+        }),
+      ).toMatchObject({ status: 'pending', attempts: 0, firstAttemptAt: null });
+    },
+  );
+  it.each([
+    { provider: 'resend', smtpHost: 'localhost', resendKey: 'chave-simulada' },
+    { provider: 'smtp', smtpHost: 'localhost', resendKey: undefined },
+  ])(
+    'deve processar a fila com o provedor selecionado configurado: $provider',
+    async ({ provider, smtpHost, resendKey }) => {
+      await service.applyPayment(attemptId, payment());
+      const { worker, send } = mailWorker();
+      vi.stubEnv('EMAIL_PROVIDER', provider);
+      vi.stubEnv('SMTP_HOST', smtpHost);
+      vi.stubEnv('RESEND_API_KEY', resendKey);
+      await worker.processBatch(registrationId);
+      expect(send).toHaveBeenCalledOnce();
+      expect(
+        await prisma.emailOutbox.findUniqueOrThrow({
+          where: { registrationId },
+        }),
+      ).toMatchObject({ status: 'sent', attempts: 1 });
+    },
+  );
   it('deve desfazer a confirmação se não conseguir registrar a tarefa de e-mail', async () => {
     vi.stubEnv('CREDENTIALS_ENCRYPTION_KEY', 'invalida');
     await expect(service.applyPayment(attemptId, payment())).rejects.toThrow(

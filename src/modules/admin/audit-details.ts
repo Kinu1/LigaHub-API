@@ -14,6 +14,8 @@ const detailKeys = [
   'paymentId',
   'providerPaymentId',
   'merchantId',
+  'outboxId',
+  'attempt',
 ] as const;
 
 const eventFields = new Set([

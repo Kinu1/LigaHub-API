@@ -7,12 +7,14 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma.service.js';
+import { encryptCredential } from '../payments/payment-security.js';
+import { renderConfirmation } from './confirmation-email.js';
 import {
-  decryptCredential,
-  encryptCredential,
-} from '../payments/payment-security.js';
-import { renderConfirmation, type EmailMessage } from './confirmation-email.js';
-import { EmailGateway } from './email.gateway.js';
+  readPayload,
+  readMessage,
+  validateConfirmation,
+} from './outbox-payload.js';
+import { EmailGateway, selectedEmailProvider } from './email.gateway.js';
 
 @Injectable()
 export class EmailOutboxService implements OnModuleInit, OnModuleDestroy {
@@ -38,7 +40,7 @@ export class EmailOutboxService implements OnModuleInit, OnModuleDestroy {
   async processBatch(registrationId?: string) {
     if (
       process.env.EMAIL_DELIVERY_ENABLED !== 'true' ||
-      !(process.env.EMAIL_PROVIDER === 'smtp' || process.env.SMTP_HOST
+      !(selectedEmailProvider() === 'smtp'
         ? process.env.SMTP_HOST
         : process.env.RESEND_API_KEY) ||
       !process.env.EMAIL_FROM ||
@@ -46,6 +48,16 @@ export class EmailOutboxService implements OnModuleInit, OnModuleDestroy {
       this.busy
     )
       return;
+    // Falha global de chave/configuracao nao deve classificar toda a fila como invalida.
+    encryptCredential('outbox-preflight');
+    renderConfirmation({
+      registrationId: 'preflight',
+      to: 'preflight@example.com',
+      name: '',
+      eventTitle: '',
+      location: '',
+      token: 'preflight',
+    });
     this.busy = true;
     try {
       for (let i = 0; i < 10; i++) {
@@ -53,11 +65,9 @@ export class EmailOutboxService implements OnModuleInit, OnModuleDestroy {
         if (!item) break;
         if (!item.payloadEncrypted) continue;
         try {
-          const payload = JSON.parse(
-            decryptCredential(item.payloadEncrypted),
-          ) as { message: EmailMessage };
+          const message = readMessage(item.payloadEncrypted);
           const providerId = await this.gateway.send(
-            payload.message,
+            message,
             `confirmation/${item.id}`,
           );
           await this.prisma.emailOutbox.updateMany({
@@ -137,16 +147,30 @@ export class EmailOutboxService implements OnModuleInit, OnModuleDestroy {
         });
         return { ...item, payloadEncrypted: null };
       }
-      const payload = JSON.parse(
-        decryptCredential(item.payloadEncrypted),
-      ) as Parameters<typeof renderConfirmation>[0] & {
-        message?: EmailMessage;
-      };
-      const payloadEncrypted = payload.message
-        ? item.payloadEncrypted
-        : encryptCredential(
-            JSON.stringify({ message: renderConfirmation(payload) }),
+      let payloadEncrypted: string;
+      try {
+        const payload = readPayload(item.payloadEncrypted);
+        if (payload.message) {
+          readMessage(item.payloadEncrypted);
+          payloadEncrypted = item.payloadEncrypted;
+        } else {
+          validateConfirmation(payload, item.registrationId);
+          payloadEncrypted = encryptCredential(
+            JSON.stringify({
+              message: renderConfirmation(
+                payload as Parameters<typeof renderConfirmation>[0],
+              ),
+            }),
           );
+        }
+      } catch {
+        await tx.emailOutbox.update({
+          where: { id: item.id },
+          data: { status: 'failed', leaseId: null, leaseExpiresAt: null },
+        });
+        this.logger.warn(`Payload invalido na confirmacao ${item.id}.`);
+        return { ...item, payloadEncrypted: null };
+      }
       return tx.emailOutbox.update({
         where: { id: item.id },
         data: {
