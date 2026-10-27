@@ -20,6 +20,8 @@ Os servidores de teste usam as portas 3100 e 3101; não reutilizam uma API já i
 
 Cada teste cria usuário, conta fictícia, evento e inscrições com UUIDs próprios, removidos após o teste. `.test-temp/browser-fixture.json` registra os identificadores para recuperar a limpeza após interrupção. A limpeza confere o usuário de teste e a propriedade do evento; não remove dados de outras execuções ou usuários.
 
+O histórico financeiro do servidor de teste é limitado ao proprietário da fixture, inclusive no login administrativo. Isso evita ler dados de outros usuários ou tentar decifrá-los com a chave fictícia. O isolamento de organizadores e a visão ampla administrativa são verificados separadamente pelos testes PostgreSQL.
+
 ## Casos cobertos
 
 - Reserva pelo formulário, navegação para acompanhamento e acesso pelo link capturado pelo gateway de e-mail simulado.
@@ -31,6 +33,7 @@ Cada teste cria usuário, conta fictícia, evento e inscrições com UUIDs próp
 - Resposta incerta de cartão: repetição com a mesma chave, token e parcelas, sem outra cobrança fictícia.
 - Recuperação de tentativa interrompida antes do envio, expiração e renovação da reserva sem criar cobrança.
 - Login administrativo e retomada confirmada de um e-mail com falha, utilizando o painel e a API reais.
+- Filtros financeiros no painel e recusa HTTP de filtros inválidos ou repetidos.
 - Apresentação final da inscrição reembolsada e verificação de ausência de rolagem horizontal no fluxo testado.
 
 O workflow `Navegador` utiliza um banco exclusivo do job. Os relatórios, traces e screenshots ficam em `playwright-report/` e `test-results/`, ignorados pelo Git. Eles podem conter links pessoais das fixtures; não devem ser publicados como dados de usuários reais.

@@ -81,6 +81,7 @@ export const reviewReasons: Record<string, string> = {
 export const reviewReasonText = (reason?: string | null) =>
   reviewReasons[reason ?? ''] ?? reviewReasons.reason_not_recorded;
 export type PaymentHistory = Payment & {
+  event?: { id: string; title: string };
   payer: { name: string; cpf: string } | null;
 };
 export const formatCpf = (value?: string | null) =>

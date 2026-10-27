@@ -2,6 +2,7 @@ import {
   confirmationBlock,
   reviewMessages,
 } from '../registrations/payment-review.policy.js';
+import type { PaymentHistoryQuery } from './payment-history.query.js';
 import {
   BadRequestException,
   ConflictException,
@@ -822,20 +823,52 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     return attempts.map((attempt) => this.publicAttempt(attempt));
   }
 
-  async history(actor: AuthenticatedUser, page = 1, paginated = false) {
-    const where: Prisma.PaymentAttemptWhereInput =
+  async history(
+    actor: AuthenticatedUser,
+    page = 1,
+    paginated = false,
+    filters: Partial<PaymentHistoryQuery> = {},
+  ) {
+    const conditions: Prisma.PaymentAttemptWhereInput[] = [
       actor.role === 'admin'
         ? {}
-        : { registration: { event: { ownerId: actor.id } } };
+        : { registration: { event: { ownerId: actor.id } } },
+    ];
+    if (filters.eventId)
+      conditions.push({ registration: { eventId: filters.eventId } });
+    if (filters.eventSearch)
+      conditions.push({
+        registration: {
+          event: {
+            title: { contains: filters.eventSearch, mode: 'insensitive' },
+          },
+        },
+      });
+    if (filters.status) conditions.push({ status: filters.status });
+    if (filters.method) conditions.push({ method: filters.method });
+    if (filters.from || filters.to)
+      conditions.push({
+        createdAt: {
+          ...(filters.from ? { gte: new Date(filters.from) } : {}),
+          ...(filters.to ? { lt: new Date(filters.to) } : {}),
+        },
+      });
+    const where: Prisma.PaymentAttemptWhereInput = { AND: conditions };
     const records = await this.prisma.paymentAttempt.findMany({
       where,
       skip: (page - 1) * 50,
       take: 50,
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      include: {
+        registration: {
+          select: { event: { select: { id: true, title: true } } },
+        },
+      },
     });
     const items = records.map((attempt) => ({
       ...this.publicAttempt(attempt),
       payer: this.historyPayer(attempt),
+      event: attempt.registration.event,
     }));
     if (!paginated) return items;
     const total = await this.prisma.paymentAttempt.count({ where });

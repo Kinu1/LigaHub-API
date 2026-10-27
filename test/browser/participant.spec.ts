@@ -144,6 +144,69 @@ test('resposta incerta de cartão repete chave e token sem nova cobrança', asyn
   expect(submitted[0].installments).toBe(3);
   expect((await control(request, 'charges', 'GET')).createdCharges).toBe(1);
 });
+test('administrador filtra o financeiro e a API recusa filtros inválidos', async ({
+  page,
+  request,
+}, info) => {
+  const fixture = await control(request, 'fixture');
+  await reserve(page, fixture.publicId);
+  await pay(page);
+  await expect(page.getByText('Pendente', { exact: true })).toBeVisible();
+  await page.goto('/login');
+  await page.getByLabel('E-mail', { exact: true }).fill(fixture.email);
+  await page
+    .getByLabel('Senha', { exact: true })
+    .fill('Senha-exclusiva-do-teste');
+  await page.getByRole('button', { name: /Entrar no painel/ }).click();
+  await expect(page).toHaveURL(/\/painel$/);
+  await page.goto('/painel/financeiro');
+  await page
+    .getByLabel('Evento', { exact: true })
+    .fill('Jornada de teste no navegador');
+  await page
+    .getByLabel('Forma de pagamento', { exact: true })
+    .selectOption('pix');
+  await page
+    .getByLabel('Estado do pagamento', { exact: true })
+    .selectOption('pending');
+  await page.getByRole('button', { name: 'Aplicar filtros' }).click();
+  await expect(
+    page.getByRole('cell', { name: 'Jornada de teste no navegador' }),
+  ).toBeVisible();
+  await page
+    .getByLabel('Estado do pagamento', { exact: true })
+    .selectOption('refunded');
+  await page.getByRole('button', { name: 'Aplicar filtros' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Nenhum pagamento encontrado' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Limpar filtros' }).click();
+  await expect(
+    page.getByRole('cell', { name: 'Jornada de teste no navegador' }),
+  ).toBeVisible();
+  for (const query of [
+    'page=1&page=2',
+    'status=confirmed',
+    'method=boleto',
+    'from=2026-02-30T03:00:00Z',
+    'ownerId=alheio',
+  ]) {
+    const response = await page.request.get(`/api/payments?${query}`, {
+      headers: { 'x-browser-client': '1' },
+    });
+    expect(response.status()).toBe(400);
+  }
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: info.outputPath('filtros-financeiros.png'),
+    fullPage: true,
+  });
+});
+
 test.afterEach(async ({ request }) => {
   await control(request, 'cleanup');
 });
