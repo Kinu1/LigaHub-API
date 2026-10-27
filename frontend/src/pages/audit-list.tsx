@@ -1,5 +1,5 @@
 import { Empty } from '../ui';
-import { labels, money, type Audit, type Page } from '../types';
+import { labels, money, reviewReasons, type Audit, type Page } from '../types';
 
 export const auditCategories: Record<string, string> = {
   user: 'Usuários',
@@ -10,6 +10,10 @@ export const auditCategories: Record<string, string> = {
 };
 
 const actions: Record<string, string> = {
+  'registration:registration.payment_review_confirmed':
+    'Confirmação reavaliada e autorizada',
+  'registration:registration.payment_review_blocked':
+    'Confirmação reavaliada e bloqueada',
   'user:login': 'Acesso à plataforma realizado',
   'user:logout': 'Sessões de acesso encerradas',
   'user:user.created': 'Usuário criado',
@@ -62,9 +66,11 @@ const roles: Record<string, string> = {
   organizer: 'Organizador',
 };
 const reasons: Record<string, string> = {
+  ...reviewReasons,
   payment_approved: 'Pagamento aprovado',
   payment_refunded: 'Pagamento reembolsado integralmente',
-  not_submitted_before_expiration: 'Tentativa não enviada antes da expiração da reserva',
+  not_submitted_before_expiration:
+    'Tentativa não enviada antes da expiração da reserva',
   payment_charged_back: 'Pagamento devolvido por contestação',
   capacity_or_registration_unavailable:
     'Sem vaga disponível ou inscrição indisponível para confirmação',

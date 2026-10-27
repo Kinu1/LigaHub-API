@@ -51,6 +51,490 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
     searchPayment: vi.fn(),
   };
   const accounts = { accessToken: vi.fn().mockResolvedValue('token-simulado') };
+  const actor = () => ({
+    id: ownerId,
+    name: 'Dono teste',
+    email: 'owner@test.com',
+    role: 'organizer' as const,
+  });
+  async function reviewFixture() {
+    const verified = payment({
+      id: '123456',
+      date_last_updated: new Date(Date.now() - 1000).toISOString(),
+    });
+    await prisma.registration.update({
+      where: { id: registrationId },
+      data: { status: 'payment_review', reviewReason: 'capacity_full' },
+    });
+    await prisma.paymentAttempt.update({
+      where: { id: attemptId },
+      data: {
+        status: 'approved',
+        providerPaymentId: '123456',
+        providerUpdatedAt: new Date(verified.date_last_updated),
+      },
+    });
+    gateway.getPayment.mockResolvedValue(verified);
+    return verified;
+  }
+  it('organizador dono confirma e legado mantém motivo ausente na auditoria', async () => {
+    const verified = await reviewFixture();
+    const existing = await prisma.user.findFirst({
+      where: { role: 'organizer' },
+    });
+    const organizer =
+      existing ??
+      (await prisma.user.create({
+        data: {
+          id: randomUUID(),
+          name: 'Organizador',
+          email: `${randomUUID()}@test.com`,
+          role: 'organizer',
+          passwordHash: 'fake',
+        },
+      }));
+    try {
+      await prisma.academicEvent.update({
+        where: { id: eventId },
+        data: { ownerId: organizer.id },
+      });
+      await prisma.registration.update({
+        where: { id: registrationId },
+        data: { reviewReason: null },
+      });
+      // Uma nova aprovação não inventa motivo legado nem confirma a revisão automaticamente.
+      await service.applyPayment(attemptId, {
+        ...verified,
+        date_last_updated: new Date().toISOString(),
+      });
+      expect(
+        await prisma.registration.findUniqueOrThrow({
+          where: { id: registrationId },
+        }),
+      ).toMatchObject({ status: 'payment_review', reviewReason: null });
+      gateway.getPayment.mockResolvedValue({
+        ...verified,
+        date_last_updated: new Date(Date.now() + 100).toISOString(),
+      });
+      await service.confirmPaymentReview(registrationId, {
+        ...actor(),
+        id: organizer.id,
+      });
+      expect(
+        await prisma.auditLog.findFirst({
+          where: {
+            entityId: registrationId,
+            action: 'registration.payment_review_confirmed',
+          },
+        }),
+      ).toMatchObject({
+        actorId: organizer.id,
+        metadata: { reason: 'reason_not_recorded' },
+      });
+    } finally {
+      await prisma.academicEvent.update({
+        where: { id: eventId },
+        data: { ownerId },
+      });
+      await prisma.auditLog.deleteMany({
+        where: { actorId: organizer.id, entityId: registrationId },
+      });
+      if (!existing) await prisma.user.delete({ where: { id: organizer.id } });
+    }
+  });
+  it.each(['refunded', 'charged_back'])(
+    'não ressuscita pagamento terminal persistido %s',
+    async (status) => {
+      await reviewFixture();
+      await prisma.paymentAttempt.update({
+        where: { id: attemptId },
+        data: { status },
+      });
+      await expect(
+        service.confirmPaymentReview(registrationId, actor()),
+      ).rejects.toThrow('único');
+      expect(gateway.getPayment).not.toHaveBeenCalled();
+      expect(
+        await prisma.emailOutbox.count({ where: { registrationId } }),
+      ).toBe(0);
+    },
+  );
+  it('reavalia com autorização, resposta segura e uma única auditoria/outbox', async () => {
+    await reviewFixture();
+    const result = await service.confirmPaymentReview(registrationId, actor());
+    expect(result).toEqual({
+      id: registrationId,
+      status: 'confirmed',
+      reviewReason: null,
+    });
+    expect(await service.confirmPaymentReview(registrationId, actor())).toEqual(
+      result,
+    );
+    expect(gateway.getPayment).toHaveBeenCalledTimes(1);
+    expect(gateway.createPayment).not.toHaveBeenCalled();
+    expect(await prisma.emailOutbox.count({ where: { registrationId } })).toBe(
+      1,
+    );
+    const audits = await prisma.auditLog.findMany({
+      where: {
+        entityId: registrationId,
+        action: 'registration.payment_review_confirmed',
+      },
+    });
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({
+      actorId: ownerId,
+      metadata: { paymentId: attemptId, reason: 'capacity_full' },
+    });
+  });
+  it('organizador alheio e ator inexistente não consultam o gateway', async () => {
+    await reviewFixture();
+    const existing = await prisma.user.findFirst({
+      where: { role: 'organizer' },
+    });
+    const stranger =
+      existing ??
+      (await prisma.user.create({
+        data: {
+          id: randomUUID(),
+          name: 'Outro',
+          email: `${randomUUID()}@test.com`,
+          role: 'organizer',
+          passwordHash: 'fake',
+        },
+      }));
+    try {
+      await expect(
+        service.confirmPaymentReview(registrationId, {
+          ...actor(),
+          id: stranger.id,
+        }),
+      ).rejects.toThrow('não pode');
+      await expect(
+        service.confirmPaymentReview(registrationId, {
+          ...actor(),
+          id: randomUUID(),
+        }),
+      ).rejects.toThrow('não pode');
+      expect(gateway.getPayment).not.toHaveBeenCalled();
+      expect(accounts.accessToken).not.toHaveBeenCalled();
+    } finally {
+      if (!existing) await prisma.user.delete({ where: { id: stranger.id } });
+    }
+  });
+  it.each(['reserved', 'expired', 'canceled', 'other'])(
+    'recusa revisão de %s antes de consultar o provedor',
+    async (status) => {
+      await reviewFixture();
+      const before = await prisma.registration.update({
+        where: { id: registrationId },
+        data: { status, reviewReason: null },
+      });
+      await expect(
+        service.confirmPaymentReview(registrationId, actor()),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(gateway.getPayment).not.toHaveBeenCalled();
+      expect(
+        await prisma.registration.findUniqueOrThrow({
+          where: { id: registrationId },
+        }),
+      ).toEqual(before);
+      expect(
+        await prisma.emailOutbox.count({ where: { registrationId } }),
+      ).toBe(0);
+    },
+  );
+  it.each([
+    ['participant_cancellation_requested', 'solicitou'],
+    ['registration_suspended', 'suspensa'],
+    ['owner_inactive', 'inativo'],
+    ['event_unpublished', 'publicado'],
+    ['event_started', 'começou'],
+    ['capacity_full', 'vagas'],
+  ])(
+    'bloqueia com motivo específico e auditoria manual: %s',
+    async (reason, message) => {
+      await reviewFixture();
+      if (reason === 'participant_cancellation_requested')
+        await prisma.registration.update({
+          where: { id: registrationId },
+          data: { cancellationRequestedAt: new Date() },
+        });
+      if (reason === 'registration_suspended')
+        await prisma.registration.update({
+          where: { id: registrationId },
+          data: { suspendedAt: new Date() },
+        });
+      if (reason === 'owner_inactive') {
+        // Um administrador ativo pode reavaliar o evento de um responsável inativo.
+        await prisma.user.update({
+          where: { id: ownerId },
+          data: { active: false },
+        });
+      }
+      if (reason === 'event_unpublished')
+        await prisma.academicEvent.update({
+          where: { id: eventId },
+          data: { status: 'draft' },
+        });
+      if (reason === 'event_started')
+        await prisma.academicEvent.update({
+          where: { id: eventId },
+          data: { startsAt: new Date(0) },
+        });
+      if (reason === 'capacity_full')
+        await prisma.registration.create({
+          data: {
+            eventId,
+            name: 'Reserva vigente',
+            email: 'reserved@test.com',
+            answers: {},
+            formSnapshot: [],
+            priceInCents: 1000,
+            reservationExpiresAt: new Date(Date.now() + 60000),
+            manageTokenHash: 'fake',
+          },
+        });
+      const admin =
+        reason === 'owner_inactive'
+          ? await prisma.user.create({
+              data: {
+                id: randomUUID(),
+                name: 'Admin',
+                email: `${randomUUID()}@test.com`,
+                role: 'admin',
+                passwordHash: 'fake',
+              },
+            })
+          : null;
+      try {
+        await expect(
+          service.confirmPaymentReview(
+            registrationId,
+            admin ? { ...actor(), id: admin.id, role: 'admin' } : actor(),
+          ),
+        ).rejects.toThrow(message);
+        const stored = await prisma.registration.findUniqueOrThrow({
+          where: { id: registrationId },
+        });
+        expect(stored.status).not.toBe('confirmed');
+        expect(stored.reviewReason).toBe(reason);
+        expect(
+          await prisma.emailOutbox.count({ where: { registrationId } }),
+        ).toBe(0);
+        expect(
+          await prisma.auditLog.findFirst({
+            where: {
+              entityId: registrationId,
+              action: 'registration.payment_review_blocked',
+            },
+          }),
+        ).toMatchObject({
+          actorId: admin?.id ?? ownerId,
+          metadata: { reason, paymentId: attemptId },
+        });
+      } finally {
+        if (admin) {
+          await prisma.auditLog.deleteMany({ where: { actorId: admin.id } });
+          await prisma.user.delete({ where: { id: admin.id } });
+        }
+      }
+    },
+  );
+  it.each(['refunded', 'charged_back', 'in_mediation', 'pending'])(
+    'não confirma quando o provedor retorna %s',
+    async (status) => {
+      const verified = await reviewFixture();
+      gateway.getPayment.mockResolvedValue({
+        ...verified,
+        status,
+        date_last_updated: new Date().toISOString(),
+      });
+      await expect(
+        service.confirmPaymentReview(registrationId, actor()),
+      ).rejects.toThrow('provedor');
+      const stored = await prisma.registration.findUniqueOrThrow({
+        where: { id: registrationId },
+      });
+      expect(stored.status).toBe(
+        ['refunded', 'charged_back'].includes(status)
+          ? 'canceled'
+          : 'payment_review',
+      );
+      expect(
+        await prisma.emailOutbox.count({ where: { registrationId } }),
+      ).toBe(0);
+      if (['refunded', 'charged_back', 'in_mediation'].includes(status))
+        expect(
+          (
+            await prisma.paymentAttempt.findUniqueOrThrow({
+              where: { id: attemptId },
+            })
+          ).status,
+        ).toBe(status);
+    },
+  );
+  it('falha do provedor não confirma; resposta antiga não supera timestamp persistido', async () => {
+    const verified = await reviewFixture();
+    gateway.getPayment.mockRejectedValueOnce(
+      new Error('timeout e segredo interno'),
+    );
+    await expect(
+      service.confirmPaymentReview(registrationId, actor()),
+    ).rejects.toThrow('Não foi possível consultar');
+    gateway.getPayment.mockResolvedValue({
+      ...verified,
+      date_last_updated: new Date(0).toISOString(),
+    });
+    await expect(
+      service.confirmPaymentReview(registrationId, actor()),
+    ).rejects.toThrow('provedor');
+    expect(await prisma.emailOutbox.count({ where: { registrationId } })).toBe(
+      0,
+    );
+  });
+  it('rejeita divergência de identidade e mediação ambígua sem criar cobrança', async () => {
+    const verified = await reviewFixture();
+    gateway.getPayment.mockResolvedValue({ ...verified, collector_id: '999' });
+    await expect(
+      service.confirmPaymentReview(registrationId, actor()),
+    ).rejects.toThrow('não corresponde');
+    await prisma.paymentAttempt.create({
+      data: {
+        registrationId,
+        accountId,
+        idempotencyKey: randomUUID(),
+        requestHash,
+        method: 'pix',
+        installments: 1,
+        amountInCents: 1000,
+        status: 'in_mediation',
+      },
+    });
+    gateway.getPayment.mockClear();
+    await expect(
+      service.confirmPaymentReview(registrationId, actor()),
+    ).rejects.toThrow('único');
+    expect(gateway.getPayment).not.toHaveBeenCalled();
+    expect(gateway.createPayment).not.toHaveBeenCalled();
+  });
+  it.each(['registration', 'payment'])(
+    'impede confirmação se %s mudou durante a consulta',
+    async (kind) => {
+      const verified = await reviewFixture();
+      gateway.getPayment.mockImplementationOnce(async () => {
+        if (kind === 'registration')
+          await prisma.registration.update({
+            where: { id: registrationId },
+            data: { suspendedAt: new Date() },
+          });
+        else
+          await prisma.paymentAttempt.update({
+            where: { id: attemptId },
+            data: { status: 'refunded', providerUpdatedAt: new Date() },
+          });
+        return verified;
+      });
+      await expect(
+        service.confirmPaymentReview(registrationId, actor()),
+      ).rejects.toThrow('mudou');
+      expect(
+        await prisma.emailOutbox.count({ where: { registrationId } }),
+      ).toBe(0);
+    },
+  );
+  it('duas reavaliações concorrentes respeitam a última vaga', async () => {
+    const verified = await reviewFixture();
+    const second = await prisma.registration.create({
+      data: {
+        eventId,
+        name: 'Segundo',
+        email: 'second@test.com',
+        answers: {},
+        formSnapshot: [],
+        priceInCents: 1000,
+        status: 'payment_review',
+        reviewReason: 'capacity_full',
+        reservationExpiresAt: new Date(0),
+        manageTokenHash: 'fake',
+      },
+    });
+    const secondAttempt = await prisma.paymentAttempt.create({
+      data: {
+        registrationId: second.id,
+        accountId,
+        idempotencyKey: randomUUID(),
+        requestHash,
+        method: 'pix',
+        installments: 1,
+        amountInCents: 1000,
+        status: 'approved',
+        providerPaymentId: '654321',
+        providerUpdatedAt: new Date(verified.date_last_updated),
+      },
+    });
+    gateway.getPayment.mockImplementation(async (_token, id) =>
+      id === '654321'
+        ? { ...verified, id, external_reference: secondAttempt.id }
+        : verified,
+    );
+    const results = await Promise.allSettled([
+      service.confirmPaymentReview(registrationId, actor()),
+      service.confirmPaymentReview(second.id, actor()),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(
+      await prisma.registration.count({
+        where: { eventId, status: 'confirmed' },
+      }),
+    ).toBe(1);
+    expect(
+      await prisma.emailOutbox.count({ where: { registration: { eventId } } }),
+    ).toBe(1);
+  });
+  it('endpoint recusa participante e UUID inválido e devolve no-store ao autorizado', async () => {
+    await reviewFixture();
+    const module = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(PaymentsService)
+      .useValue(service)
+      .compile();
+    const app = module.createNestApplication();
+    try {
+      await app.init();
+      const server = app.getHttpServer() as Parameters<typeof request>[0];
+      await request(server)
+        .post(`/registrations/${registrationId}/payment-review/confirmation`)
+        .set('x-registration-token', 'token-participante')
+        .expect(401);
+      const { JwtService } = await import('@nestjs/jwt');
+      const token = app.get(JwtService).sign(
+        { sub: ownerId, version: 0 },
+        {
+          secret: process.env.JWT_SECRET,
+          issuer: 'ligahub-api',
+          audience: 'ligahub',
+          algorithm: 'HS256',
+          expiresIn: '15m',
+        },
+      );
+      await request(server)
+        .post('/registrations/not-uuid/payment-review/confirmation')
+        .auth(token, { type: 'bearer' })
+        .expect(400);
+      const result = await request(server)
+        .post(`/registrations/${registrationId}/payment-review/confirmation`)
+        .auth(token, { type: 'bearer' })
+        .expect(201);
+      expect(result.headers['cache-control']).toBe('no-store');
+      expect(Object.keys(result.body).sort()).toEqual([
+        'id',
+        'reviewReason',
+        'status',
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
   it('deve conservar a requisição criptografada de Orders após timeout e repetir exatamente os mesmos dados', async () => {
     vi.stubEnv(
       'MERCADO_PAGO_NOTIFICATION_URL',

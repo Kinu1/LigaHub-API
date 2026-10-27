@@ -34,6 +34,16 @@ export class PaymentsController {
     private readonly accounts: PaymentAccountsService,
   ) {}
 
+  @Post('registrations/:id/payment-review/confirmation')
+  @Header('Cache-Control', 'no-store')
+  @Roles('admin', 'organizer')
+  confirmReview(
+    @Param('id', registrationIdPipe) id: string,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.payments.confirmPaymentReview(id, actor);
+  }
+
   @Post('payments/accounts/authorize')
   @Roles('admin', 'organizer')
   authorize(

@@ -32,6 +32,7 @@ import {
 } from '../ui';
 import {
   money,
+  reviewReasonText,
   date,
   formatCpf,
   type Event,
@@ -626,6 +627,11 @@ export function EventDetails() {
                                 <td data-label="Estado">
                                   <div>
                                     <Status value={r.status} />
+                                    {r.status === 'payment_review' && (
+                                      <p className="mt-2 text-xs">
+                                        {reviewReasonText(r.reviewReason)}
+                                      </p>
+                                    )}
                                     {r.cancellationRequestedAt && (
                                       <p
                                         className={`mt-2 text-xs ${r.status === 'canceled' ? 'text-zinc-500' : 'text-amber-800'}`}
@@ -646,6 +652,22 @@ export function EventDetails() {
                                   {date(r.reservationExpiresAt)}
                                 </td>
                                 <td data-label="Ação">
+                                  {r.status === 'payment_review' && (
+                                    <Confirm
+                                      title="Reavaliar confirmação?"
+                                      description="Consulta o pagamento e confirma apenas se todas as regras permitirem. Não estorna. Ajustes financeiros devem ser feitos na conta do provedor e depois sincronizados."
+                                      onConfirm={async () => {
+                                        await api(
+                                          `/registrations/${r.id}/payment-review/confirmation`,
+                                          { method: 'POST' },
+                                          false,
+                                        );
+                                        await invalidate();
+                                      }}
+                                    >
+                                      Reavaliar confirmação
+                                    </Confirm>
+                                  )}
                                   <Confirm
                                     title={
                                       r.suspendedAt

@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import axe from 'axe-core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { EventDetails, FinancePage } from './panel';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -13,6 +15,126 @@ vi.mock('../auth', () => ({
   useAuth: () => ({ user: { id: 'owner', role: 'organizer' } }),
 }));
 beforeEach(() => vi.resetAllMocks());
+
+describe('Resolução de revisão de pagamento', () => {
+  it.each(['capacity_full', null])(
+    'explica motivo %s e confirma com modal acessível sem replay',
+    async (reason) => {
+      Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+        configurable: true,
+        value: function () {
+          this.setAttribute('open', '');
+        },
+      });
+      Object.defineProperty(HTMLDialogElement.prototype, 'close', {
+        configurable: true,
+        value: function () {
+          this.removeAttribute('open');
+        },
+      });
+      let finish: (() => void) | undefined;
+      const pending = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      let fail = true;
+      vi.mocked(api).mockImplementation(async (path) => {
+        if (path.endsWith('/payment-review/confirmation')) {
+          if (fail)
+            throw new Error(
+              'Todas as vagas estão ocupadas. Libere uma vaga e reavalie.',
+            );
+          await pending;
+          return { id: 'review', status: 'confirmed', reviewReason: null };
+        }
+        if (path.includes('/registrations?'))
+          return {
+            items: [
+              {
+                id: 'review',
+                answers: {},
+                reservationExpiresAt: '2026-10-27T18:00:00Z',
+                name: 'Em revisão',
+                email: 'review@test.com',
+                status: 'payment_review',
+                reviewReason: reason,
+                cancellationRequestedAt: null,
+              },
+            ],
+            total: 1,
+          };
+        return {
+          id: 'event',
+          publicId: 'public',
+          title: 'Evento',
+          status: 'closed',
+          form: [],
+          priceInCents: 1000,
+          capacity: 1,
+        };
+      });
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const invalidate = vi.spyOn(client, 'invalidateQueries');
+      render(
+        <QueryClientProvider client={client}>
+          <MemoryRouter initialEntries={['/events/event']}>
+            <Routes>
+              <Route path="/events/:id" element={<EventDetails />} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+      const user = userEvent.setup();
+      expect(
+        await screen.findByText(
+          reason
+            ? /ocupadas por confirmações/
+            : 'Motivo não registrado; consulte o pagamento antes de resolver',
+        ),
+      ).toBeTruthy();
+      await user.click(
+        screen.getByRole('button', { name: 'Reavaliar confirmação' }),
+      );
+      const dialog = screen.getByRole('dialog', {
+        name: 'Reavaliar confirmação?',
+      });
+      expect(within(dialog).getByText(/Não estorna/)).toBeTruthy();
+      expect(document.activeElement).toBe(
+        within(dialog).getByRole('button', { name: 'Voltar' }),
+      );
+      expect(
+        (
+          await axe.run(dialog, {
+            rules: { 'color-contrast': { enabled: false } },
+          })
+        ).violations,
+      ).toEqual([]);
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Confirmar' }),
+      );
+      expect(await within(dialog).findByRole('alert')).toHaveProperty(
+        'textContent',
+        'Todas as vagas estão ocupadas. Libere uma vaga e reavalie.',
+      );
+      fail = false;
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Confirmar' }),
+      );
+      expect(
+        within(dialog).getByRole('button', { name: 'Aguarde…' }),
+      ).toHaveProperty('disabled', true);
+      expect(api).toHaveBeenCalledWith(
+        '/registrations/review/payment-review/confirmation',
+        { method: 'POST' },
+        false,
+      );
+      finish!();
+      await waitFor(() => expect(invalidate).toHaveBeenCalled());
+      vi.restoreAllMocks();
+    },
+  );
+});
 
 describe('Solicitações de cancelamento no painel', () => {
   it('distingue solicitação aberta de histórico concluído e cancelamento sem solicitação', async () => {
