@@ -57,6 +57,98 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
     email: 'owner@test.com',
     role: 'organizer' as const,
   });
+  it('filtra antes de paginar e contar, com limites de data e isolamento do organizador', async () => {
+    const start = '2026-10-27T03:00:00Z',
+      end = '2026-10-28T03:00:00Z';
+    await prisma.academicEvent.update({
+      where: { id: eventId },
+      data: { title: 'Jornada financeira' },
+    });
+    await prisma.paymentAttempt.update({
+      where: { id: attemptId },
+      data: {
+        status: 'approved',
+        method: 'card',
+        installments: 3,
+        createdAt: new Date(start),
+      },
+    });
+    await prisma.paymentAttempt.createMany({
+      data: Array.from({ length: 52 }, (_, index) => ({
+        registrationId,
+        accountId,
+        idempotencyKey: randomUUID(),
+        requestHash: 'filtro-ficticio',
+        method: 'card',
+        installments: 3,
+        amountInCents: 1000,
+        status: 'approved',
+        createdAt: new Date(
+          index === 50
+            ? end
+            : index === 51
+              ? '2026-10-27T02:59:59.999Z'
+              : '2026-10-27T12:00:00Z',
+        ),
+      })),
+    });
+    const filters = {
+      eventId,
+      eventSearch: 'JORNADA',
+      status: 'approved',
+      method: 'card',
+      from: start,
+      to: end,
+    };
+    const first = await service.history(actor(), 1, true, filters);
+    const second = await service.history(actor(), 2, true, filters);
+    expect(first).toMatchObject({ total: 51, page: 1, limit: 50 });
+    expect(second).toMatchObject({
+      total: 51,
+      page: 2,
+      items: [
+        { id: attemptId, event: { id: eventId, title: 'Jornada financeira' } },
+      ],
+    });
+    if (Array.isArray(first) || Array.isArray(second))
+      throw new Error('Esperava paginação.');
+    expect(first.items).toHaveLength(50);
+    expect(
+      new Set([...first.items, ...second.items].map((item) => item.id)).size,
+    ).toBe(51);
+    expect(first.items.map((item) => item.id)).toEqual(
+      first.items
+        .map((item) => item.id)
+        .sort()
+        .reverse(),
+    );
+    expect(first.items[0]).not.toHaveProperty('payerEncrypted');
+    expect(first.items[0]).not.toHaveProperty('account');
+    expect(
+      await service.history({ ...actor(), id: randomUUID() }, 1, true, filters),
+    ).toMatchObject({ items: [], total: 0 });
+    expect(
+      await service.history({ ...actor(), role: 'admin' }, 1, true, filters),
+    ).toMatchObject({ total: 51 });
+    expect(
+      await service.history(actor(), 1, true, { ...filters, method: 'pix' }),
+    ).toMatchObject({ total: 0 });
+    expect(
+      await service.history(actor(), 1, true, {
+        ...filters,
+        status: 'refunded',
+      }),
+    ).toMatchObject({ total: 0 });
+    expect(
+      await service.history(actor(), 1, true, {
+        ...filters,
+        eventId: randomUUID(),
+      }),
+    ).toMatchObject({ total: 0 });
+    const legacy = await service.history(actor(), 2, false, filters);
+    expect(Array.isArray(legacy)).toBe(true);
+    expect(legacy).toHaveLength(1);
+  });
   async function reviewFixture() {
     const verified = payment({
       id: '123456',

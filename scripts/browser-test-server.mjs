@@ -122,6 +122,17 @@ const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
   .compile();
 const app = moduleRef.createNestApplication({ logger: ['error'] });
 const prisma = app.get(PrismaService);
+// O histórico do navegador nunca lê pagamentos de usuários do banco compartilhado.
+const payments = app.get(PaymentsService);
+const fixtureHistory = payments.history.bind(payments);
+payments.history = (actor, ...args) => {
+  if (!fixture)
+    throw new Error('Crie uma fixture antes de consultar o histórico.');
+  return fixtureHistory(
+    { ...actor, id: fixture.ownerId, role: 'organizer' },
+    ...args,
+  );
+};
 const express = app.getHttpAdapter().getInstance();
 const control = (method, path, handler) =>
   express[method](path, async (req, res) => {

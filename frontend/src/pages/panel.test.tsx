@@ -218,6 +218,66 @@ describe('Solicitações de cancelamento no painel', () => {
 });
 
 describe('Histórico financeiro', () => {
+  it('preserva filtros ao paginar e volta à primeira página ao aplicar ou limpar', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api).mockImplementation(async (path) =>
+      path.startsWith('/payments?')
+        ? {
+            items: [
+              {
+                id: 'pagamento',
+                method: 'card',
+                status: 'approved',
+                amountInCents: 1000,
+                installments: 2,
+                createdAt: '2026-10-27T12:00:00Z',
+                event: { id: 'evento', title: 'Jornada financeira' },
+                payer: null,
+              },
+            ],
+            total: 51,
+            page: Number(
+              new URL(path, 'http://localhost').searchParams.get('page'),
+            ),
+            limit: 50,
+          }
+        : { connected: true },
+    );
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <FinancePage />
+      </QueryClientProvider>,
+    );
+    await screen.findByRole('cell', { name: 'Jornada financeira' });
+    await user.click(screen.getByRole('button', { name: 'Próxima página' }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/payments?page=2'));
+    await user.type(screen.getByLabelText('Evento'), 'Jornada');
+    await user.selectOptions(
+      screen.getByLabelText('Forma de pagamento'),
+      'card',
+    );
+    await user.click(screen.getByRole('button', { name: 'Aplicar filtros' }));
+    await waitFor(() =>
+      expect(api).toHaveBeenCalledWith(
+        '/payments?page=1&eventSearch=Jornada&method=card',
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: 'Próxima página' }));
+    await waitFor(() =>
+      expect(api).toHaveBeenCalledWith(
+        '/payments?page=2&eventSearch=Jornada&method=card',
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: 'Limpar filtros' }));
+    await waitFor(() => expect(screen.getByText(/Página 1 de 2/)).toBeTruthy());
+    expect((screen.getByLabelText('Evento') as HTMLInputElement).value).toBe(
+      '',
+    );
+  });
   it('mostra nome completo e CPF do pagador e explicita registros antigos sem dados', async () => {
     const payment = {
       id: 'p',
@@ -226,6 +286,7 @@ describe('Histórico financeiro', () => {
       amountInCents: 2000,
       installments: 1,
       createdAt: '2026-10-12T19:50:00Z',
+      event: { id: 'evento', title: 'Jornada financeira' },
     };
     vi.mocked(api).mockImplementation(async (path) =>
       path.startsWith('/payments?')
