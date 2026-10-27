@@ -1,3 +1,4 @@
+import type { AccessEmailProcessor } from '../notifications/access-email.processor.js';
 import 'reflect-metadata';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext } from '@nestjs/common';
@@ -107,7 +108,11 @@ describe('Flags e timers', () => {
     vi.stubEnv('EMAIL_DELIVERY_ENABLED', 'true');
     vi.stubEnv('PAYMENT_RECONCILIATION_ENABLED', 'true');
     const interval = vi.spyOn(globalThis, 'setInterval');
-    const mail = new EmailOutboxService(prisma, {} as EmailGateway);
+    const mail = new EmailOutboxService(
+      prisma,
+      {} as EmailGateway,
+      {} as AccessEmailProcessor,
+    );
     const pay = new PaymentsService(
       prisma,
       {} as PaymentGateway,
@@ -125,12 +130,15 @@ describe('Flags e timers', () => {
       Buffer.alloc(32, 1).toString('base64'),
     );
     const transaction = vi.fn().mockResolvedValue(null);
+    const processAccess = vi.fn().mockResolvedValue(undefined);
     const manualMail = new EmailOutboxService(
       { $transaction: transaction } as unknown as PrismaService,
       {} as EmailGateway,
+      { processBatch: processAccess } as unknown as AccessEmailProcessor,
     );
     await manualMail.processBatch();
     expect(transaction).toHaveBeenCalledOnce();
+    expect(processAccess).toHaveBeenCalledExactlyOnceWith(undefined);
     const findMany = vi.fn().mockResolvedValue([]);
     const manual = new PaymentsService(
       { paymentAttempt: { findMany } } as unknown as PrismaService,

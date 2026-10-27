@@ -98,6 +98,7 @@ model RegistrationAccessLink {
   tokenHash String @unique
   expiresAt DateTime
   usedAt DateTime?
+  email AccessEmailOutbox?
   @@map("registration_access_links")
 }
 
@@ -207,4 +208,25 @@ model BackgroundJob {
   failureCount Int @default(0)
 
   @@map("background_jobs")
+}
+
+model AccessEmailOutbox {
+  id String @id @default(uuid()) @db.Uuid
+  linkId String @unique @db.Uuid
+  link RegistrationAccessLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  payloadEncrypted String?
+  status String @default("pending")
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  firstAttemptAt DateTime?
+  leaseId String? @db.Uuid
+  leaseExpiresAt DateTime?
+  providerId String?
+  sentAt DateTime?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  @@index([status, nextAttemptAt])
+  @@index([status, leaseExpiresAt])
+  @@index([expiresAt])
+  @@map("access_email_outbox")
 }

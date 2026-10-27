@@ -1,3 +1,4 @@
+import { AccessEmailProcessor } from './access-email.processor.js';
 import {
   Inject,
   Injectable,
@@ -24,6 +25,8 @@ export class EmailOutboxService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(EmailGateway) private readonly gateway: EmailGateway,
+    @Inject(AccessEmailProcessor)
+    private readonly accessEmails: AccessEmailProcessor,
   ) {}
   onModuleInit() {
     if (
@@ -64,6 +67,7 @@ export class EmailOutboxService implements OnModuleInit, OnModuleDestroy {
     });
     this.busy = true;
     try {
+      await this.accessEmails.processBatch(registrationId);
       for (let i = 0; i < 10; i++) {
         const item = await this.claim(registrationId);
         if (!item) break;

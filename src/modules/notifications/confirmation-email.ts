@@ -59,19 +59,7 @@ export function renderConfirmation(payload: {
   location: string;
   token: string;
 }): EmailMessage {
-  const base = new URL(process.env.FRONTEND_URL ?? '');
-  if (
-    (base.protocol !== 'https:' &&
-      !(base.protocol === 'http:' && base.hostname === 'localhost')) ||
-    base.username ||
-    base.password ||
-    base.search ||
-    base.hash
-  )
-    throw new Error('Configure FRONTEND_URL com a origem do frontend.');
-  const from = process.env.EMAIL_FROM;
-  if (!from || /[\r\n]/.test(from))
-    throw new Error('Configure EMAIL_FROM com o remetente verificado.');
+  const { base, from } = emailRenderConfig();
   const link = new URL(`/inscricoes/${payload.registrationId}`, base);
   link.hash = new URLSearchParams({ token: payload.token }).toString();
   const date = payload.startsAt
@@ -85,4 +73,21 @@ export function renderConfirmation(payload: {
     subject: 'Sua vaga no evento está confirmada — LigaHub',
     text: `Olá, ${payload.name}!\n\nSeu pagamento foi aprovado e sua vaga no evento ${payload.eventTitle} está confirmada.\nData: ${date}\nLocal: ${payload.location || 'A confirmar'}\n\nConsulte a situação atual da sua inscrição: ${link.toString()}\n\nEste link é pessoal. Não o compartilhe. Ele permite consultar sua inscrição por 90 dias após a confirmação.\nLigaHub`,
   };
+}
+
+export function emailRenderConfig() {
+  const base = new URL(process.env.FRONTEND_URL ?? '');
+  if (
+    (base.protocol !== 'https:' &&
+      !(base.protocol === 'http:' && base.hostname === 'localhost')) ||
+    base.username ||
+    base.password ||
+    base.search ||
+    base.hash
+  )
+    throw new Error('Configure FRONTEND_URL com a origem do frontend.');
+  const from = process.env.EMAIL_FROM;
+  if (!from || /[\r\n]/.test(from))
+    throw new Error('Configure EMAIL_FROM com o remetente verificado.');
+  return { base, from };
 }
