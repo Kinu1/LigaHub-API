@@ -143,6 +143,8 @@ model PaymentAttempt {
   providerPaymentId String?        @unique
   providerApi       String         @default("payments")
   providerRequestEncrypted String?
+  // Nulo preserva a incerteza dos registros anteriores à marcação de envio.
+  submissionStarted Boolean?
   payerEncrypted    String?
   method            String
   installments      Int
