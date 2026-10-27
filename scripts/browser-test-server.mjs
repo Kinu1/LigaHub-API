@@ -62,6 +62,7 @@ const messages = [],
   keys = new Map();
 let fixture,
   loseNextResponse = false,
+  rejectNextPayment = false,
   createdCharges = 0;
 const gateway = {
   async createPayment(_token, key, body) {
@@ -72,16 +73,23 @@ const gateway = {
       collector_id: '900000000',
       currency_id: 'BRL',
       transaction_amount: body.transaction_amount,
-      status: 'pending',
-      status_detail: 'waiting_payment',
+      status: rejectNextPayment ? 'rejected' : 'pending',
+      status_detail: rejectNextPayment
+        ? 'cc_rejected_other_reason'
+        : 'waiting_payment',
       date_last_updated: new Date().toISOString(),
-      payment_method_id: 'pix',
-      payment_type_id: 'bank_transfer',
-      installments: 1,
-      point_of_interaction: {
-        transaction_data: { qr_code: 'pix-ficticio-sem-cobranca' },
-      },
+      payment_method_id: body.payment_method_id,
+      payment_type_id:
+        body.payment_method_id === 'pix' ? 'bank_transfer' : 'credit_card',
+      installments: body.installments,
+      point_of_interaction:
+        body.payment_method_id === 'pix'
+          ? {
+              transaction_data: { qr_code: 'pix-ficticio-sem-cobranca' },
+            }
+          : undefined,
     };
+    rejectNextPayment = false;
     remote.set(payment.id, payment);
     keys.set(key, payment.id);
     createdCharges++;
@@ -183,13 +191,16 @@ async function cleanup() {
     where: { ownerId: fixture.ownerId },
   });
   await prisma.academicEvent.deleteMany({ where: { id: fixture.eventId } });
-  await prisma.browserSession.deleteMany({ where: { userId: fixture.ownerId } });
+  await prisma.browserSession.deleteMany({
+    where: { userId: fixture.ownerId },
+  });
   await prisma.user.deleteMany({ where: { id: fixture.ownerId } });
   fixture = undefined;
   messages.length = 0;
   remote.clear();
   keys.clear();
   createdCharges = 0;
+  rejectNextPayment = false;
   await unlink('.test-temp/browser-fixture.json').catch(() => undefined);
 }
 await mkdir('.test-temp', { recursive: true });
@@ -296,7 +307,19 @@ control('post', '/__browser/failed-email', async () => {
     select: { id: true, registrationId: true },
   });
 });
-control('get', '/__browser/charges', async () => ({ createdCharges }));
+control('get', '/__browser/charges', async () => ({
+  createdCharges,
+  payments: [...remote.values()].map((payment) => ({
+    method: payment.payment_type_id === 'bank_transfer' ? 'pix' : 'card',
+    installments: payment.installments,
+    amount: payment.transaction_amount,
+    status: payment.status,
+  })),
+}));
+control('post', '/__browser/reject-payment', async () => {
+  rejectNextPayment = true;
+  return { configured: true };
+});
 control('post', '/__browser/lose-response', async () => {
   loseNextResponse = true;
   return { configured: true };
