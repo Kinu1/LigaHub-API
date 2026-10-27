@@ -236,6 +236,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         data: {
           id: attemptId,
           providerApi: 'orders',
+          submissionStarted: false,
           payerEncrypted: encryptCredential(JSON.stringify(payer)),
           providerRequestEncrypted: encryptCredential(
             JSON.stringify(providerRequest),
@@ -264,6 +265,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     });
     if (!unresolved.includes(attempt.status))
       return this.publicAttempt(attempt);
+    const expiredAttempt = await this.expireUnsubmitted(attempt);
+    if (expiredAttempt) return this.publicAttempt(expiredAttempt);
     const accessToken = await this.accounts.accessToken(attempt.accountId);
     const api = this.providerApi(attempt);
     let payment = attempt.providerPaymentId
@@ -318,6 +321,24 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           if (input.issuerId) request.issuer_id = input.issuerId;
         }
       }
+      const terminal = await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM academic_events WHERE id = ${registration.eventId}::uuid FOR UPDATE`;
+        const latest = await tx.paymentAttempt.findUniqueOrThrow({
+          where: { id: attempt.id },
+        });
+        if (!unresolved.includes(latest.status)) return latest;
+        const latestRegistration = await tx.registration.findUniqueOrThrow({
+          where: { id: registrationId },
+          include: { event: { include: { owner: true } } },
+        });
+        this.assertCanPay(latestRegistration);
+        await tx.paymentAttempt.update({
+          where: { id: attempt.id },
+          data: { submissionStarted: true },
+        });
+        return null;
+      });
+      if (terminal) return this.publicAttempt(terminal);
       try {
         payment = await this.gateway.createPayment(
           accessToken,
@@ -728,6 +749,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       });
       for (const attempt of attempts) {
         try {
+          if (await this.expireUnsubmitted(attempt)) continue;
           const token = await this.accounts.accessToken(attempt.accountId);
           const api = this.providerApi(attempt);
           const payment = attempt.providerPaymentId
@@ -764,5 +786,57 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     } finally {
       this.syncing = false;
     }
+  }
+
+  private async expireUnsubmitted(
+    attempt: PaymentAttempt,
+  ): Promise<PaymentAttempt | null> {
+    if (
+      attempt.status !== 'created' ||
+      attempt.submissionStarted !== false ||
+      attempt.providerPaymentId
+    )
+      return null;
+    const registration = await this.prisma.registration.findUniqueOrThrow({
+      where: { id: attempt.registrationId },
+    });
+    if (registration.reservationExpiresAt > new Date()) return null;
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM academic_events WHERE id = ${registration.eventId}::uuid FOR UPDATE`;
+      const current = await tx.paymentAttempt.findUniqueOrThrow({
+        where: { id: attempt.id },
+      });
+      const latestRegistration = await tx.registration.findUniqueOrThrow({
+        where: { id: attempt.registrationId },
+      });
+      if (
+        current.status !== 'created' ||
+        current.submissionStarted !== false ||
+        current.providerPaymentId ||
+        latestRegistration.reservationExpiresAt > new Date()
+      )
+        return null;
+      const closed = await tx.paymentAttempt.update({
+        where: { id: current.id },
+        data: {
+          status: 'cancelled',
+          statusDetail: 'not_submitted_before_expiration',
+          providerRequestEncrypted: null,
+          lastSyncedAt: new Date(),
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          entityType: 'payment',
+          entityId: current.id,
+          action: 'payment.updated',
+          metadata: {
+            status: 'cancelled',
+            reason: 'not_submitted_before_expiration',
+          },
+        },
+      });
+      return closed;
+    });
   }
 }

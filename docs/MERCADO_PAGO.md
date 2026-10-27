@@ -6,6 +6,12 @@ O gateway traduz Orders para os estados já utilizados pela LigaHub. Uma vaga s�
 
 A requisição original fica criptografada enquanto uma criação tem resultado incerto. Uma repetição conserva a chave e o corpo original, incluindo o prazo do Pix. O conteúdo criptografado é removido quando a order é identificada ou a requisição é explicitamente recusada; tokens e CPF não são expostos no histórico. A reconciliação busca a order pela referência e pelo intervalo de criação obrigatório da Orders API.
 
+## Interrupção antes do envio
+
+Novas tentativas começam com `submissionStarted=false`. Imediatamente antes de chamar o provedor, a API marca o início do envio sob o bloqueio do evento e verifica novamente a tentativa e a disponibilidade da inscrição. Se a reserva expirar antes desse marco, a reconciliação encerra somente a tentativa comprovadamente nunca enviada, como `cancelled/not_submitted_before_expiration`, remove a requisição criptografada e registra o motivo na auditoria. O participante pode renovar a reserva se ainda houver vaga e prazo.
+
+`submissionStarted=true` indica que pode ter ocorrido envio, mesmo quando houve timeout. A ausência em uma busca não autoriza descartar essa tentativa nem criar outra cobrança. Registros anteriores à migration ficam com valor nulo, também tratado como resultado incerto. A migration adiciona uma coluna opcional e não reconstrói o histórico por suposição. Não misture instâncias antigas, que desconhecem essa marcação, com instâncias que executam a recuperação; em uma reversão, mantenha a reconciliação desativada até todas as instâncias usarem a mesma versão e os casos incertos serem revisados.
+
 ## Configuração local
 
 ### Conta fixa de teste (sem OAuth)

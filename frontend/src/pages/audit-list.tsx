@@ -62,6 +62,7 @@ const roles: Record<string, string> = {
 const reasons: Record<string, string> = {
   payment_approved: 'Pagamento aprovado',
   payment_refunded: 'Pagamento reembolsado integralmente',
+  not_submitted_before_expiration: 'Tentativa não enviada antes da expiração da reserva',
   payment_charged_back: 'Pagamento devolvido por contestação',
   capacity_or_registration_unavailable:
     'Sem vaga disponível ou inscrição indisponível para confirmação',
