@@ -8,6 +8,7 @@ import {
   Users,
   History,
   Mail,
+  Activity,
   LogOut,
   Menu,
   X,
@@ -55,6 +56,7 @@ export function Layout() {
           ['/painel/usuarios', 'Usuários', Users],
           ['/painel/auditoria', 'Auditoria', History],
           ['/painel/emails', 'Fila de e-mails', Mail],
+          ['/painel/operacao', 'Operação', Activity],
         ] as [string, string, LucideIcon][])
       : []),
   ];
