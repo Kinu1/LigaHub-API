@@ -42,3 +42,16 @@ A publicação da página e a entrega externa por e-mail ainda precisam ser veri
 O intervalo atende à API local ou um processo permanente. Para Vercel/serverless, será necessário invocar o processamento por um agendador autenticado ou executar o worker separadamente; não dependa de `setInterval` em funções efêmeras.
 
 Referências: [Enviar e-mail no Resend](https://resend.com/docs/api-reference/emails/send-email), [Idempotência no Resend](https://resend.com/docs/dashboard/emails/idempotency-keys).
+
+## Operação administrativa da outbox
+
+Somente administradores autenticados podem usar:
+
+- `GET /admin/email-outbox?status=failed&page=1&limit=20`: status obrigatório (`pending`, `processing`, `sent`, `failed` ou `skipped`), páginas a partir de 1 e limite de 1 a 100. Ordenação por criação e identificador, decrescente. Retorna `items`, `total`, `page` e `limit`; cada item contém identificadores da tarefa/inscrição, status, tentativas e datas. Não retorna payload, destinatário, token, chave, leaseId ou erros brutos. `reason` é uma classificação segura, não um diagnóstico do provedor: janela expirada, limite de tentativas ou necessidade de análise manual. Sem coluna de erro no schema, a causa histórica exata não está disponível.
+- `POST /admin/email-outbox/:id/retry`: uma tentativa imediata, sem corpo, somente para `failed`. Exige primeira tentativa conhecida há menos de 23 horas, mensagem original já preparada e válida, inscrição confirmada, não suspensa e token vigente. Itens sem primeira tentativa ou sem mensagem congelada exigem investigação; esta operação não reconstrói mensagens. Retorna identificador e status após aceite. Conflitos de segurança retornam 409; entrega desativada/falha do provedor retornam 503.
+
+A retomada preserva o payload criptografado até aceite, a primeira tentativa e a chave `confirmation/ID_ORIGINAL`; incrementa tentativas sem apagar o histórico. Não cria outra tarefa nem chave. Bloqueio transacional impede duas retomadas simultâneas; a concessão impede disputa com o worker. A autorização grava auditoria `registration.email_retry_authorized` vinculada à inscrição, com ator, ID da tarefa e número da tentativa, sem conteúdo sensível. Falha do provedor mantém `failed`, sem voltar para repetição automática. Após interrupção do processo, a concessão existente continua sujeita às regras de recuperação do worker e à janela original.
+
+Payload ilegível/inválido durante a preparação torna apenas aquele item `failed`, preserva o conteúdo para análise e permite continuar o lote. Chave ausente/malformada ou configuração de renderização inválida interrompem a rodada antes de reivindicar itens. Uma chave de tamanho válido, mas incorreta, não é distinguível de conteúdo corrompido: não restaure itens em massa; investigue a configuração antes de qualquer retomada. O endpoint não ativa entrega desativada nem contorna a seleção de provedor.
+
+Validação local: `npm.cmd run test:e2e -- test/outbox.integration.e2e-spec.ts`. O teste exige PostgreSQL, cria e remove somente suas fixtures e limita o processamento a elas. O gateway é simulado; nenhum e-mail real é enviado.
