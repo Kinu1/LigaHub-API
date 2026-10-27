@@ -42,6 +42,108 @@ async function pay(page: Page) {
   await page.getByRole('button', { name: 'Revisar pagamento Pix' }).click();
   await page.getByRole('button', { name: 'Confirmar pagamento' }).click();
 }
+async function reviewCard(page: Page, installments = '3') {
+  await page.getByRole('button', { name: 'Cartão', exact: true }).click();
+  await page
+    .getByLabel('Parcelas do cartão de teste')
+    .selectOption(installments);
+  await page.getByRole('button', { name: 'Revisar cartão de teste' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Revise o pagamento' }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(`Cartão em ${installments} parcela(s)`, { exact: false }),
+  ).toBeVisible();
+}
+
+test('cartão simulado preserva parcelas na revisão e confirma após aprovação', async ({
+  page,
+  request,
+}, info) => {
+  const fixture = await control(request, 'fixture');
+  const id = await reserve(page, fixture.publicId);
+  await reviewCard(page);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: info.outputPath('revisao-cartao.png'),
+    fullPage: true,
+  });
+  await page.getByRole('button', { name: 'Confirmar pagamento' }).click();
+  await expect(page.getByText('Pendente', { exact: true })).toBeVisible();
+  expect((await control(request, 'charges', 'GET')).payments).toEqual([
+    { method: 'card', installments: 3, amount: 25, status: 'pending' },
+  ]);
+  await control(request, `payments/${id}/approved`);
+  await page.getByRole('button', { name: 'Atualizar situação' }).click();
+  await expect(page.getByText('Confirmada', { exact: true })).toBeVisible();
+});
+
+test('cartão recusado permite nova tentativa com outra chave', async ({
+  page,
+  request,
+}) => {
+  const fixture = await control(request, 'fixture');
+  await reserve(page, fixture.publicId);
+  await control(request, 'reject-payment');
+  const keys: string[] = [];
+  page.on('request', (req) => {
+    if (req.method() === 'POST' && req.url().endsWith('/payments'))
+      keys.push(req.headers()['idempotency-key']);
+  });
+  await reviewCard(page);
+  await page.getByRole('button', { name: 'Confirmar pagamento' }).click();
+  await expect(page.getByText('Recusado', { exact: true })).toBeVisible();
+  await reviewCard(page, '2');
+  await page.getByRole('button', { name: 'Confirmar pagamento' }).click();
+  await expect(page.getByText('Pendente', { exact: true })).toBeVisible();
+  expect(keys).toHaveLength(2);
+  expect(keys[0]).toBeTruthy();
+  expect(keys[1]).not.toBe(keys[0]);
+  expect((await control(request, 'charges', 'GET')).payments).toEqual([
+    { method: 'card', installments: 3, amount: 25, status: 'rejected' },
+    { method: 'card', installments: 2, amount: 25, status: 'pending' },
+  ]);
+});
+
+test('resposta incerta de cartão repete chave e token sem nova cobrança', async ({
+  page,
+  request,
+}) => {
+  const fixture = await control(request, 'fixture');
+  await reserve(page, fixture.publicId);
+  await control(request, 'lose-response');
+  const submitted: { key: string; token: string; installments: number }[] = [];
+  page.on('request', (req) => {
+    if (req.method() === 'POST' && req.url().endsWith('/payments')) {
+      const body = req.postDataJSON();
+      submitted.push({
+        key: req.headers()['idempotency-key'],
+        token: body.cardToken,
+        installments: body.installments,
+      });
+    }
+  });
+  await reviewCard(page);
+  await page.getByRole('button', { name: 'Confirmar pagamento' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Repetir mesma tentativa' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Revisar cartão de teste' }),
+  ).toHaveCount(0);
+  await page.getByRole('button', { name: 'Repetir mesma tentativa' }).click();
+  await expect(page.getByText('Pendente', { exact: true })).toBeVisible();
+  expect(submitted).toHaveLength(2);
+  expect(submitted[0]).toEqual(submitted[1]);
+  expect(submitted[0].key).toBeTruthy();
+  expect(submitted[0].token).toMatch(/^token-ficticio-/);
+  expect(submitted[0].installments).toBe(3);
+  expect((await control(request, 'charges', 'GET')).createdCharges).toBe(1);
+});
 test.afterEach(async ({ request }) => {
   await control(request, 'cleanup');
 });
