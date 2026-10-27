@@ -131,7 +131,7 @@ export class OutboxAdminService {
         'O provedor não confirmou o envio; o item exige análise.',
       );
     }
-    await this.prisma.emailOutbox.updateMany({
+    const persisted = await this.prisma.emailOutbox.updateMany({
       where: { id, status: 'processing', leaseId: item.leaseId },
       data: {
         status: 'sent',
@@ -142,6 +142,10 @@ export class OutboxAdminService {
         leaseExpiresAt: null,
       },
     });
+    if (persisted.count !== 1)
+      throw new ServiceUnavailableException(
+        'O provedor aceitou a mensagem, mas a atualização da fila não foi confirmada. Consulte a situação antes de tentar novamente.',
+      );
     return { id, status: 'sent' };
   }
 }

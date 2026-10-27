@@ -163,7 +163,7 @@ it('confirma reutilização, impede envio duplo, envia POST sem corpo e recarreg
 });
 it.each([
   [409, /recusada por segurança/],
-  [503, /envio desativado/],
+  [503, /indisponível ou com resultado incerto/],
   [500, /resultado pode ser incerto/],
 ])(
   'trata falha %s sem erro bruto e sem repetição automática',
