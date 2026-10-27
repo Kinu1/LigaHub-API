@@ -224,7 +224,7 @@ describe('PaymentsService', () => {
     expect(setup.tx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(setup.tx.registration.update).toHaveBeenCalledWith({
       where: { id: setup.registration.id },
-      data: { status: 'confirmed' },
+      data: { status: 'confirmed', reviewReason: null },
     });
   });
   it('deve encaminhar um pagamento tardio para revisão quando não houver vaga', async () => {
@@ -233,7 +233,7 @@ describe('PaymentsService', () => {
     await setup.service.applyPayment(setup.attempt.id, setup.payment);
     expect(setup.tx.registration.update).toHaveBeenCalledWith({
       where: { id: setup.registration.id },
-      data: { status: 'payment_review' },
+      data: { status: 'payment_review', reviewReason: 'capacity_full' },
     });
   });
   it('deve encaminhar para revisão um pagamento de inscrição suspensa', async () => {
@@ -245,7 +245,10 @@ describe('PaymentsService', () => {
     await setup.service.applyPayment(setup.attempt.id, setup.payment);
     expect(setup.tx.registration.update).toHaveBeenCalledWith({
       where: { id: setup.registration.id },
-      data: { status: 'payment_review' },
+      data: {
+        status: 'payment_review',
+        reviewReason: 'registration_suspended',
+      },
     });
   });
   it('não deve atualizar uma inscrição com pagamento de outro recebedor', async () => {
@@ -284,7 +287,7 @@ describe('PaymentsService', () => {
     await setup.service.applyPayment(setup.attempt.id, setup.payment);
     expect(setup.tx.registration.update).toHaveBeenCalledWith({
       where: { id: setup.registration.id },
-      data: { status: 'payment_review' },
+      data: { status: 'payment_review', reviewReason: 'owner_inactive' },
     });
   });
   it('não deve cancelar a inscrição ao devolver uma tentativa quando outra continua aprovada', async () => {
@@ -308,7 +311,7 @@ describe('PaymentsService', () => {
       });
       expect(setup.tx.registration.update).toHaveBeenCalledWith({
         where: { id: setup.registration.id },
-        data: { status: 'canceled' },
+        data: { status: 'canceled', reviewReason: null },
       });
       expect(setup.tx.auditLog.create).toHaveBeenCalledWith({
         data: {
@@ -357,7 +360,10 @@ describe('PaymentsService', () => {
     await setup.service.applyPayment(setup.attempt.id, setup.payment);
     expect(setup.tx.registration.update).toHaveBeenCalledWith({
       where: { id: setup.registration.id },
-      data: { status: 'payment_review' },
+      data: {
+        status: 'payment_review',
+        reviewReason: 'participant_cancellation_requested',
+      },
     });
   });
   it('deve preservar a confirmação existente apesar do pedido de cancelamento', async () => {
