@@ -7,6 +7,13 @@ import { emailRenderConfig } from './confirmation-email.js';
 import { EmailGateway, selectedEmailProvider } from './email.gateway.js';
 import { readMessage } from './outbox-payload.js';
 
+export type AccessBatchResult = {
+  processed: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+};
+
 @Injectable()
 export class AccessEmailProcessor {
   private readonly logger = new Logger(AccessEmailProcessor.name);
@@ -24,12 +31,27 @@ export class AccessEmailProcessor {
     )
       throw new Error('Configure o provedor de e-mail selecionado.');
   }
-  async processBatch(registrationId?: string) {
-    if (process.env.EMAIL_DELIVERY_ENABLED !== 'true') return;
+  async processBatch(registrationId?: string): Promise<AccessBatchResult> {
+    let processed = 0;
+    let succeeded = 0;
+    let failed = 0;
+    let skipped = 0;
+    if (process.env.EMAIL_DELIVERY_ENABLED !== 'true') {
+      return { processed: 0, succeeded: 0, failed: 0, skipped: 0 };
+    }
     this.preflight();
     for (let i = 0; i < 10; i++) {
       const item = await this.claim(registrationId);
       if (!item) break;
+      processed++;
+      if (item.status === 'skipped') {
+        skipped++;
+        continue;
+      }
+      if (item.status === 'failed') {
+        failed++;
+        continue;
+      }
       if (!item.payloadEncrypted) continue;
       try {
         const message = readMessage(item.payloadEncrypted);
@@ -47,18 +69,24 @@ export class AccessEmailProcessor {
             status: 'skipped',
             payloadEncrypted: null,
           });
+          skipped++;
           continue;
         }
         const providerId = await this.gateway.send(
           message,
           `access/${item.id}`,
         );
-        await this.finish(item, {
+        const confirmed = await this.finish(item, {
           status: 'sent',
           providerId,
           sentAt: new Date(),
           payloadEncrypted: null,
         });
+        if (confirmed) {
+          succeeded++;
+        } else {
+          failed++;
+        }
       } catch {
         const terminal = item.attempts >= 5 || item.expiresAt <= new Date();
         await this.finish(item, {
@@ -68,16 +96,18 @@ export class AccessEmailProcessor {
             Date.now() + 15_000 * 2 ** (item.attempts - 1),
           ),
         });
+        failed++;
         this.logger.warn(
           `Falha no envio do acesso ${item.id}; tentativa ${item.attempts}.`,
         );
       }
     }
+    return { processed, succeeded, failed, skipped };
   }
   private async finish(
     item: { id: string; linkId: string; leaseId: string | null },
     data: Prisma.AccessEmailOutboxUpdateManyMutationInput,
-  ) {
+  ): Promise<boolean> {
     const result = await this.prisma.$transaction(async (tx) => {
       const saved = await tx.accessEmailOutbox.updateMany({
         where: { id: item.id, leaseId: item.leaseId, status: 'processing' },
@@ -94,10 +124,13 @@ export class AccessEmailProcessor {
       }
       return saved;
     });
-    if (result.count !== 1)
+    if (result.count !== 1) {
       this.logger.warn(
         `Concessão perdida no acesso ${item.id}; atualização não confirmada.`,
       );
+      return false;
+    }
+    return true;
   }
   private async claim(registrationId?: string) {
     if (process.env.EMAIL_DELIVERY_ENABLED !== 'true') return null;

@@ -156,10 +156,14 @@ model PaymentAttempt {
   checkout          Json?
   providerUpdatedAt DateTime?
   lastSyncedAt      DateTime?
+  lastSyncAttemptAt DateTime?
+  lastSyncSucceededAt DateTime?
+  lastSyncErrorCode String?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
   @@index([status, updatedAt])
+  @@index([lastSyncErrorCode])
   @@map("payment_attempts")
 }
 
@@ -205,6 +209,11 @@ model BackgroundJob {
   lastSucceededAt DateTime?
   lastFailedAt DateTime?
   errorCode String?
+  status String?
+  processedCount Int @default(0)
+  succeededCount Int @default(0)
+  failedCount Int @default(0)
+  skippedCount Int @default(0)
   runCount Int @default(0)
   failureCount Int @default(0)
 

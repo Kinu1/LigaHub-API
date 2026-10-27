@@ -11,8 +11,25 @@ import { selectedEmailProvider } from '../notifications/email.gateway.js';
 import { renderConfirmation } from '../notifications/confirmation-email.js';
 import { encryptCredential } from '../payments/payment-security.js';
 import { PaymentsService } from '../payments/payments.service.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 
 export type JobName = 'emails' | 'payments';
+export type JobSource = 'http' | 'timer';
+
+export type JobRunOptions = {
+  source?: JobSource;
+};
+
+export type JobOutcome = {
+  routine: JobName;
+  status: 'completed' | 'partial' | 'failed' | 'skipped';
+  processed: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+  errorCode?: string | null;
+};
+
 @Injectable()
 export class JobsRunner {
   constructor(
@@ -21,17 +38,27 @@ export class JobsRunner {
     @Inject(PaymentsService) private readonly payments: PaymentsService,
   ) {}
 
-  private preflight(name: JobName) {
+  private preflight(name: JobName, source: JobSource = 'http') {
     try {
-      if (process.env.BACKGROUND_JOBS_ENABLED !== 'true') throw new Error();
-      if (
-        process.env[
-          name === 'emails'
-            ? 'EMAIL_DELIVERY_ENABLED'
-            : 'PAYMENT_RECONCILIATION_ENABLED'
-        ] !== 'true'
-      )
-        throw new Error();
+      if (source === 'http') {
+        if (process.env.BACKGROUND_JOBS_ENABLED !== 'true') throw new Error();
+        if (
+          process.env[
+            name === 'emails'
+              ? 'EMAIL_DELIVERY_ENABLED'
+              : 'PAYMENT_RECONCILIATION_ENABLED'
+          ] !== 'true'
+        )
+          throw new Error();
+      } else {
+        // source === 'timer'
+        if (name === 'emails') {
+          if (process.env.EMAIL_DELIVERY_ENABLED !== 'true') throw new Error();
+        } else {
+          if (process.env.PAYMENT_RECONCILIATION_ENABLED === 'false')
+            throw new Error();
+        }
+      }
       encryptCredential('jobs-preflight');
       if (name === 'emails') {
         if (
@@ -58,8 +85,9 @@ export class JobsRunner {
     }
   }
 
-  async run(name: JobName) {
-    this.preflight(name);
+  async run(name: JobName, options?: JobRunOptions): Promise<JobOutcome> {
+    const source = options?.source ?? 'http';
+    this.preflight(name, source);
     const leaseId = randomUUID();
     let claimed: { name: string }[];
     try {
@@ -77,29 +105,85 @@ export class JobsRunner {
       );
     }
     if (!claimed.length) throw new ConflictException('Rotina já em execução.');
-    let failed = false;
+
+    let outcome: {
+      status: 'completed' | 'partial' | 'failed' | 'skipped';
+      processed: number;
+      succeeded: number;
+      failed: number;
+      skipped: number;
+      errorCode?: string | null;
+    };
+
     try {
-      if (name === 'emails') await this.emails.processBatch();
-      else await this.payments.reconcile();
+      const raw =
+        name === 'emails'
+          ? await this.emails.processBatch()
+          : await this.payments.reconcile();
+      if (raw && typeof raw === 'object' && 'status' in raw) {
+        outcome = {
+          status: raw.status,
+          processed: raw.processed ?? 0,
+          succeeded: raw.succeeded ?? 0,
+          failed: raw.failed ?? 0,
+          skipped: raw.skipped ?? 0,
+          errorCode: raw.errorCode ?? null,
+        };
+      } else {
+        outcome = {
+          status: 'failed',
+          processed: 0,
+          succeeded: 0,
+          failed: 1,
+          skipped: 0,
+          errorCode: 'INVALID_RESULT',
+        };
+      }
     } catch {
-      failed = true;
+      outcome = {
+        status: 'failed',
+        processed: 0,
+        succeeded: 0,
+        failed: 1,
+        skipped: 0,
+        errorCode: 'JOB_FAILED',
+      };
     }
+
+    const now = new Date();
     try {
-      const now = new Date();
-      const result = await this.prisma.backgroundJob.updateMany({
-        where: { name, leaseId },
-        data: {
-          leaseId: null,
-          leaseExpiresAt: null,
-          finishedAt: now,
-          ...(failed
+      const data: Prisma.BackgroundJobUpdateManyMutationInput = {
+        leaseId: null,
+        leaseExpiresAt: null,
+        finishedAt: now,
+        status: outcome.status,
+        processedCount: outcome.processed,
+        succeededCount: outcome.succeeded,
+        failedCount: outcome.failed,
+        skippedCount: outcome.skipped,
+        ...(outcome.status === 'completed'
+          ? {
+              lastSucceededAt: now,
+              errorCode: null,
+            }
+          : outcome.status === 'partial' || outcome.status === 'failed'
             ? {
                 lastFailedAt: now,
-                errorCode: 'JOB_FAILED',
+                errorCode:
+                  outcome.errorCode ??
+                  (outcome.status === 'partial'
+                    ? 'PARTIAL_FAILURE'
+                    : 'JOB_FAILED'),
                 failureCount: { increment: 1 },
               }
-            : { lastSucceededAt: now, errorCode: null }),
-        },
+            : {
+                errorCode: outcome.errorCode ?? null,
+              }),
+      };
+
+      const result = await this.prisma.backgroundJob.updateMany({
+        where: { name, leaseId },
+        data,
       });
       if (result.count !== 1) throw new Error();
     } catch {
@@ -107,8 +191,36 @@ export class JobsRunner {
         'Não foi possível finalizar o controle da rotina.',
       );
     }
-    if (failed)
-      throw new ServiceUnavailableException('Falha na execução da rotina.');
-    return { routine: name, status: 'completed' };
+
+    if (outcome.status === 'skipped') {
+      if (outcome.errorCode === 'BUSY')
+        throw new ConflictException('Rotina já em execução.');
+      throw new ServiceUnavailableException(
+        'Rotina ou configuração indisponível.',
+      );
+    }
+
+    if (outcome.status === 'failed' || outcome.status === 'partial') {
+      throw new ServiceUnavailableException({
+        routine: name,
+        status: outcome.status,
+        processed: outcome.processed,
+        succeeded: outcome.succeeded,
+        failed: outcome.failed,
+        skipped: outcome.skipped,
+        errorCode:
+          outcome.errorCode ??
+          (outcome.status === 'partial' ? 'PARTIAL_FAILURE' : 'JOB_FAILED'),
+      });
+    }
+
+    return {
+      routine: name,
+      status: 'completed',
+      processed: outcome.processed,
+      succeeded: outcome.succeeded,
+      failed: outcome.failed,
+      skipped: outcome.skipped,
+    };
   }
 }

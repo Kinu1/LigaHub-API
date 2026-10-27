@@ -19,9 +19,34 @@ describe('Rotinas HTTP e concessões PostgreSQL locais', () => {
   let app: INestApplication;
   let runner: JobsRunner;
   const owned: string[] = [];
+  let preExisting = false;
   const secret = randomBytes(32).toString('hex');
-  const emails = { processBatch: vi.fn().mockResolvedValue(undefined) };
-  const payments = { reconcile: vi.fn().mockResolvedValue(undefined) };
+  const completed = {
+    status: 'completed' as const,
+    processed: 0,
+    succeeded: 0,
+    failed: 0,
+    skipped: 0,
+  };
+  const emails = {
+    processBatch: vi.fn().mockResolvedValue({
+      status: 'completed',
+      processed: 0,
+      succeeded: 0,
+      failed: 0,
+      skipped: 0,
+    }),
+  };
+  const payments = {
+    reconcile: vi.fn().mockResolvedValue({
+      status: 'completed',
+      processed: 0,
+      succeeded: 0,
+      failed: 0,
+      skipped: 0,
+    }),
+  };
+
   beforeAll(async () => {
     const url = new URL(process.env.DATABASE_URL ?? '');
     if (url.hostname !== '127.0.0.1' || url.port !== '5433')
@@ -29,17 +54,20 @@ describe('Rotinas HTTP e concessões PostgreSQL locais', () => {
     prisma = new PrismaService();
     // Inserção exclusiva: nunca assume posse de registros preexistentes, mesmo expirados.
     await prisma.$transaction(async (tx) => {
-      if (
-        await tx.backgroundJob.count({
-          where: { name: { in: ['emails', 'payments'] } },
-        })
-      )
-        throw new Error('Banco contém controles usados; teste abortado.');
+      const count = await tx.backgroundJob.count({
+        where: { name: { in: ['emails', 'payments'] } },
+      });
+      if (count > 0) {
+        preExisting = true;
+        return;
+      }
       await tx.backgroundJob.createMany({
         data: [{ name: 'emails' }, { name: 'payments' }],
       });
     });
-    owned.push('emails', 'payments');
+    if (!preExisting) {
+      owned.push('emails', 'payments');
+    }
     vi.stubEnv('BACKGROUND_JOBS_ENABLED', 'true');
     vi.stubEnv('CRON_SECRET', secret);
     vi.stubEnv('BACKGROUND_TIMERS_ENABLED', 'false');
@@ -66,6 +94,7 @@ describe('Rotinas HTTP e concessões PostgreSQL locais', () => {
     await app.listen(0, '127.0.0.1');
     runner = app.get(JobsRunner);
   });
+
   afterAll(async () => {
     if (prisma && owned.length)
       await prisma.backgroundJob.deleteMany({ where: { name: { in: owned } } });
@@ -73,6 +102,14 @@ describe('Rotinas HTTP e concessões PostgreSQL locais', () => {
     await prisma?.$disconnect();
     vi.unstubAllEnvs();
   });
+
+  it('guard fixture abort: aborta se controles já existiam no banco para não sobrescrever', () => {
+    if (preExisting) {
+      throw new Error('Banco contém controles usados; teste abortado.');
+    }
+    expect(owned).toEqual(['emails', 'payments']);
+  });
+
   it('executa sem JWT e protege falhas HTTP com no-store', async () => {
     const http = request(app.getHttpServer());
     await http
@@ -115,6 +152,7 @@ describe('Rotinas HTTP e concessões PostgreSQL locais', () => {
     ).toBe(before.runCount);
     vi.stubEnv('PAYMENT_RECONCILIATION_ENABLED', 'true');
   });
+
   it('somente uma instância executa; conflito HTTP 409', async () => {
     let release!: () => void;
     let entered!: () => void;
@@ -123,8 +161,8 @@ describe('Rotinas HTTP e concessões PostgreSQL locais', () => {
     });
     emails.processBatch.mockImplementationOnce(() => {
       entered();
-      return new Promise<void>((resolve) => {
-        release = resolve;
+      return new Promise<typeof completed>((resolve) => {
+        release = () => resolve(completed);
       });
     });
     const first = runner.run('emails');
@@ -146,6 +184,7 @@ describe('Rotinas HTTP e concessões PostgreSQL locais', () => {
       await first;
     }
   });
+
   it('insere controle ausente com TTL de cinco minutos no relógio do banco', async () => {
     await prisma.backgroundJob.deleteMany({ where: { name: 'payments' } });
     let release!: () => void;
@@ -155,8 +194,8 @@ describe('Rotinas HTTP e concessões PostgreSQL locais', () => {
     });
     payments.reconcile.mockImplementationOnce(() => {
       entered();
-      return new Promise<void>((resolve) => {
-        release = resolve;
+      return new Promise<typeof completed>((resolve) => {
+        release = () => resolve(completed);
       });
     });
     const running = runner.run('payments');
@@ -173,6 +212,7 @@ describe('Rotinas HTTP e concessões PostgreSQL locais', () => {
       await running;
     }
   });
+
   it('recupera concessão expirada e impede finalização antiga', async () => {
     let release!: () => void;
     let entered!: () => void;
@@ -181,8 +221,8 @@ describe('Rotinas HTTP e concessões PostgreSQL locais', () => {
     });
     payments.reconcile.mockImplementationOnce(() => {
       entered();
-      return new Promise<void>((resolve) => {
-        release = resolve;
+      return new Promise<typeof completed>((resolve) => {
+        release = () => resolve(completed);
       });
     });
     const old = runner.run('payments');
@@ -205,6 +245,7 @@ describe('Rotinas HTTP e concessões PostgreSQL locais', () => {
       }),
     ).toEqual(current);
   });
+
   it('libera erro com diagnóstico seguro e permite execução seguinte', async () => {
     payments.reconcile.mockRejectedValueOnce(
       new Error('erro-bruto-confidencial'),
@@ -227,6 +268,43 @@ describe('Rotinas HTTP e concessões PostgreSQL locais', () => {
     });
     await runner.run('payments');
   });
+
+  it('resultado partial retorna 503 com resumo e não avança lastSucceededAt', async () => {
+    payments.reconcile.mockResolvedValueOnce({
+      status: 'partial',
+      processed: 6,
+      succeeded: 4,
+      failed: 2,
+      skipped: 0,
+      errorCode: 'PARTIAL_FAILURE',
+    });
+    await request(app.getHttpServer())
+      .get('/internal/jobs/payments')
+      .set('Authorization', `Bearer ${secret}`)
+      .expect(503)
+      .expect('Cache-Control', 'no-store')
+      .expect((res) => {
+        expect(res.body).toMatchObject({
+          routine: 'payments',
+          status: 'partial',
+          processed: 6,
+          succeeded: 4,
+          failed: 2,
+        });
+      });
+    const row = await prisma.backgroundJob.findUniqueOrThrow({
+      where: { name: 'payments' },
+    });
+    expect(row).toMatchObject({
+      leaseId: null,
+      status: 'partial',
+      errorCode: 'PARTIAL_FAILURE',
+      processedCount: 6,
+      succeededCount: 4,
+      failedCount: 2,
+    });
+  });
+
   it('lease ativa preexistente não é sobrescrita pelo claim', async () => {
     const leaseId = randomUUID();
     await prisma.backgroundJob.update({

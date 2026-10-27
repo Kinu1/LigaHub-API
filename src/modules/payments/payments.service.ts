@@ -13,8 +13,6 @@ import {
   NotFoundException,
   ServiceUnavailableException,
   UnauthorizedException,
-  type OnModuleDestroy,
-  type OnModuleInit,
 } from '@nestjs/common';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { PrismaService } from '../../prisma.service.js';
@@ -57,10 +55,18 @@ const providerStatuses = [
   'charged_back',
 ];
 
+export type ReconcileResult = {
+  status: 'completed' | 'partial' | 'failed' | 'skipped';
+  processed: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+  errorCode?: string | null;
+};
+
 @Injectable()
-export class PaymentsService implements OnModuleInit, OnModuleDestroy {
+export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
-  private timer?: ReturnType<typeof setInterval>;
   private syncing = false;
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
@@ -68,21 +74,6 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     @Inject(PaymentAccountsService)
     private readonly accounts: PaymentAccountsService,
   ) {}
-
-  onModuleInit(): void {
-    if (
-      process.env.BACKGROUND_TIMERS_ENABLED === 'false' ||
-      process.env.PAYMENT_RECONCILIATION_ENABLED === 'false'
-    )
-      return;
-    this.timer = setInterval(() => {
-      void this.reconcile();
-    }, 60_000);
-    this.timer.unref();
-  }
-  onModuleDestroy(): void {
-    if (this.timer) clearInterval(this.timer);
-  }
 
   private async participant(registrationId: string, token?: string) {
     if (!token || token.length > 256)
@@ -660,6 +651,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         /^https:\/\/(?:www\.)?mercadopago\.com(?:\.br)?\//.test(data.ticket_url)
       )
         checkout.ticketUrl = data.ticket_url;
+      const now = new Date();
       const saved = await tx.paymentAttempt.update({
         where: { id: current.id },
         data: {
@@ -672,7 +664,10 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           status: payment.status,
           statusDetail: payment.status_detail?.slice(0, 256),
           providerUpdatedAt: updatedAt,
-          lastSyncedAt: new Date(),
+          lastSyncedAt: now,
+          lastSyncAttemptAt: now,
+          lastSyncSucceededAt: now,
+          lastSyncErrorCode: null,
           checkout,
         },
       });
@@ -946,9 +941,23 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  async reconcile(): Promise<void> {
-    if (this.syncing) return;
+  async reconcile(): Promise<ReconcileResult> {
+    if (this.syncing) {
+      return {
+        status: 'skipped',
+        processed: 0,
+        succeeded: 0,
+        failed: 0,
+        skipped: 0,
+        errorCode: 'BUSY',
+      };
+    }
+    // As flags controlam o coordenador e as rotas; a chamada manual é preservada.
     this.syncing = true;
+    let processed = 0;
+    let succeeded = 0;
+    let failed = 0;
+    let skipped = 0;
     try {
       const attempts = await this.prisma.paymentAttempt.findMany({
         where: { status: { in: [...unresolved, 'approved'] } },
@@ -959,9 +968,18 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         ],
       });
       for (const attempt of attempts) {
+        processed++;
+        let stage:
+          'expire' | 'credentials' | 'provider' | 'response' | 'database' =
+          'expire';
         try {
-          if (await this.expireUnsubmitted(attempt)) continue;
+          if (await this.expireUnsubmitted(attempt)) {
+            skipped++;
+            continue;
+          }
+          stage = 'credentials';
           const token = await this.accounts.accessToken(attempt.accountId);
+          stage = 'provider';
           const api = this.providerApi(attempt);
           const payment = attempt.providerPaymentId
             ? await this.gateway.getPayment(
@@ -973,16 +991,41 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
                 api,
                 createdAt: attempt.createdAt,
               });
+          stage = 'response';
           if (payment) await this.applyPayment(attempt.id, payment);
+          stage = 'database';
+          const now = new Date();
           await this.prisma.paymentAttempt.update({
             where: { id: attempt.id },
-            data: { lastSyncedAt: new Date() },
+            data: {
+              lastSyncedAt: now,
+              lastSyncAttemptAt: now,
+              lastSyncSucceededAt: now,
+              lastSyncErrorCode: null,
+            },
           });
+          succeeded++;
         } catch {
+          failed++;
+          const safeCategory =
+            stage === 'credentials'
+              ? 'credentials_unavailable'
+              : stage === 'provider'
+                ? 'provider_unavailable'
+                : stage === 'response'
+                  ? 'invalid_provider_response'
+                  : stage === 'database'
+                    ? 'database_unavailable'
+                    : 'sync_failed';
+          const now = new Date();
           await this.prisma.paymentAttempt
             .update({
               where: { id: attempt.id },
-              data: { lastSyncedAt: new Date() },
+              data: {
+                lastSyncedAt: now,
+                lastSyncAttemptAt: now,
+                lastSyncErrorCode: safeCategory,
+              },
             })
             .catch(() => undefined);
           this.logger.warn(
@@ -994,9 +1037,29 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(
         'A reconciliação de pagamentos está temporariamente indisponível.',
       );
+      return {
+        status: 'failed',
+        processed,
+        succeeded,
+        failed: failed || 1,
+        skipped,
+        errorCode: 'DATABASE_UNAVAILABLE',
+      };
     } finally {
       this.syncing = false;
     }
+
+    let status: 'completed' | 'partial' | 'failed' = 'completed';
+    let errorCode: string | null = null;
+    if (failed > 0 && succeeded > 0) {
+      status = 'partial';
+      errorCode = 'PARTIAL_FAILURE';
+    } else if (failed > 0 && succeeded === 0) {
+      status = 'failed';
+      errorCode = 'SYNC_FAILED';
+    }
+
+    return { status, processed, succeeded, failed, skipped, errorCode };
   }
 
   private async expireUnsubmitted(
@@ -1027,13 +1090,16 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         latestRegistration.reservationExpiresAt > new Date()
       )
         return null;
+      const now = new Date();
       const closed = await tx.paymentAttempt.update({
         where: { id: current.id },
         data: {
           status: 'cancelled',
           statusDetail: 'not_submitted_before_expiration',
           providerRequestEncrypted: null,
-          lastSyncedAt: new Date(),
+          lastSyncedAt: now,
+          lastSyncAttemptAt: now,
+          lastSyncErrorCode: null,
         },
       });
       await tx.auditLog.create({
