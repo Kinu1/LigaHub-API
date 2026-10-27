@@ -193,3 +193,18 @@ model EmailOutbox {
   @@index([status, nextAttemptAt])
   @@map("email_outbox")
 }
+
+model BackgroundJob {
+  name String @id
+  leaseId String? @db.Uuid
+  leaseExpiresAt DateTime?
+  startedAt DateTime?
+  finishedAt DateTime?
+  lastSucceededAt DateTime?
+  lastFailedAt DateTime?
+  errorCode String?
+  runCount Int @default(0)
+  failureCount Int @default(0)
+
+  @@map("background_jobs")
+}

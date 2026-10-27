@@ -1,3 +1,4 @@
+import { JobsModule } from './modules/jobs/jobs.module.js';
 import { Module } from '@nestjs/common';
 
 import { AppController } from './app.controller.js';
@@ -17,6 +18,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 
 @Module({
   imports: [
+    JobsModule,
     EventsModule,
     UsersModule,
     AuthModule,

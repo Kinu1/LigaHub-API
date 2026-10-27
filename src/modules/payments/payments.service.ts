@@ -64,7 +64,11 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
-    if (process.env.PAYMENT_RECONCILIATION_ENABLED === 'false') return;
+    if (
+      process.env.BACKGROUND_TIMERS_ENABLED === 'false' ||
+      process.env.PAYMENT_RECONCILIATION_ENABLED === 'false'
+    )
+      return;
     this.timer = setInterval(() => {
       void this.reconcile();
     }, 60_000);
