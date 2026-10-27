@@ -1,10 +1,15 @@
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../src/prisma.service.js';
 import { RegistrationsModule } from '../src/modules/registrations/registrations.module.js';
 import { RegistrationsService } from '../src/modules/registrations/registrations.service.js';
+import { AdminService } from '../src/modules/admin/admin.service.js';
 
 describe('Reservas de vagas e controle de inscrições no PostgreSQL', () => {
   let moduleRef: TestingModule;
@@ -96,6 +101,81 @@ describe('Reservas de vagas e controle de inscrições no PostgreSQL', () => {
     name: 'Participante de teste',
     email,
     answers: {},
+  });
+
+  it('conta e lista somente solicitações abertas, preservando histórico e propriedade', async () => {
+    const { event, ownerId } = await fixture(2);
+    const other = await fixture();
+    const actor = {
+      id: ownerId,
+      name: 'Organizador',
+      email: `${ownerId}@ligahub.test`,
+      role: 'organizer' as const,
+    };
+    const outsider = { ...actor, id: other.ownerId };
+    const admin = { ...actor, role: 'admin' as const };
+    const dashboard = new AdminService(prisma);
+    const baseline = (await dashboard.dashboard(admin)).cancellationRequests;
+    const open = await service.reserve(event.publicId, input());
+    const resolved = await service.reserve(event.publicId, input());
+    for (const registration of [open, resolved]) {
+      await prisma.registration.update({
+        where: { id: registration.id },
+        data: { status: 'confirmed' },
+      });
+      await service.requestCancellation(
+        registration.id,
+        registration.manageToken,
+      );
+    }
+    expect((await dashboard.dashboard(actor)).cancellationRequests).toBe(2);
+    const history = await prisma.registration.findUniqueOrThrow({
+      where: { id: resolved.id },
+    });
+    // Estado persistido após reembolso, sem chamar provedor externo.
+    await prisma.registration.update({
+      where: { id: resolved.id },
+      data: { status: 'canceled' },
+    });
+    expect((await dashboard.dashboard(actor)).cancellationRequests).toBe(1);
+    expect((await dashboard.dashboard(outsider)).cancellationRequests).toBe(0);
+    expect((await dashboard.dashboard(admin)).cancellationRequests).toBe(
+      baseline + 1,
+    );
+    const filter = { page: 1, limit: 1, status: 'cancellation' as const };
+    for (const allowed of [actor, admin]) {
+      const first = await service.list(event.id, allowed, filter);
+      expect(first).toMatchObject({ total: 1, page: 1, limit: 1 });
+      expect(first.items.map(({ id }) => id)).toEqual([open.id]);
+      const second = await service.list(event.id, allowed, {
+        ...filter,
+        page: 2,
+      });
+      expect(second.total).toBe(1);
+      expect(second.items).toEqual([]);
+    }
+    await expect(
+      service.list(event.id, outsider, filter),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    const canceled = await service.list(event.id, actor, {
+      ...filter,
+      status: 'canceled',
+    });
+    expect(canceled.items).toHaveLength(1);
+    expect(canceled.items[0]).toMatchObject({
+      id: resolved.id,
+      cancellationRequestedAt: history.cancellationRequestedAt,
+    });
+    const unfiltered = await service.list(event.id, actor, {
+      page: 1,
+      limit: 20,
+    });
+    expect(unfiltered.total).toBe(2);
+    expect(
+      await prisma.auditLog.count({
+        where: { entityId: resolved.id, action: 'cancellation.requested' },
+      }),
+    ).toBe(1);
   });
 
   it('deve reservar a última vaga para apenas uma de duas solicitações simultâneas', async () => {

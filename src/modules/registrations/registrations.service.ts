@@ -386,7 +386,10 @@ export class RegistrationsService {
           }
         : {}),
       ...(pagination.status === 'cancellation'
-        ? { cancellationRequestedAt: { not: null } }
+        ? {
+            cancellationRequestedAt: { not: null },
+            status: { not: 'canceled' },
+          }
         : pagination.status === 'expired'
           ? {
               AND: [
