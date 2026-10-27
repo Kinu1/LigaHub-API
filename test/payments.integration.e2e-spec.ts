@@ -1,3 +1,4 @@
+import type { AccessEmailProcessor } from '../src/modules/notifications/access-email.processor.js';
 import { createHmac, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../src/prisma.service.js';
@@ -628,7 +629,11 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
     vi.stubEnv('FRONTEND_URL', 'https://liga.example.com');
     return {
       send,
-      worker: new EmailOutboxService(prisma, { send } as EmailGateway),
+      worker: new EmailOutboxService(
+        prisma,
+        { send } as EmailGateway,
+        { processBatch: async () => {} } as unknown as AccessEmailProcessor,
+      ),
     };
   }
   it.each([
@@ -697,7 +702,11 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
   it('deve enviar uma vez mesmo com dois workers concorrentes e apagar o conteúdo enviado', async () => {
     await service.applyPayment(attemptId, payment());
     const { send, worker } = mailWorker();
-    const second = new EmailOutboxService(prisma, { send } as EmailGateway);
+    const second = new EmailOutboxService(
+      prisma,
+      { send } as EmailGateway,
+      { processBatch: async () => {} } as unknown as AccessEmailProcessor,
+    );
     await Promise.all([
       worker.processBatch(registrationId),
       second.processBatch(registrationId),

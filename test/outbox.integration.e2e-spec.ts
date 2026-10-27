@@ -1,3 +1,4 @@
+import type { AccessEmailProcessor } from '../src/modules/notifications/access-email.processor.js';
 import 'reflect-metadata';
 
 import { randomUUID } from 'node:crypto';
@@ -231,7 +232,9 @@ describe('Outbox PostgreSQL e administração', () => {
       firstAttemptAt: null,
     });
 
-    const worker = new EmailOutboxService(prisma, gateway);
+    const worker = new EmailOutboxService(prisma, gateway, {
+      processBatch: async () => {},
+    } as unknown as AccessEmailProcessor);
 
     // Limita a seleção às fixtures, mantendo claim/transações/locks reais.
 
@@ -455,7 +458,9 @@ describe('Outbox PostgreSQL e administração', () => {
     vi.stubEnv('CREDENTIALS_ENCRYPTION_KEY', 'invalida');
 
     await expect(
-      new EmailOutboxService(prisma, gateway).processBatch(),
+      new EmailOutboxService(prisma, gateway, {
+        processBatch: async () => {},
+      } as unknown as AccessEmailProcessor).processBatch(),
     ).rejects.toThrow();
 
     await expect(service.retry(row.id, ownerId)).rejects.toThrow();
