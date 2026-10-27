@@ -26,6 +26,9 @@ const FinancePage = React.lazy(() =>
 const UsersPage = React.lazy(() =>
   import('./pages/panel').then((m) => ({ default: m.UsersPage })),
 );
+const OutboxPage = React.lazy(() =>
+  import('./pages/outbox').then((m) => ({ default: m.OutboxPage })),
+);
 const AuditPage = React.lazy(() =>
   import('./pages/panel').then((m) => ({ default: m.AuditPage })),
 );
@@ -89,6 +92,7 @@ const router = createBrowserRouter([
       { path: 'financeiro', element: <FinancePage /> },
       { path: 'usuarios', element: <UsersPage /> },
       { path: 'auditoria', element: <AuditPage /> },
+      { path: 'emails', element: <OutboxPage /> },
     ],
   },
   {
