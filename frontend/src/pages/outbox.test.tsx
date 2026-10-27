@@ -24,10 +24,10 @@ const entry = {
   attempts: 2,
   createdAt: '2026-10-26T18:30:00Z',
   firstAttemptAt: new Date(Date.now() - 3600000).toISOString(),
-  nextAttemptAt: null,
+  nextAttemptAt: null as string | null,
   leaseExpiresAt: null,
-  sentAt: null,
-  reason: 'manual_review_required',
+  sentAt: null as string | null,
+  reason: 'manual_review_required' as string | null,
   payload: 'segredo-payload',
   email: 'privado@example.test',
   token: 'segredo-token',
@@ -111,7 +111,7 @@ it('mostra status, classificação e datas sem expor conteúdo privado', async (
     expect(await screen.findByRole('heading', { name: label })).toBeTruthy();
   }
   expect(screen.getAllByText(/26\/10\/2026, 15:30:00/).length).toBe(5);
-  expect(screen.getAllByText(/não comprova a causa histórica/).length).toBe(5);
+  expect(screen.getAllByText(/não comprova a causa histórica/).length).toBe(1);
   expect(screen.queryByText(/segredo|privado@example/)).toBeNull();
   await userEvent.setup().click(screen.getAllByText('Identificadores')[0]);
   expect(screen.getAllByText('registration-1').length).toBe(5);
@@ -188,6 +188,23 @@ it.each([
     expect(api).toHaveBeenCalledTimes(3);
   },
 );
+it('não apresenta nova tentativa agendada ou classificação de falha após aceite', async () => {
+  vi.mocked(api).mockResolvedValue(
+    result([
+      {
+        ...entry,
+        status: 'sent',
+        reason: null,
+        sentAt: new Date().toISOString(),
+        nextAttemptAt: new Date().toISOString(),
+      },
+    ]),
+  );
+  show();
+  await screen.findByRole('heading', { name: 'Aceito pelo provedor' });
+  expect(screen.queryByText(/Próxima tentativa/)).toBeNull();
+  expect(screen.queryByText(/Classificação atual/)).toBeNull();
+});
 it('preserva dados após falha de atualização e não afirma vazio', async () => {
   const client = show();
   await screen.findByText('Tentativas: 2');
