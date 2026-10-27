@@ -14,6 +14,6 @@ import { EmailOutboxService } from './email-outbox.service.js';
     EmailOutboxService,
     { provide: EmailGateway, useClass: ConfigurableEmailGateway },
   ],
-  exports: [EmailGateway],
+  exports: [EmailGateway, EmailOutboxService],
 })
 export class NotificationsModule {}

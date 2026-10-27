@@ -26,7 +26,11 @@ export class EmailOutboxService implements OnModuleInit, OnModuleDestroy {
     @Inject(EmailGateway) private readonly gateway: EmailGateway,
   ) {}
   onModuleInit() {
-    if (process.env.EMAIL_DELIVERY_ENABLED !== 'true') return;
+    if (
+      process.env.BACKGROUND_TIMERS_ENABLED === 'false' ||
+      process.env.EMAIL_DELIVERY_ENABLED !== 'true'
+    )
+      return;
     this.timer = setInterval(() => {
       void this.processBatch().catch(() =>
         this.logger.warn('Falha ao processar a fila de e-mails.'),
