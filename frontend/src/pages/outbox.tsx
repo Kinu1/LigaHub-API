@@ -93,7 +93,7 @@ function AdminOutbox() {
         error instanceof ApiError && error.status === 409
           ? 'Retomada recusada por segurança. Revise a situação atual antes de continuar.'
           : error instanceof ApiError && error.status === 503
-            ? 'Retomada indisponível: envio desativado ou problema de configuração ou provedor.'
+            ? 'Retomada indisponível ou com resultado incerto. Atualize a fila e confira a configuração antes de outra tentativa.'
             : 'Não foi possível confirmar a retomada. O resultado pode ser incerto; atualize e revise antes de tentar novamente.',
       );
     } finally {

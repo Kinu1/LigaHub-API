@@ -397,6 +397,29 @@ describe('Outbox PostgreSQL e administração', () => {
     expect(gateway.send).not.toHaveBeenCalled();
   });
 
+  it('não afirma conclusão da fila quando perde a concessão após o aceite do provedor', async () => {
+    const row = await fixture();
+    const save = vi
+      .spyOn(prisma.emailOutbox, 'updateMany')
+      .mockResolvedValueOnce({ count: 0 });
+    try {
+      await expect(service.retry(row.id, ownerId)).rejects.toThrow(
+        'atualização da fila não foi confirmada',
+      );
+      expect(gateway.send).toHaveBeenCalledExactlyOnceWith(
+        message,
+        `confirmation/${row.id}`,
+      );
+      expect(
+        await prisma.emailOutbox.findUniqueOrThrow({ where: { id: row.id } }),
+      ).toMatchObject({
+        status: 'processing',
+        payloadEncrypted: row.payloadEncrypted,
+      });
+    } finally {
+      save.mockRestore();
+    }
+  });
   it('não consome tentativa administrativa sem a configuração do provedor selecionado', async () => {
     const row = await fixture();
     const previousKey = process.env.RESEND_API_KEY;
