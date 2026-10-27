@@ -427,7 +427,9 @@ export function ParticipantPage() {
       <Heading eyebrow="SUA INSCRIÇÃO" title={registration.event.title}>
         Olá, {registration.name}. Acompanhe sua participação aqui.
       </Heading>
-      <Steps step={registration.status === 'confirmed' || pending ? 2 : 1} />
+      {registration.status !== 'canceled' && (
+        <Steps step={registration.status === 'confirmed' || pending ? 2 : 1} />
+      )}
       <section className="card mb-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <Status value={registration.status} />
@@ -459,12 +461,19 @@ export function ParticipantPage() {
         {registration.suspended && (
           <Notice>Esta inscrição foi suspensa. Consulte o organizador.</Notice>
         )}
-        {registration.cancellationRequestedAt && (
-          <Notice success>
-            Solicitação de cancelamento registrada. O eventual reembolso depende
-            da análise do organizador.
+        {registration.status === 'canceled' && (
+          <Notice>
+            Esta inscrição foi cancelada e não garante vaga no evento. Consulte
+            os pagamentos abaixo para acompanhar a situação de cada cobrança.
           </Notice>
         )}
+        {registration.cancellationRequestedAt &&
+          registration.status !== 'canceled' && (
+            <Notice success>
+              Solicitação de cancelamento registrada. O eventual reembolso
+              depende da análise do organizador.
+            </Notice>
+          )}
         {registration.status === 'expired' && (
           <>
             <Notice>
@@ -506,6 +515,12 @@ export function ParticipantPage() {
                 </p>
                 <Status value={p.status} />
               </div>
+              {p.status === 'refunded' && (
+                <p className="muted mt-3">
+                  Este pagamento foi reembolsado pelo Mercado Pago. Consulte o
+                  comprovante no provedor para acompanhar a devolução.
+                </p>
+              )}
               {p.method === 'pix' &&
                 ['pending', 'created'].includes(p.status) &&
                 p.checkout && (
@@ -527,18 +542,19 @@ export function ParticipantPage() {
           <button className="btn secondary" onClick={() => query.refetch()}>
             Atualizar situação
           </button>
-          {!registration.cancellationRequestedAt && (
-            <Confirm
-              title="Solicitar cancelamento?"
-              description="Essa ação registra uma solicitação. Não executa reembolso automático."
-              onConfirm={async () => {
-                await send(`/public/registrations/${id}/cancellation`);
-                await query.refetch();
-              }}
-            >
-              Solicitar cancelamento
-            </Confirm>
-          )}
+          {!registration.cancellationRequestedAt &&
+            registration.status !== 'canceled' && (
+              <Confirm
+                title="Solicitar cancelamento?"
+                description="Essa ação registra uma solicitação. Não executa reembolso automático."
+                onConfirm={async () => {
+                  await send(`/public/registrations/${id}/cancellation`);
+                  await query.refetch();
+                }}
+              >
+                Solicitar cancelamento
+              </Confirm>
+            )}
         </div>
       </section>
     </div>
@@ -994,12 +1010,19 @@ export function StatusPage() {
             evento.
           </Notice>
         )}
-        {query.data?.cancellationRequested && (
+        {query.data?.status === 'canceled' && (
           <Notice>
-            O cancelamento da sua inscrição foi solicitado. Entre em contato com a
-            organização para acompanhar a solicitação.
+            Sua inscrição foi cancelada e não garante vaga no evento. Para
+            consultar os pagamentos, solicite acesso à gestão da inscrição.
           </Notice>
         )}
+        {query.data?.cancellationRequested &&
+          query.data.status !== 'canceled' && (
+            <Notice>
+              O cancelamento da sua inscrição foi solicitado. Entre em contato
+              com a organização para acompanhar a solicitação.
+            </Notice>
+          )}
         <p className="mt-5">Olá, {query.data?.name}.</p>
         <p className="muted mt-3">
           {date(query.data?.event.startsAt)} · {query.data?.event.location}

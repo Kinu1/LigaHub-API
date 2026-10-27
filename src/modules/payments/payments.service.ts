@@ -532,11 +532,27 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
             status: { in: ['approved', 'in_mediation'] },
           },
         });
-        if (otherApproved === 0)
+        if (otherApproved === 0) {
           await tx.registration.update({
             where: { id: registration.id },
             data: { status: 'canceled' },
           });
+          await tx.auditLog.create({
+            data: {
+              entityType: 'registration',
+              entityId: registration.id,
+              action: 'registration.canceled',
+              metadata: {
+                paymentId: current.id,
+                status: 'canceled',
+                reason:
+                  payment.status === 'refunded'
+                    ? 'payment_refunded'
+                    : 'payment_charged_back',
+              },
+            },
+          });
+        }
       }
       await tx.auditLog.create({
         data: {

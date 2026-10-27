@@ -53,6 +53,36 @@ beforeEach(() => {
 });
 
 describe('Auditoria do administrador', () => {
+  it.each([
+    ['payment_refunded', 'Pagamento reembolsado integralmente'],
+    ['payment_charged_back', 'Pagamento devolvido por contestação'],
+  ])(
+    'explica o cancelamento da inscrição pelo motivo %s',
+    async (reason, description) => {
+      vi.mocked(api).mockResolvedValue({
+        items: [
+          {
+            ...entry,
+            entityType: 'registration',
+            entityId: 'inscricao-1',
+            action: 'registration.canceled',
+            actor: null,
+            actorId: null,
+            metadata: { reason, paymentId: 'pagamento-1', status: 'canceled' },
+          },
+        ],
+        total: 1,
+        page: 1,
+        limit: 20,
+      });
+      show();
+      const article = await screen.findByRole('article', {
+        name: 'Inscrição cancelada após devolução do pagamento',
+      });
+      expect(within(article).getByText(description)).toBeTruthy();
+      expect(within(article).getByText('Cancelada')).toBeTruthy();
+    },
+  );
   it('traduz alterações de acesso e campos do evento sem mostrar campos desconhecidos', async () => {
     vi.mocked(api).mockResolvedValue({
       items: [

@@ -406,6 +406,120 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
       1,
     );
   });
+  it('deve liberar a vaga após reembolso integral e impedir nova cobrança da inscrição cancelada', async () => {
+    const participantToken = 'a'.repeat(43);
+    await prisma.registration.update({
+      where: { id: registrationId },
+      data: { manageTokenHash: digest(participantToken) },
+    });
+    const approved = payment();
+    await service.applyPayment(attemptId, approved);
+    const refunded = {
+      ...approved,
+      status: 'refunded',
+      date_last_updated: new Date(Date.now() + 1000).toISOString(),
+    };
+    await Promise.all([
+      service.applyPayment(attemptId, refunded),
+      service.applyPayment(attemptId, refunded),
+    ]);
+    const registrations = new RegistrationsService(prisma);
+    expect(
+      await registrations.participantDetails(registrationId, participantToken),
+    ).toMatchObject({ status: 'canceled', payments: [{ status: 'refunded' }] });
+    await expect(
+      service.create(registrationId, participantToken, randomUUID(), pixInput),
+    ).rejects.toThrow('A inscrição não está disponível para pagamento.');
+    expect(gateway.createPayment).not.toHaveBeenCalled();
+    const auditBefore = await prisma.auditLog.count({
+      where: { entityId: attemptId },
+    });
+    await service.applyPayment(attemptId, refunded);
+    await service.applyPayment(attemptId, {
+      ...approved,
+      date_last_updated: new Date(Date.now() + 2000).toISOString(),
+    });
+    expect(
+      await prisma.auditLog.count({ where: { entityId: attemptId } }),
+    ).toBe(auditBefore);
+    const cancellations = await prisma.auditLog.findMany({
+      where: { entityId: registrationId, action: 'registration.canceled' },
+    });
+    expect(cancellations).toHaveLength(1);
+    expect(cancellations[0]?.metadata).toEqual({
+      paymentId: attemptId,
+      status: 'canceled',
+      reason: 'payment_refunded',
+    });
+    expect(
+      await prisma.paymentAttempt.findUniqueOrThrow({
+        where: { id: attemptId },
+      }),
+    ).toMatchObject({ status: 'refunded' });
+    const event = await prisma.academicEvent.findUniqueOrThrow({
+      where: { id: eventId },
+    });
+    const replacement = await registrations.reserve(event.publicId, {
+      name: 'Novo participante',
+      email: 'substituto@ligahub.test',
+      answers: {},
+    });
+    expect(replacement.status).toBe('reserved');
+    const { worker, send } = mailWorker();
+    await worker.processBatch(registrationId);
+    expect(send).not.toHaveBeenCalled();
+    expect(
+      await prisma.emailOutbox.findUniqueOrThrow({ where: { registrationId } }),
+    ).toMatchObject({ status: 'skipped' });
+  });
+  it('deve preservar a inscrição e a ocupação quando outro pagamento continua aprovado após o reembolso', async () => {
+    const participantToken = 'b'.repeat(43);
+    await prisma.registration.update({
+      where: { id: registrationId },
+      data: { manageTokenHash: digest(participantToken) },
+    });
+    const approved = payment();
+    await service.applyPayment(attemptId, approved);
+    await prisma.paymentAttempt.create({
+      data: {
+        registrationId,
+        accountId,
+        idempotencyKey: randomUUID(),
+        requestHash,
+        method: 'pix',
+        installments: 1,
+        amountInCents: 1000,
+        status: 'approved',
+      },
+    });
+    await service.applyPayment(attemptId, {
+      ...approved,
+      status: 'refunded',
+      date_last_updated: new Date(Date.now() + 1000).toISOString(),
+    });
+    const registrations = new RegistrationsService(prisma);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          entityId: registrationId,
+          action: 'registration.canceled',
+        },
+      }),
+    ).toBe(0);
+    expect(
+      await registrations.participantDetails(registrationId, participantToken),
+    ).toMatchObject({ status: 'confirmed' });
+    const event = await prisma.academicEvent.findUniqueOrThrow({
+      where: { id: eventId },
+    });
+    await expect(
+      registrations.reserve(event.publicId, {
+        name: 'Outro participante',
+        email: 'outro@ligahub.test',
+        answers: {},
+      }),
+    ).rejects.toThrow('Todas as vagas deste evento estão ocupadas.');
+  });
   function mailWorker(send = vi.fn().mockResolvedValue('email-provedor')) {
     vi.stubEnv('EMAIL_DELIVERY_ENABLED', 'true');
     vi.stubEnv('RESEND_API_KEY', 'chave-simulada');

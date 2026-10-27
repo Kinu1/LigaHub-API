@@ -11,6 +11,8 @@ Quando disponíveis, os detalhes mostram:
 - Campos alterados no evento, prazo de reserva e quantidade de reservas expiradas.
 - Identificadores da auditoria, do objeto e do provedor, em uma seção expansível.
 
+Quando a sincronização de um reembolso integral ou de uma devolução por contestação cancela a inscrição, a mesma transação grava `registration.canceled`, com o motivo e o identificador da tentativa de pagamento. O painel apresenta “Inscrição cancelada após devolução do pagamento” e distingue os dois motivos. Se outro pagamento aprovado ou em mediação mantém a inscrição, esse registro de cancelamento não é criado. Notificações repetidas não duplicam o cancelamento. Registros anteriores a essa alteração não são reconstruídos.
+
 Nomes e perfis são consultados no cadastro atual; não representam uma cópia histórica desses dados no instante da ação. A consulta não altera os registros de auditoria. Ações sem responsável identificado não são atribuídas automaticamente ao sistema ou ao participante.
 
 Os detalhes dependem dos metadados gravados originalmente. Alterações de evento antigas registram apenas os nomes dos campos, sem valores anteriores e posteriores. Informações ausentes e ações desconhecidas são apresentadas explicitamente; não são reconstruídas por suposição. Objetos ou usuários removidos continuam identificáveis pelos IDs preservados quando disponíveis.

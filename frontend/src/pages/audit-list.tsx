@@ -22,6 +22,8 @@ const actions: Record<string, string> = {
   'event:reservations.expired': 'Reservas vencidas marcadas como expiradas',
   'registration:registration.reserved': 'Inscrição reservada',
   'registration:cancellation.requested': 'Cancelamento da inscrição solicitado',
+  'registration:registration.canceled':
+    'Inscrição cancelada após devolução do pagamento',
   'registration:reservation.renewed': 'Reserva da inscrição renovada',
   'registration:reservation.pix_extended':
     'Prazo da reserva ampliado para pagamento Pix',
@@ -59,6 +61,8 @@ const roles: Record<string, string> = {
 };
 const reasons: Record<string, string> = {
   payment_approved: 'Pagamento aprovado',
+  payment_refunded: 'Pagamento reembolsado integralmente',
+  payment_charged_back: 'Pagamento devolvido por contestação',
   capacity_or_registration_unavailable:
     'Sem vaga disponível ou inscrição indisponível para confirmação',
 };
