@@ -81,6 +81,7 @@ export class OutboxAdminService {
       if (
         row.status !== 'failed' ||
         !row.firstAttemptAt ||
+        row.firstAttemptAt > new Date() ||
         Date.now() - row.firstAttemptAt.getTime() >= 23 * 3_600_000 ||
         registration.status !== 'confirmed' ||
         registration.suspendedAt ||

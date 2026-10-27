@@ -105,6 +105,11 @@ describe('Outbox PostgreSQL e administração', () => {
   }
 
   beforeAll(async () => {
+    const host = new URL(process.env.DATABASE_URL ?? '').hostname;
+    if (!['localhost', '127.0.0.1', '[::1]'].includes(host))
+      throw new Error(
+        'O teste de outbox exige PostgreSQL local ou do job de CI.',
+      );
     vi.stubEnv('JWT_SECRET', secret);
 
     vi.stubEnv('EMAIL_DELIVERY_ENABLED', 'true');
@@ -364,6 +369,7 @@ describe('Outbox PostgreSQL e administração', () => {
 
       { firstAttemptAt: new Date(Date.now() - 23 * 3600000) },
       { firstAttemptAt: null },
+      { firstAttemptAt: new Date(Date.now() + 3600000) },
 
       { payloadEncrypted: null },
       { payloadEncrypted: 'ilegivel' },
@@ -391,6 +397,25 @@ describe('Outbox PostgreSQL e administração', () => {
     expect(gateway.send).not.toHaveBeenCalled();
   });
 
+  it('não consome tentativa administrativa sem a configuração do provedor selecionado', async () => {
+    const row = await fixture();
+    const previousKey = process.env.RESEND_API_KEY;
+    const previousProvider = process.env.EMAIL_PROVIDER;
+    vi.stubEnv('EMAIL_PROVIDER', 'resend');
+    vi.stubEnv('RESEND_API_KEY', undefined);
+    try {
+      await expect(service.retry(row.id, ownerId)).rejects.toThrow(
+        'Entrega de e-mails desativada.',
+      );
+      expect(gateway.send).not.toHaveBeenCalled();
+      expect(
+        await prisma.emailOutbox.findUniqueOrThrow({ where: { id: row.id } }),
+      ).toMatchObject({ status: 'failed', attempts: row.attempts });
+    } finally {
+      vi.stubEnv('RESEND_API_KEY', previousKey);
+      vi.stubEnv('EMAIL_PROVIDER', previousProvider);
+    }
+  });
   it('falha manual preserva payload e não volta para pending; chave global inválida não altera fila', async () => {
     const row = await fixture();
     gateway.send.mockRejectedValueOnce(new Error('segredo-do-provedor'));
