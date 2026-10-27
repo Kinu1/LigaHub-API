@@ -1,3 +1,4 @@
+import { AccessEmailProcessor } from './access-email.processor.js';
 import { OutboxAdminController } from './outbox-admin.controller.js';
 import { OutboxAdminService } from './outbox-admin.service.js';
 import { Module } from '@nestjs/common';
@@ -10,10 +11,11 @@ import { EmailOutboxService } from './email-outbox.service.js';
   imports: [PrismaModule],
   controllers: [OutboxAdminController],
   providers: [
+    AccessEmailProcessor,
     OutboxAdminService,
     EmailOutboxService,
     { provide: EmailGateway, useClass: ConfigurableEmailGateway },
   ],
-  exports: [EmailGateway, EmailOutboxService],
+  exports: [EmailGateway, EmailOutboxService, AccessEmailProcessor],
 })
 export class NotificationsModule {}

@@ -11,25 +11,28 @@ import {
   encryptCredential,
   decryptCredential,
 } from '../payments/payment-security.js';
-import { EmailGateway } from '../notifications/email.gateway.js';
+import { AccessEmailProcessor } from '../notifications/access-email.processor.js';
+import { readMessage } from '../notifications/outbox-payload.js';
+import { renderAccessEmail } from '../notifications/access-email.js';
 
 @Injectable()
 export class RegistrationAccessService {
   private readonly logger = new Logger(RegistrationAccessService.name);
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
-    @Inject(EmailGateway) private readonly email: EmailGateway,
+    @Inject(AccessEmailProcessor) private readonly emails: AccessEmailProcessor,
   ) {}
   async sendLink(id: string) {
     if (process.env.EMAIL_DELIVERY_ENABLED !== 'true') return;
+    this.emails.preflight();
     const token = randomBytes(32).toString('base64url');
-    const record = await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM registrations WHERE id = ${id}::uuid FOR UPDATE`;
       const registration = await tx.registration.findUniqueOrThrow({
         where: { id },
         include: { event: true },
       });
-      // Legacy records receive a management credential once; only its encrypted value is persisted.
+      // Registros legados recebem uma credencial de gestão; somente o valor criptografado é persistido.
       if (!registration.manageTokenEncrypted) {
         const management = randomBytes(32).toString('base64url');
         await tx.registration.update({
@@ -40,48 +43,33 @@ export class RegistrationAccessService {
           },
         });
       }
-      await tx.registrationAccessLink.deleteMany({
-        where: { registrationId: id, expiresAt: { lte: new Date() } },
+      const message = renderAccessEmail({
+        registrationId: id,
+        to: registration.email,
+        name: registration.name,
+        eventTitle: registration.event.title,
+        token,
       });
+      const payloadEncrypted = encryptCredential(JSON.stringify({ message }));
+      readMessage(payloadEncrypted);
+      const expiresAt = new Date(Date.now() + 900_000);
       await tx.registrationAccessLink.create({
         data: {
           registrationId: id,
           tokenHash: digest(token),
-          expiresAt: new Date(Date.now() + 900_000),
+          expiresAt,
+          email: { create: { payloadEncrypted, expiresAt } },
         },
       });
-      return registration;
     });
-    const base = new URL(process.env.FRONTEND_URL ?? '');
-    if (
-      base.username ||
-      base.password ||
-      base.search ||
-      base.hash ||
-      (base.protocol !== 'https:' &&
-        !(base.protocol === 'http:' && base.hostname === 'localhost'))
-    )
-      throw new Error('FRONTEND_URL inválida.');
-    const url = new URL(`/inscricao/${id}`, base);
-    url.hash = new URLSearchParams({ access: token }).toString();
-    const from = process.env.EMAIL_FROM;
-    if (!from || /[\r\n]/.test(from)) throw new Error('EMAIL_FROM inválido.');
-    await this.email.send(
-      {
-        from,
-        to: [record.email],
-        subject: 'Acesse sua inscrição — LigaHub',
-        text: `Olá, ${record.name}!\n\nAcompanhe sua inscrição em ${record.event.title}:\n${url.toString()}\n\nEste link é pessoal, de uso único e expira em 15 minutos. Ele não confirma pagamento. Caso não tenha solicitado, ignore esta mensagem.\nLigaHub`,
-      },
-      `access-${digest(token)}`,
-    );
+    await this.emails.processBatch(id);
   }
   async safeSend(id: string) {
     try {
       await this.sendLink(id);
     } catch {
       this.logger.warn(
-        'Não foi possível enviar um link de acesso. O participante pode solicitar novamente.',
+        'Não foi possível preparar ou enviar um link de acesso.',
       );
     }
   }
