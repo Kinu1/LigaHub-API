@@ -62,7 +62,7 @@ npm.cmd audit
 
 Os testes de integração exigem as migrations aplicadas. Criam dados identificados por UUID e removem somente esses dados; prefira um banco separado para testes. Pagamentos usam provedor simulado, sem cobrança real. O GitHub Actions usa um PostgreSQL exclusivo do job.
 
-O fluxo completo no Chromium, em desktop e celular, é verificado com `npm.cmd run test:browser`, após compilar a API e instalar o navegador. Consulte [o roteiro de testes de navegador](docs/TESTES_NAVEGADOR.md). A fila de e-mails tem consulta e retomada controlada em `/painel/emails`, exclusiva de administradores; critérios em [docs/EMAILS.md](docs/EMAILS.md).
+O fluxo completo no Chromium, em desktop e celular, é verificado com `npm.cmd run test:browser`, após compilar a API e instalar o navegador. Consulte [o roteiro de testes de navegador](docs/TESTES_NAVEGADOR.md). A fila de e-mails tem consulta e retomada controlada em `/painel/emails`, exclusiva de administradores; critérios em [docs/EMAILS.md](docs/EMAILS.md). O diagnóstico seguro de rotinas de segundo plano e sincronização fica em `/painel/operacao` e `GET /admin/operations`; detalhes em [docs/ROTINAS.md](docs/ROTINAS.md).
 
 ## Limites da entrega
 
