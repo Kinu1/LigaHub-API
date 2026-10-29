@@ -25,6 +25,7 @@ const eventFields = new Set([
   'startsAt',
   'endsAt',
   'registrationDeadline',
+  'registrationStartsAt',
   'reservationMinutes',
   'capacity',
   'priceInCents',

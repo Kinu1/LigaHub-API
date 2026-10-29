@@ -22,6 +22,7 @@ model AcademicEvent {
   location             String         @default("")
   startsAt             DateTime?
   endsAt               DateTime?
+  registrationStartsAt DateTime?
   registrationDeadline DateTime?
   reservationMinutes   Int            @default(15)
   form                 Json           @default("[]")

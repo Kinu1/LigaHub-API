@@ -66,6 +66,13 @@ export class CreateEventDto {
   @IsOptional()
   @IsISO8601({ strict: true }, { message: 'O prazo de inscrição é inválido.' })
   registrationDeadline?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsISO8601(
+    { strict: true },
+    { message: 'O início das inscrições é inválido.' },
+  )
+  registrationStartsAt?: string;
   @ApiPropertyOptional({ default: 15 })
   @IsOptional()
   @IsInt({ message: 'O prazo de reserva deve ser inteiro.' })

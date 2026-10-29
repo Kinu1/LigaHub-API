@@ -3,6 +3,28 @@ import { assertOwnership, validateEventDates } from './catalog.service.js';
 import type { AuthenticatedUser } from '../auth/auth.decorators.js';
 
 describe('Regras de gestão dos eventos', () => {
+  it('exige abertura anterior ao encerramento e usa o início do evento quando não há prazo', () => {
+    const dates = {
+      startsAt: new Date('2030-02-01'),
+      endsAt: null,
+      registrationDeadline: new Date('2030-01-20'),
+      registrationStartsAt: new Date('2030-01-20'),
+    };
+    expect(() => validateEventDates(dates)).toThrow('O início das inscrições');
+    expect(() =>
+      validateEventDates({
+        ...dates,
+        registrationStartsAt: new Date('2030-01-19'),
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validateEventDates({
+        ...dates,
+        registrationDeadline: null,
+        registrationStartsAt: dates.startsAt,
+      }),
+    ).toThrow('O início das inscrições');
+  });
   const actor: AuthenticatedUser = {
     id: 'organizador',
     name: 'Organizador',

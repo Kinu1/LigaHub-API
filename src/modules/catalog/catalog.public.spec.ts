@@ -24,10 +24,13 @@ describe('Disponibilidade pública do evento', () => {
     owner: { active: boolean } | null,
     status = 'published',
     occupied = 0,
+    registrationStartsAt: Date | null = null,
   ) {
     const prisma = {
       academicEvent: {
-        findUnique: vi.fn().mockResolvedValue({ ...event, owner, status }),
+        findUnique: vi
+          .fn()
+          .mockResolvedValue({ ...event, owner, status, registrationStartsAt }),
       },
       registration: { count: vi.fn().mockResolvedValue(occupied) },
       paymentAccount: {
@@ -41,6 +44,17 @@ describe('Disponibilidade pública do evento', () => {
       (await setup({ active: true }).publicEvent(event.publicId))
         .acceptingRegistrations,
     ).toBe(true);
+  });
+  it('mostra a abertura mas não aceita inscrições antecipadas', async () => {
+    const opening = new Date(Date.now() + 3600000);
+    const result = await setup(
+      { active: true },
+      'published',
+      0,
+      opening,
+    ).publicEvent(event.publicId);
+    expect(result.acceptingRegistrations).toBe(false);
+    expect(result.registrationStartsAt).toEqual(opening);
   });
   it('deve bloquear inscrições públicas para um responsável inativo mesmo com conta de pagamento ativa', async () => {
     const result = await setup({ active: false }).publicEvent(event.publicId);

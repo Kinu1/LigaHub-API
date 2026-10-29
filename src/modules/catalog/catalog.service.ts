@@ -35,7 +35,16 @@ export function validateEventDates(event: {
   startsAt: Date | null;
   endsAt: Date | null;
   registrationDeadline: Date | null;
+  registrationStartsAt?: Date | null;
 }): void {
+  const deadline = event.registrationDeadline ?? event.startsAt;
+  if (
+    event.registrationStartsAt &&
+    (!deadline || event.registrationStartsAt >= deadline)
+  )
+    throw new BadRequestException(
+      'O início das inscrições deve ser anterior ao encerramento das inscrições e ao início do evento.',
+    );
   if (event.endsAt && (!event.startsAt || event.endsAt <= event.startsAt))
     throw new BadRequestException(
       'A data final deve ser posterior à data inicial.',
@@ -97,6 +106,9 @@ export class CatalogService {
   async create(input: CreateEventDto, actor: AuthenticatedUser) {
     this.validateInput(input);
     const dates = {
+      registrationStartsAt: input.registrationStartsAt
+        ? new Date(input.registrationStartsAt)
+        : null,
       startsAt: input.startsAt ? new Date(input.startsAt) : null,
       endsAt: input.endsAt ? new Date(input.endsAt) : null,
       registrationDeadline: input.registrationDeadline
@@ -193,6 +205,12 @@ export class CatalogService {
           'A capacidade não pode ser inferior às vagas confirmadas e reservadas.',
         );
       const dates = {
+        registrationStartsAt:
+          input.registrationStartsAt !== undefined
+            ? input.registrationStartsAt
+              ? new Date(input.registrationStartsAt)
+              : null
+            : event.registrationStartsAt,
         startsAt:
           input.startsAt !== undefined
             ? input.startsAt
@@ -329,6 +347,7 @@ export class CatalogService {
       event.status === 'published' &&
       event.owner?.active === true &&
       Boolean(event.startsAt && event.startsAt > now) &&
+      (!event.registrationStartsAt || event.registrationStartsAt <= now) &&
       (!event.registrationDeadline || event.registrationDeadline > now) &&
       availableSpots > 0 &&
       Boolean(publicKey);
@@ -340,6 +359,7 @@ export class CatalogService {
       startsAt: event.startsAt,
       endsAt: event.endsAt,
       registrationDeadline: event.registrationDeadline,
+      registrationStartsAt: event.registrationStartsAt,
       priceInCents: event.priceInCents,
       status: event.status,
       form: event.form,

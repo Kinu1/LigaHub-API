@@ -562,6 +562,7 @@ export class PaymentsService {
     event: {
       status: string;
       registrationDeadline: Date | null;
+      registrationStartsAt?: Date | null;
       startsAt: Date | null;
       owner: { active: boolean } | null;
     };
@@ -573,6 +574,8 @@ export class PaymentsService {
       registration.reservationExpiresAt <= new Date() ||
       !registration.event.owner?.active ||
       registration.event.status !== 'published' ||
+      (registration.event.registrationStartsAt &&
+        registration.event.registrationStartsAt > new Date()) ||
       (registration.event.registrationDeadline &&
         registration.event.registrationDeadline <= new Date()) ||
       (registration.event.startsAt && registration.event.startsAt <= new Date())
