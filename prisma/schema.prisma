@@ -20,6 +20,8 @@ model AcademicEvent {
   owner                User?          @relation(fields: [ownerId], references: [id])
   description          String         @default("")
   location             String         @default("")
+  logoImage            String?
+  bannerImage          String?
   startsAt             DateTime?
   endsAt               DateTime?
   registrationStartsAt DateTime?

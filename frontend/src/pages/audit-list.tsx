@@ -56,6 +56,8 @@ const fields: Record<string, string> = {
   endsAt: 'Término',
   registrationDeadline: 'Prazo de inscrição',
   registrationStartsAt: 'Início das inscrições',
+  logoImage: 'Logo do evento',
+  bannerImage: 'Banner do evento',
   reservationMinutes: 'Duração da reserva',
   capacity: 'Número de vagas',
   priceInCents: 'Preço',
