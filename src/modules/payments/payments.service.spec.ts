@@ -51,6 +51,7 @@ function fixture(capacity = 1, occupied = 0) {
       id: attempt.registration.eventId,
       status: 'published',
       startsAt: null,
+      registrationStartsAt: null as Date | null,
       capacity,
       owner: { active: true },
     },
@@ -114,6 +115,19 @@ function fixture(capacity = 1, occupied = 0) {
 }
 
 describe('PaymentsService', () => {
+  it('bloqueia checkout antes da abertura das inscrições', async () => {
+    const setup = fixture();
+    setup.registration.event.registrationStartsAt = new Date(
+      Date.now() + 60_000,
+    );
+    await expect(
+      setup.service.checkoutConfig(
+        setup.registration.id,
+        'acesso-participante',
+      ),
+    ).rejects.toThrow('não está disponível para pagamento');
+    expect(setup.gateway.createPayment).not.toHaveBeenCalled();
+  });
   it('deve registrar somente diagnóstico seguro ao rejeitar webhook', async () => {
     vi.stubEnv('MERCADO_PAGO_WEBHOOK_SECRET', 'segredo-privado');
     const warn = vi

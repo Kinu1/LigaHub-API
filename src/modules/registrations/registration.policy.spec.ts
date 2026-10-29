@@ -6,6 +6,18 @@ import {
 
 describe('Política de reserva de vagas', () => {
   const now = new Date('2030-01-01');
+  it('bloqueia antes da abertura e libera exatamente no início das inscrições', () => {
+    const event = {
+      status: 'published',
+      startsAt: new Date('2030-02-01'),
+      registrationDeadline: null,
+      registrationStartsAt: now,
+    };
+    expect(() =>
+      assertRegistrationOpen(event, new Date(now.getTime() - 1)),
+    ).toThrow('ainda não começaram');
+    expect(() => assertRegistrationOpen(event, now)).not.toThrow();
+  });
   it('deve rejeitar eventos suspensos mesmo com vagas', () => {
     expect(() =>
       assertRegistrationOpen(

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { EventArtwork } from './event-images';
 import {
   Link,
   useNavigate,
@@ -59,8 +60,8 @@ function Steps({ step }: { step: number }) {
 }
 function EventSummary({ event }: { event: Event }) {
   return (
-    <aside className="card self-start lg:sticky lg:top-6">
-      <p className="eyebrow">SEU PRÓXIMO ENCONTRO</p>
+    <aside className="card event-summary self-start lg:sticky lg:top-6" aria-label="Resumo do evento">
+      <p className="eyebrow">SUA PARTICIPAÇÃO</p>
       <h2 className="text-2xl">{event.title}</h2>
       <div className="my-6 space-y-4">
         <p className="muted flex items-start gap-3 text-sm">
@@ -77,10 +78,10 @@ function EventSummary({ event }: { event: Event }) {
         <p className="mt-1 text-3xl font-semibold tracking-tight">
           {money(event.priceInCents)}
         </p>
-        <p className="muted mt-4 text-xs">
+        {event.availableSpots !== undefined && <p className="muted mt-4 text-xs">
           {event.availableSpots} vaga(s) disponível(is) segundo a última
           consulta.
-        </p>
+        </p>}
       </div>
     </aside>
   );
@@ -91,6 +92,7 @@ export function PublicEvent() {
   const query = useQuery({
     queryKey: ['public-event', publicId],
     queryFn: () => api<Event>(`/public/events/${publicId}`),
+    refetchInterval: 30000,
   });
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [answerErrors, setAnswerErrors] = useState<Record<string, string>>({});
@@ -138,10 +140,12 @@ export function PublicEvent() {
   if (!event) return null;
   return (
     <>
-      <Heading eyebrow="EVENTO DA LIGA" title={event.title}>
-        Preencha seus dados e garanta sua participação.
-      </Heading>
-      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+      <EventArtwork event={event}>
+        <Heading eyebrow="EVENTO DA LIGA" title={event.title}>
+          Preencha seus dados e garanta sua participação.
+        </Heading>
+      </EventArtwork>
+      <div className="public-event-grid grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <section>
           <p className="muted mb-7 whitespace-pre-wrap leading-relaxed">
             {event.description}
@@ -150,7 +154,11 @@ export function PublicEvent() {
           {!event.acceptingRegistrations ? (
             <div className="card">
               <Notice>
-                Este evento não está aceitando inscrições no momento.
+                {event.status === 'published' &&
+                event.registrationStartsAt &&
+                new Date(event.registrationStartsAt) > new Date()
+                  ? `As inscrições abrem em ${date(event.registrationStartsAt)} (horário de Brasília).`
+                  : 'Este evento não está aceitando inscrições no momento.'}
               </Notice>
               <Link
                 className="btn secondary"
@@ -425,9 +433,11 @@ export function ParticipantPage() {
     !registration.cancellationRequestedAt;
   return (
     <div className="mx-auto max-w-3xl">
-      <Heading eyebrow="SUA INSCRIÇÃO" title={registration.event.title}>
-        Olá, {registration.name}. Acompanhe sua participação aqui.
-      </Heading>
+      <EventArtwork event={registration.event}>
+        <Heading eyebrow="SUA INSCRIÇÃO" title={registration.event.title}>
+          Olá, {registration.name}. Acompanhe sua participação aqui.
+        </Heading>
+      </EventArtwork>
       {registration.status !== 'canceled' && (
         <Steps step={registration.status === 'confirmed' || pending ? 2 : 1} />
       )}

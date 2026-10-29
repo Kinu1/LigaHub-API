@@ -178,6 +178,35 @@ describe('Reservas de vagas e controle de inscrições no PostgreSQL', () => {
     ).toBe(1);
   });
 
+  it('persiste a abertura, bloqueia reserva antecipada e libera após a abertura', async () => {
+    const { event } = await fixture();
+    const opening = new Date(Date.now() + 60_000);
+    await prisma.academicEvent.update({
+      where: { id: event.id },
+      data: { registrationStartsAt: opening },
+    });
+    expect(
+      (
+        await prisma.academicEvent.findUniqueOrThrow({
+          where: { id: event.id },
+        })
+      ).registrationStartsAt,
+    ).toEqual(opening);
+    await expect(service.reserve(event.publicId, input())).rejects.toThrow(
+      'ainda não começaram',
+    );
+    expect(
+      await prisma.registration.count({ where: { eventId: event.id } }),
+    ).toBe(0);
+    await prisma.academicEvent.update({
+      where: { id: event.id },
+      data: { registrationStartsAt: new Date(Date.now() - 1000) },
+    });
+    expect((await service.reserve(event.publicId, input())).status).toBe(
+      'reserved',
+    );
+  });
+
   it('deve reservar a última vaga para apenas uma de duas solicitações simultâneas', async () => {
     const { event } = await fixture();
     const results = await Promise.allSettled([

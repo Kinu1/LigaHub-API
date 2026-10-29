@@ -153,7 +153,9 @@ function AdminOutbox() {
             {query.data.items.map((item) => (
               <li key={item.id} className="py-5 space-y-3">
                 <h2 className="font-semibold">
-                  {statuses[item.status] ?? 'Status não reconhecido'}
+                  <span className={`badge ${item.status === 'sent' ? 'badge-good' : item.status === 'failed' ? 'badge-danger' : ['pending', 'processing'].includes(item.status) ? 'badge-warning' : ''}`}>
+                    {statuses[item.status] ?? 'Status não reconhecido'}
+                  </span>
                 </h2>
                 <p>Tentativas: {item.attempts}</p>
                 {item.status === 'failed' && (

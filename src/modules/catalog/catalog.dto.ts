@@ -25,6 +25,20 @@ export class CreateEventDto {
   @MinLength(1, { message: 'O título é obrigatório.' })
   @MaxLength(200, { message: 'O título deve conter até 200 caracteres.' })
   title: string;
+  @ApiPropertyOptional({
+    description: 'Imagem WebP em data URL, até 400000 caracteres.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(400000)
+  logoImage?: string | null;
+  @ApiPropertyOptional({
+    description: 'Imagem WebP em data URL, até 400000 caracteres.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(400000)
+  bannerImage?: string | null;
   @ApiProperty({
     minimum: MIN_EVENT_PRICE_IN_CENTS,
     description: 'Preço em centavos. Mínimo de R$ 0,50.',
@@ -66,6 +80,13 @@ export class CreateEventDto {
   @IsOptional()
   @IsISO8601({ strict: true }, { message: 'O prazo de inscrição é inválido.' })
   registrationDeadline?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsISO8601(
+    { strict: true },
+    { message: 'O início das inscrições é inválido.' },
+  )
+  registrationStartsAt?: string;
   @ApiPropertyOptional({ default: 15 })
   @IsOptional()
   @IsInt({ message: 'O prazo de reserva deve ser inteiro.' })

@@ -1,6 +1,123 @@
-import { useId, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { CalendarDays, Clock3 } from 'lucide-react';
 import { Field } from '../ui';
+
+const monthNames = Array.from({ length: 12 }, (_, month) =>
+  new Intl.DateTimeFormat('pt-BR', { month: 'long', timeZone: 'UTC' }).format(
+    new Date(Date.UTC(2030, month, 1)),
+  ),
+);
+const capitalize = (text: string) =>
+  text.charAt(0).toLocaleUpperCase('pt-BR') + text.slice(1);
+
+export function DateSelector({
+  value,
+  onChange,
+  onBlur,
+  error,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  error?: string;
+}) {
+  const today = new Date();
+  const [fallbackYear, setYear] = useState(today.getFullYear());
+  const [fallbackMonth, setMonth] = useState(today.getMonth() + 1);
+  const parts = value.split('-').map(Number);
+  const year = parts[0] || fallbackYear;
+  const month = parts[1] || fallbackMonth;
+  const day = parts[2] || 0;
+  const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const id = useId();
+  const update = (nextYear: number, nextMonth: number, nextDay: number) => {
+    setYear(nextYear);
+    setMonth(nextMonth);
+    const lastDay = new Date(Date.UTC(nextYear, nextMonth, 0)).getUTCDate();
+    onChange(
+      nextDay
+        ? `${nextYear}-${String(nextMonth).padStart(2, '0')}-${String(Math.min(nextDay, lastDay)).padStart(2, '0')}`
+        : '',
+    );
+  };
+  return (
+    <fieldset
+      className="min-w-0"
+      aria-describedby={error ? `${id}-error` : undefined}
+    >
+      <legend className="mb-2 text-sm font-medium">Data</legend>
+      <div className="grid gap-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_100px] gap-3">
+          <Field label="Mês">
+            <select
+              value={month}
+              onBlur={onBlur}
+              onChange={(e) => update(year, Number(e.target.value), day)}
+            >
+              {monthNames.map((name, index) => (
+                <option key={name} value={index + 1}>
+                  {capitalize(name)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Ano">
+            <select
+              value={year}
+              onBlur={onBlur}
+              onChange={(e) => update(Number(e.target.value), month, day)}
+            >
+              {Array.from(
+                {
+                  length:
+                    Math.max(today.getFullYear() + 20, year) -
+                    Math.min(today.getFullYear() - 1, year) +
+                    1,
+                },
+                (_, index) => Math.min(today.getFullYear() - 1, year) + index,
+              ).map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <Field label="Dia">
+          <select
+            value={day}
+            onBlur={onBlur}
+            aria-invalid={!!error}
+            aria-describedby={error ? `${id}-error` : undefined}
+            onChange={(e) => update(year, month, Number(e.target.value))}
+          >
+            <option value={0}>Selecione o dia</option>
+            {Array.from({ length: days }, (_, index) => index + 1).map((d) => (
+              <option key={d} value={d}>
+                {capitalize(
+                  new Intl.DateTimeFormat('pt-BR', {
+                    weekday: 'long',
+                    timeZone: 'UTC',
+                  }).format(new Date(Date.UTC(year, month - 1, d))),
+                )}
+                , {d}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      {error && (
+        <small
+          id={`${id}-error`}
+          className="field-error mt-2 block"
+          role="alert"
+        >
+          {error}
+        </small>
+      )}
+    </fieldset>
+  );
+}
 
 export function scheduleError(value: string): string | undefined {
   if (!value) return;
@@ -35,33 +152,30 @@ export function ScheduleField({
     onChange(nextDay || nextTime ? `${nextDay}T${nextTime}` : '');
   return (
     <fieldset
-      className="min-w-0"
+      className="schedule-field min-w-0"
       aria-describedby={description ? `${id}-description` : undefined}
     >
       <legend className="mb-2 text-sm font-semibold">{title}</legend>
       {description && (
-        <p id={`${id}-description`} className="muted mb-4 text-sm">
+        <p id={`${id}-description`} className="muted mb-3 text-sm">
           {description}
         </p>
       )}
-      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] gap-3">
-        <Field
-          label="Data"
+      <div className="grid items-end gap-3">
+        <DateSelector
+          value={day}
+          onChange={(nextDay) => update(nextDay, time)}
+          onBlur={onBlur}
           error={error && (!day || (!!day && !!time)) ? error : undefined}
-        >
-          <input
-            type="date"
-            value={day}
-            onChange={(event) => update(event.target.value, time)}
-            onBlur={onBlur}
-          />
-        </Field>
+        />
         <Field
           label="Horário"
           error={error && !!day && !time ? error : undefined}
         >
           <input
+            className="schedule-input"
             type="time"
+            onClick={(event) => event.currentTarget.showPicker?.()}
             value={time}
             onChange={(event) => update(day, event.target.value)}
             onBlur={onBlur}
@@ -112,14 +226,14 @@ export function ScheduleSection({
           <Clock3 className="mt-0.5 shrink-0 text-red-800" size={21} />
           <div>
             <h3 id="registration-deadline-title" className="font-semibold">
-              Prazo de inscrição
+              Período de inscrições
             </h3>
             <p className="muted mt-1 text-sm">
-              Até quando os participantes poderão se inscrever?
+              Escolha quando as inscrições abrem e encerram.
             </p>
           </div>
         </div>
-        <div className="max-w-lg">{deadline}</div>
+        <div className="grid gap-6 lg:grid-cols-2">{deadline}</div>
       </section>
       <p className="muted text-sm">
         Todos os horários seguem o horário de Brasília. Se ainda não definiu uma

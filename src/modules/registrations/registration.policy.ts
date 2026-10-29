@@ -5,6 +5,7 @@ export function assertRegistrationOpen(
     status: string;
     startsAt: Date | null;
     registrationDeadline: Date | null;
+    registrationStartsAt?: Date | null;
   },
   now: Date,
 ): void {
@@ -13,6 +14,10 @@ export function assertRegistrationOpen(
       'As inscrições deste evento estão indisponíveis.',
     );
   const deadline = event.registrationDeadline ?? event.startsAt;
+  if (event.registrationStartsAt && event.registrationStartsAt > now)
+    throw new ConflictException(
+      'As inscrições deste evento ainda não começaram.',
+    );
   if (!deadline || deadline <= now)
     throw new GoneException('O prazo de inscrição foi encerrado.');
 }

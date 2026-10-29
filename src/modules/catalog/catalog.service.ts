@@ -16,6 +16,7 @@ import type {
   UpdateEventDto,
 } from './catalog.dto.js';
 import { validateForm } from './forms.js';
+import { validateEventImage } from './event-images.js';
 import {
   MIN_EVENT_PRICE_IN_CENTS,
   MIN_EVENT_PRICE_MESSAGE,
@@ -35,7 +36,16 @@ export function validateEventDates(event: {
   startsAt: Date | null;
   endsAt: Date | null;
   registrationDeadline: Date | null;
+  registrationStartsAt?: Date | null;
 }): void {
+  const deadline = event.registrationDeadline ?? event.startsAt;
+  if (
+    event.registrationStartsAt &&
+    (!deadline || event.registrationStartsAt >= deadline)
+  )
+    throw new BadRequestException(
+      'O início das inscrições deve ser anterior ao encerramento das inscrições e ao início do evento.',
+    );
   if (event.endsAt && (!event.startsAt || event.endsAt <= event.startsAt))
     throw new BadRequestException(
       'A data final deve ser posterior à data inicial.',
@@ -54,6 +64,8 @@ export class CatalogService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   private validateInput(input: UpdateEventDto) {
+    validateEventImage(input.logoImage, 'logo');
+    validateEventImage(input.bannerImage, 'banner');
     for (const field of [
       'title',
       'priceInCents',
@@ -97,6 +109,9 @@ export class CatalogService {
   async create(input: CreateEventDto, actor: AuthenticatedUser) {
     this.validateInput(input);
     const dates = {
+      registrationStartsAt: input.registrationStartsAt
+        ? new Date(input.registrationStartsAt)
+        : null,
       startsAt: input.startsAt ? new Date(input.startsAt) : null,
       endsAt: input.endsAt ? new Date(input.endsAt) : null,
       registrationDeadline: input.registrationDeadline
@@ -119,6 +134,8 @@ export class CatalogService {
           ownerId,
           description: input.description ?? '',
           location: input.location ?? '',
+          logoImage: input.logoImage ?? null,
+          bannerImage: input.bannerImage ?? null,
           ...dates,
           reservationMinutes: input.reservationMinutes ?? 15,
           form,
@@ -139,6 +156,7 @@ export class CatalogService {
     };
     const [items, total] = await this.prisma.$transaction([
       this.prisma.academicEvent.findMany({
+        omit: { logoImage: true, bannerImage: true },
         where,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (query.page - 1) * query.limit,
@@ -193,6 +211,12 @@ export class CatalogService {
           'A capacidade não pode ser inferior às vagas confirmadas e reservadas.',
         );
       const dates = {
+        registrationStartsAt:
+          input.registrationStartsAt !== undefined
+            ? input.registrationStartsAt
+              ? new Date(input.registrationStartsAt)
+              : null
+            : event.registrationStartsAt,
         startsAt:
           input.startsAt !== undefined
             ? input.startsAt
@@ -221,6 +245,8 @@ export class CatalogService {
           'Um evento publicado precisa de início futuro.',
         );
       const data: Prisma.AcademicEventUpdateInput = { ...dates };
+      if (input.logoImage !== undefined) data.logoImage = input.logoImage;
+      if (input.bannerImage !== undefined) data.bannerImage = input.bannerImage;
       if (input.title !== undefined) {
         if (!input.title?.trim())
           throw new BadRequestException('O título do evento é obrigatório.');
@@ -329,6 +355,7 @@ export class CatalogService {
       event.status === 'published' &&
       event.owner?.active === true &&
       Boolean(event.startsAt && event.startsAt > now) &&
+      (!event.registrationStartsAt || event.registrationStartsAt <= now) &&
       (!event.registrationDeadline || event.registrationDeadline > now) &&
       availableSpots > 0 &&
       Boolean(publicKey);
@@ -336,10 +363,13 @@ export class CatalogService {
       publicId: event.publicId,
       title: event.title,
       description: event.description,
+      logoImage: event.logoImage,
+      bannerImage: event.bannerImage,
       location: event.location,
       startsAt: event.startsAt,
       endsAt: event.endsAt,
       registrationDeadline: event.registrationDeadline,
+      registrationStartsAt: event.registrationStartsAt,
       priceInCents: event.priceInCents,
       status: event.status,
       form: event.form,

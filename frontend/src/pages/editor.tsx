@@ -1,4 +1,5 @@
 import { MotionSection } from '../experience';
+import { EventArtwork, EventImageInput } from './event-images';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useBlocker } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -34,11 +35,14 @@ const createSchema = (existingPriceInCents?: number) =>
   z
     .object({
       title: z.string().trim().min(1, 'Informe o título.').max(200),
+      logoImage: z.string().max(400000),
+      bannerImage: z.string().max(400000),
       description: z.string().max(10000),
       location: z.string().max(500),
       startsAt: scheduleValue,
       endsAt: scheduleValue,
       registrationDeadline: scheduleValue,
+      registrationStartsAt: scheduleValue,
       price: z
         .string()
         .regex(
@@ -61,6 +65,19 @@ const createSchema = (existingPriceInCents?: number) =>
       ownerId: z.string(),
     })
     .superRefine((value, context) => {
+      const deadline = value.registrationDeadline || value.startsAt;
+      if (
+        value.registrationStartsAt &&
+        !scheduleError(value.registrationStartsAt) &&
+        (!deadline ||
+          (!scheduleError(deadline) && value.registrationStartsAt >= deadline))
+      )
+        context.addIssue({
+          code: 'custom',
+          path: ['registrationStartsAt'],
+          message:
+            'A abertura deve ser antes do encerramento das inscrições e do início do evento.',
+        });
       if (
         value.endsAt &&
         !scheduleError(value.endsAt) &&
@@ -120,6 +137,8 @@ export function EventEditor() {
   const [saved, setSaved] = useState(false);
   const [savedId, setSavedId] = useState('');
   const [error, setError] = useState('');
+  const [imageBusy, setImageBusy] = useState({ logo: false, banner: false });
+  const preparingImage = imageBusy.logo || imageBusy.banner;
   const query = useQuery({
     queryKey: ['event', id],
     queryFn: () => api<Event>(`/events/${id}`),
@@ -134,11 +153,14 @@ export function EventEditor() {
     resolver: zodResolver(createSchema(query.data?.priceInCents)),
     defaultValues: {
       title: '',
+      logoImage: '',
+      bannerImage: '',
       description: '',
       location: '',
       startsAt: '',
       endsAt: '',
       registrationDeadline: '',
+      registrationStartsAt: '',
       price: '',
       capacity: 50,
       reservationMinutes: 15,
@@ -153,11 +175,14 @@ export function EventEditor() {
       const e = query.data;
       form.reset({
         title: e.title,
+        logoImage: e.logoImage ?? '',
+        bannerImage: e.bannerImage ?? '',
         description: e.description,
         location: e.location,
         startsAt: localDate(e.startsAt),
         endsAt: localDate(e.endsAt),
         registrationDeadline: localDate(e.registrationDeadline),
+        registrationStartsAt: localDate(e.registrationStartsAt),
         price: (e.priceInCents / 100).toFixed(2),
         capacity: e.capacity,
         reservationMinutes: e.reservationMinutes,
@@ -188,11 +213,14 @@ export function EventEditor() {
   const group: (keyof Values)[][] = [
     [
       'title',
+      'logoImage',
+      'bannerImage',
       'description',
       'location',
       'startsAt',
       'endsAt',
       'registrationDeadline',
+      'registrationStartsAt',
     ],
     ['price', 'capacity', 'reservationMinutes', 'ownerId'],
     [],
@@ -214,6 +242,7 @@ export function EventEditor() {
     return true;
   };
   const submit = async (v: Values) => {
+    if (preparingImage) return;
     setError('');
     if (!validateFields()) return;
     if (user?.role === 'admin' && !v.ownerId) {
@@ -225,12 +254,16 @@ export function EventEditor() {
         id ? `/events/${id}` : '/events',
         {
           title: v.title,
+          logoImage: v.logoImage || null,
+          bannerImage: v.bannerImage || null,
           description: v.description,
           location: v.location,
           startsAt: isoDate(v.startsAt) ?? (id ? null : undefined),
           endsAt: isoDate(v.endsAt) ?? (id ? null : undefined),
           registrationDeadline:
             isoDate(v.registrationDeadline) ?? (id ? null : undefined),
+          registrationStartsAt:
+            isoDate(v.registrationStartsAt) ?? (id ? null : undefined),
           ...(id && query.data?.priceInCents === toCents(v.price)
             ? {}
             : { priceInCents: toCents(v.price) }),
@@ -273,7 +306,7 @@ export function EventEditor() {
       <Heading title={id ? 'Editar evento' : 'Prepare seu próximo encontro'}>
         Um passo de cada vez, do primeiro detalhe ao convite.
       </Heading>
-      <ol className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <ol className="editor-steps mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4" aria-label="Etapas do evento">
         {steps.map((label, index) => (
           <li
             key={label}
@@ -286,7 +319,7 @@ export function EventEditor() {
         ))}
       </ol>
       {error && <Notice>{error}</Notice>}
-      <form onSubmit={form.handleSubmit(submit)}>
+      <form className="editor-form" onSubmit={form.handleSubmit(submit)}>
         <MotionSection change={step}>
           <section className="card">
             {step === 0 && (
@@ -308,26 +341,89 @@ export function EventEditor() {
                 <Field label="Local" error={err.location?.message}>
                   <input {...form.register('location')} />
                 </Field>
+                <section
+                  aria-labelledby="event-images-title"
+                  className="border-t border-zinc-200 pt-6"
+                >
+                  <h3 id="event-images-title" className="font-semibold">
+                    Identidade visual do evento
+                  </h3>
+                  <p className="muted mt-1 mb-5 text-sm">
+                    Adicione uma logo e um banner para quem abrir o link do
+                    evento. As imagens são opcionais.
+                  </p>
+                  <div className="flex flex-col gap-6">
+                    <EventImageInput
+                      kind="banner"
+                      value={values.bannerImage}
+                      onChange={(value) =>
+                        form.setValue('bannerImage', value, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }
+                      onBusyChange={(busy) =>
+                        setImageBusy((current) => ({ ...current, banner: busy }))
+                      }
+                    />
+                    <EventImageInput
+                      kind="logo"
+                      value={values.logoImage}
+                      onChange={(value) =>
+                        form.setValue('logoImage', value, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }
+                      onBusyChange={(busy) =>
+                        setImageBusy((current) => ({
+                          ...current,
+                          logo: busy,
+                        }))
+                      }
+                    />
+                  </div>
+                </section>
                 <ScheduleSection
                   deadline={
-                    <Controller
-                      name="registrationDeadline"
-                      control={form.control}
-                      render={({ field, fieldState }) => (
-                        <ScheduleField
-                          title="Encerramento das inscrições"
-                          description="Pode ser antes ou no mesmo horário de início do evento."
-                          {...field}
-                          onChange={(value) => {
-                            form.setValue(field.name, value, {
-                              shouldDirty: true,
-                              shouldValidate: true,
-                            });
-                          }}
-                          error={fieldState.error?.message}
-                        />
-                      )}
-                    />
+                    <>
+                      <Controller
+                        name="registrationStartsAt"
+                        control={form.control}
+                        render={({ field, fieldState }) => (
+                          <ScheduleField
+                            title="Início das inscrições"
+                            description="Em branco, as inscrições abrem ao publicar o evento."
+                            {...field}
+                            onChange={(value) => {
+                              form.setValue(field.name, value, {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              });
+                            }}
+                            error={fieldState.error?.message}
+                          />
+                        )}
+                      />
+                      <Controller
+                        name="registrationDeadline"
+                        control={form.control}
+                        render={({ field, fieldState }) => (
+                          <ScheduleField
+                            title="Encerramento das inscrições"
+                            description="Pode ser antes ou no mesmo horário de início do evento."
+                            {...field}
+                            onChange={(value) => {
+                              form.setValue(field.name, value, {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              });
+                            }}
+                            error={fieldState.error?.message}
+                          />
+                        )}
+                      />
+                    </>
                   }
                 >
                   <Controller
@@ -438,7 +534,9 @@ export function EventEditor() {
             {step === 3 && (
               <div>
                 <p className="eyebrow">PRÉVIA · AINDA NÃO PUBLICADO</p>
-                <h2 className="text-2xl">{values.title}</h2>
+                <EventArtwork event={values}>
+                  <h2 className="text-2xl">{values.title}</h2>
+                </EventArtwork>
                 <p className="muted mt-3 whitespace-pre-wrap">
                   {values.description || 'Sem descrição.'}
                 </p>
@@ -459,6 +557,18 @@ export function EventEditor() {
                   </div>
                 </div>
                 <div className="rounded-xl bg-zinc-50 p-5">
+                  <p className="mb-2 text-sm">
+                    Início das inscrições:{' '}
+                    {values.registrationStartsAt
+                      ? date(isoDate(values.registrationStartsAt))
+                      : 'Ao publicar o evento'}
+                  </p>
+                  <p className="mb-5 text-sm">
+                    Encerramento das inscrições:{' '}
+                    {date(
+                      isoDate(values.registrationDeadline || values.startsAt),
+                    )}
+                  </p>
                   <h2 className="mb-4">Prévia do formulário</h2>
                   <QuestionsPreview fields={fields} />
                 </div>
@@ -485,6 +595,7 @@ export function EventEditor() {
               key="continue"
               type="button"
               className="btn"
+              disabled={preparingImage}
               onClick={async () => {
                 setError('');
                 if (await form.trigger(group[step])) {

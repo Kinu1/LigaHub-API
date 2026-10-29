@@ -72,6 +72,16 @@ function show(
 }
 beforeEach(() => vi.resetAllMocks());
 describe('Inscrição e pagamento', () => {
+  it('exibe as imagens enviadas pelo organizador no link público do evento', async () => {
+    vi.mocked(api).mockResolvedValue({
+      ...event,
+      logoImage: 'data:image/webp;base64,logo',
+      bannerImage: 'data:image/webp;base64,banner',
+    });
+    show(<PublicEvent />);
+    expect(await screen.findByAltText(`Logo do evento ${event.title}`)).toBeTruthy();
+    expect(screen.getByAltText(`Banner do evento ${event.title}`)).toBeTruthy();
+  });
   it.each([null, '2026-10-26T12:00:00Z'])(
     'explica o cancelamento após reembolso sem oferecer nova solicitação: %s',
     async (cancellationRequestedAt) => {
@@ -159,6 +169,18 @@ describe('Inscrição e pagamento', () => {
       screen.getByText(/Este pagamento foi reembolsado pelo Mercado Pago/),
     ).toBeTruthy();
     expect(screen.queryByText(/Esta inscrição foi cancelada/)).toBeNull();
+  });
+  it('informa a abertura agendada sem exibir o formulário de inscrição', async () => {
+    vi.mocked(api).mockResolvedValue({
+      ...event,
+      status: 'published',
+      acceptingRegistrations: false,
+      registrationStartsAt: '2099-01-01T12:00:00Z',
+    });
+    show(<PublicEvent />);
+    expect(await screen.findByText(/As inscrições abrem em/)).toBeTruthy();
+    expect(screen.queryByLabelText('Nome completo')).toBeNull();
+    expect(send).not.toHaveBeenCalled();
   });
   it('valida perguntas obrigatórias e mantém dados ao voltar da revisão', async () => {
     vi.mocked(api).mockResolvedValue(event);

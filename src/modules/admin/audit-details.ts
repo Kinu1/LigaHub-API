@@ -20,11 +20,14 @@ const detailKeys = [
 
 const eventFields = new Set([
   'title',
+  'logoImage',
+  'bannerImage',
   'description',
   'location',
   'startsAt',
   'endsAt',
   'registrationDeadline',
+  'registrationStartsAt',
   'reservationMinutes',
   'capacity',
   'priceInCents',

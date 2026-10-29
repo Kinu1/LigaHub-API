@@ -42,7 +42,7 @@ export function paymentHistoryUrl(page: number, filters: PaymentFilters) {
   if (filters.to) params.set('to', dayBoundary(filters.to, true));
   return `/payments?${params}`;
 }
-const statuses = [
+export const paymentStatuses = [
   'created',
   'pending',
   'in_process',
@@ -54,18 +54,25 @@ const statuses = [
   'refunded',
   'charged_back',
 ];
+export function paymentFiltersFromSearch(search: string): PaymentFilters {
+  const params = new URLSearchParams(search);
+  const status = params.get('status') || '';
+  return { ...emptyPaymentFilters, status: paymentStatuses.includes(status) ? status : '' };
+}
 export function FinanceFilters({
   onApply,
+  initialFilters = emptyPaymentFilters,
 }: {
+  initialFilters?: PaymentFilters;
   onApply: (filters: PaymentFilters) => void;
 }) {
-  const [draft, setDraft] = useState({ ...emptyPaymentFilters });
+  const [draft, setDraft] = useState({ ...initialFilters });
   const [error, setError] = useState('');
   const change = (key: keyof PaymentFilters, value: string) =>
     setDraft((current) => ({ ...current, [key]: value }));
   return (
     <form
-      className="mb-6 space-y-4"
+      className="filter-bar mb-6 space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
         try {
@@ -100,7 +107,7 @@ export function FinanceFilters({
             onChange={(event) => change('status', event.target.value)}
           >
             <option value="">Todos</option>
-            {statuses.map((status) => (
+            {paymentStatuses.map((status) => (
               <option key={status} value={status}>
                 {labels[status] ?? status}
               </option>
