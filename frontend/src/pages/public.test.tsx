@@ -72,6 +72,16 @@ function show(
 }
 beforeEach(() => vi.resetAllMocks());
 describe('Inscrição e pagamento', () => {
+  it('exibe as imagens enviadas pelo organizador no link público do evento', async () => {
+    vi.mocked(api).mockResolvedValue({
+      ...event,
+      logoImage: 'data:image/webp;base64,logo',
+      bannerImage: 'data:image/webp;base64,banner',
+    });
+    show(<PublicEvent />);
+    expect(await screen.findByAltText(`Logo do evento ${event.title}`)).toBeTruthy();
+    expect(screen.getByAltText(`Banner do evento ${event.title}`)).toBeTruthy();
+  });
   it.each([null, '2026-10-26T12:00:00Z'])(
     'explica o cancelamento após reembolso sem oferecer nova solicitação: %s',
     async (cancellationRequestedAt) => {

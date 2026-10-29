@@ -1,4 +1,5 @@
 import { MotionSection } from '../experience';
+import { EventArtwork, EventImageInput } from './event-images';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useBlocker } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -34,6 +35,8 @@ const createSchema = (existingPriceInCents?: number) =>
   z
     .object({
       title: z.string().trim().min(1, 'Informe o título.').max(200),
+      logoImage: z.string().max(400000),
+      bannerImage: z.string().max(400000),
       description: z.string().max(10000),
       location: z.string().max(500),
       startsAt: scheduleValue,
@@ -120,6 +123,8 @@ export function EventEditor() {
   const [saved, setSaved] = useState(false);
   const [savedId, setSavedId] = useState('');
   const [error, setError] = useState('');
+  const [imageBusy, setImageBusy] = useState({ logo: false, banner: false });
+  const preparingImage = imageBusy.logo || imageBusy.banner;
   const query = useQuery({
     queryKey: ['event', id],
     queryFn: () => api<Event>(`/events/${id}`),
@@ -134,6 +139,8 @@ export function EventEditor() {
     resolver: zodResolver(createSchema(query.data?.priceInCents)),
     defaultValues: {
       title: '',
+      logoImage: '',
+      bannerImage: '',
       description: '',
       location: '',
       startsAt: '',
@@ -153,6 +160,8 @@ export function EventEditor() {
       const e = query.data;
       form.reset({
         title: e.title,
+        logoImage: e.logoImage ?? '',
+        bannerImage: e.bannerImage ?? '',
         description: e.description,
         location: e.location,
         startsAt: localDate(e.startsAt),
@@ -188,6 +197,8 @@ export function EventEditor() {
   const group: (keyof Values)[][] = [
     [
       'title',
+      'logoImage',
+      'bannerImage',
       'description',
       'location',
       'startsAt',
@@ -214,6 +225,7 @@ export function EventEditor() {
     return true;
   };
   const submit = async (v: Values) => {
+    if (preparingImage) return;
     setError('');
     if (!validateFields()) return;
     if (user?.role === 'admin' && !v.ownerId) {
@@ -225,6 +237,8 @@ export function EventEditor() {
         id ? `/events/${id}` : '/events',
         {
           title: v.title,
+          logoImage: v.logoImage || null,
+          bannerImage: v.bannerImage || null,
           description: v.description,
           location: v.location,
           startsAt: isoDate(v.startsAt) ?? (id ? null : undefined),
@@ -308,6 +322,49 @@ export function EventEditor() {
                 <Field label="Local" error={err.location?.message}>
                   <input {...form.register('location')} />
                 </Field>
+                <section
+                  aria-labelledby="event-images-title"
+                  className="border-t border-zinc-200 pt-6"
+                >
+                  <h3 id="event-images-title" className="font-semibold">
+                    Identidade visual do evento
+                  </h3>
+                  <p className="muted mt-1 mb-5 text-sm">
+                    Adicione uma logo e um banner para quem abrir o link do
+                    evento. As imagens são opcionais.
+                  </p>
+                  <div className="flex flex-col gap-6">
+                    <EventImageInput
+                      kind="banner"
+                      value={values.bannerImage}
+                      onChange={(value) =>
+                        form.setValue('bannerImage', value, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }
+                      onBusyChange={(busy) =>
+                        setImageBusy((current) => ({ ...current, banner: busy }))
+                      }
+                    />
+                    <EventImageInput
+                      kind="logo"
+                      value={values.logoImage}
+                      onChange={(value) =>
+                        form.setValue('logoImage', value, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }
+                      onBusyChange={(busy) =>
+                        setImageBusy((current) => ({
+                          ...current,
+                          logo: busy,
+                        }))
+                      }
+                    />
+                  </div>
+                </section>
                 <ScheduleSection
                   deadline={
                     <Controller
@@ -438,7 +495,9 @@ export function EventEditor() {
             {step === 3 && (
               <div>
                 <p className="eyebrow">PRÉVIA · AINDA NÃO PUBLICADO</p>
-                <h2 className="text-2xl">{values.title}</h2>
+                <EventArtwork event={values}>
+                  <h2 className="text-2xl">{values.title}</h2>
+                </EventArtwork>
                 <p className="muted mt-3 whitespace-pre-wrap">
                   {values.description || 'Sem descrição.'}
                 </p>
@@ -485,6 +544,7 @@ export function EventEditor() {
               key="continue"
               type="button"
               className="btn"
+              disabled={preparingImage}
               onClick={async () => {
                 setError('');
                 if (await form.trigger(group[step])) {

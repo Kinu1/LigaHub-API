@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { EventArtwork } from './event-images';
 import {
   Link,
   useNavigate,
@@ -138,9 +139,11 @@ export function PublicEvent() {
   if (!event) return null;
   return (
     <>
-      <Heading eyebrow="EVENTO DA LIGA" title={event.title}>
-        Preencha seus dados e garanta sua participação.
-      </Heading>
+      <EventArtwork event={event}>
+        <Heading eyebrow="EVENTO DA LIGA" title={event.title}>
+          Preencha seus dados e garanta sua participação.
+        </Heading>
+      </EventArtwork>
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         <section>
           <p className="muted mb-7 whitespace-pre-wrap leading-relaxed">
@@ -425,9 +428,11 @@ export function ParticipantPage() {
     !registration.cancellationRequestedAt;
   return (
     <div className="mx-auto max-w-3xl">
-      <Heading eyebrow="SUA INSCRIÇÃO" title={registration.event.title}>
-        Olá, {registration.name}. Acompanhe sua participação aqui.
-      </Heading>
+      <EventArtwork event={registration.event}>
+        <Heading eyebrow="SUA INSCRIÇÃO" title={registration.event.title}>
+          Olá, {registration.name}. Acompanhe sua participação aqui.
+        </Heading>
+      </EventArtwork>
       {registration.status !== 'canceled' && (
         <Steps step={registration.status === 'confirmed' || pending ? 2 : 1} />
       )}
