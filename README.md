@@ -9,6 +9,7 @@ O frontend fica em `frontend/`. Depois de iniciar a API, execute `npm.cmd --pref
 - Administrador com acesso global e um responsável organizador com acesso aos próprios eventos.
 - JWT de 15 minutos, senhas Argon2id e revogação de sessões.
 - Eventos em rascunho, publicados, suspensos ou encerrados; formulário personalizável e preço único em centavos.
+- Logo e banner opcionais enviados pelo organizador, com prévia, troca e remoção. PNG/JPG/WebP de até 5 MB são reencodados no navegador para WebP compacto (até 400000 caracteres por imagem) e salvos no banco junto ao evento. Aparecem na página pública e na inscrição; listagens não carregam os arquivos. A API aceita JSON de até 1 MB. Não exige serviço externo de arquivos; backups do banco incluem as imagens.
 - Inscrições pelo link divulgado pelo organizador, sem catálogo público nem conta do participante.
 - Uma inscrição por e-mail normalizado por evento; reserva temporária e proteção da última vaga com transação no PostgreSQL.
 - Pix e cartão com parcelamento; conta recebedora conectada por OAuth com PKCE.
