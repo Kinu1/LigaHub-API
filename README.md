@@ -9,6 +9,7 @@ O frontend fica em `frontend/`. Depois de iniciar a API, execute `npm.cmd --pref
 - Administrador com acesso global e um responsável organizador com acesso aos próprios eventos.
 - JWT de 15 minutos, senhas Argon2id e revogação de sessões.
 - Eventos em rascunho, publicados, suspensos ou encerrados; formulário personalizável e preço único em centavos.
+- Abertura opcional das inscrições com data e hora de Brasília; sem abertura definida, as inscrições ficam disponíveis ao publicar. A abertura deve ocorrer antes do encerramento (ou do início do evento, se não houver prazo).
 - Inscrições pelo link divulgado pelo organizador, sem catálogo público nem conta do participante.
 - Uma inscrição por e-mail normalizado por evento; reserva temporária e proteção da última vaga com transação no PostgreSQL.
 - Pix e cartão com parcelamento; conta recebedora conectada por OAuth com PKCE.
