@@ -20,6 +20,8 @@ const detailKeys = [
 
 const eventFields = new Set([
   'title',
+  'logoImage',
+  'bannerImage',
   'description',
   'location',
   'startsAt',

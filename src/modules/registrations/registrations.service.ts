@@ -235,6 +235,8 @@ export class RegistrationsService {
       cancellationRequestedAt: registration.cancellationRequestedAt,
       event: {
         title: registration.event.title,
+        logoImage: registration.event.logoImage,
+        bannerImage: registration.event.bannerImage,
         publicId: registration.event.publicId,
         status: registration.event.status,
       },

@@ -16,6 +16,7 @@ import type {
   UpdateEventDto,
 } from './catalog.dto.js';
 import { validateForm } from './forms.js';
+import { validateEventImage } from './event-images.js';
 import {
   MIN_EVENT_PRICE_IN_CENTS,
   MIN_EVENT_PRICE_MESSAGE,
@@ -54,6 +55,8 @@ export class CatalogService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   private validateInput(input: UpdateEventDto) {
+    validateEventImage(input.logoImage, 'logo');
+    validateEventImage(input.bannerImage, 'banner');
     for (const field of [
       'title',
       'priceInCents',
@@ -119,6 +122,8 @@ export class CatalogService {
           ownerId,
           description: input.description ?? '',
           location: input.location ?? '',
+          logoImage: input.logoImage ?? null,
+          bannerImage: input.bannerImage ?? null,
           ...dates,
           reservationMinutes: input.reservationMinutes ?? 15,
           form,
@@ -139,6 +144,7 @@ export class CatalogService {
     };
     const [items, total] = await this.prisma.$transaction([
       this.prisma.academicEvent.findMany({
+        omit: { logoImage: true, bannerImage: true },
         where,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (query.page - 1) * query.limit,
@@ -221,6 +227,8 @@ export class CatalogService {
           'Um evento publicado precisa de início futuro.',
         );
       const data: Prisma.AcademicEventUpdateInput = { ...dates };
+      if (input.logoImage !== undefined) data.logoImage = input.logoImage;
+      if (input.bannerImage !== undefined) data.bannerImage = input.bannerImage;
       if (input.title !== undefined) {
         if (!input.title?.trim())
           throw new BadRequestException('O título do evento é obrigatório.');
@@ -336,6 +344,8 @@ export class CatalogService {
       publicId: event.publicId,
       title: event.title,
       description: event.description,
+      logoImage: event.logoImage,
+      bannerImage: event.bannerImage,
       location: event.location,
       startsAt: event.startsAt,
       endsAt: event.endsAt,

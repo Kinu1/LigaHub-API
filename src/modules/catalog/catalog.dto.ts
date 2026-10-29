@@ -25,6 +25,20 @@ export class CreateEventDto {
   @MinLength(1, { message: 'O título é obrigatório.' })
   @MaxLength(200, { message: 'O título deve conter até 200 caracteres.' })
   title: string;
+  @ApiPropertyOptional({
+    description: 'Imagem WebP em data URL, até 400000 caracteres.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(400000)
+  logoImage?: string | null;
+  @ApiPropertyOptional({
+    description: 'Imagem WebP em data URL, até 400000 caracteres.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(400000)
+  bannerImage?: string | null;
   @ApiProperty({
     minimum: MIN_EVENT_PRICE_IN_CENTS,
     description: 'Preço em centavos. Mínimo de R$ 0,50.',
