@@ -90,6 +90,100 @@
   }
 }
 @layer components {
+  .event-image-preview {
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+    background: var(--surface-soft);
+    min-height: 150px;
+    padding: 12px;
+    text-align: center;
+  }
+  .event-image-preview img {
+    width: 100%;
+    height: 100%;
+  }
+  .event-logo-preview img {
+    max-height: 150px;
+    object-fit: contain;
+  }
+  .event-banner-preview {
+    aspect-ratio: 8 / 3;
+    position: relative;
+    min-height: 0;
+    padding: 0;
+    width: 100%;
+  }
+  .event-banner-preview img {
+    position: absolute;
+    inset: 0;
+    object-fit: cover;
+  }
+  .event-artwork {
+    min-width: 0;
+  }
+  .event-banner {
+    width: 100%;
+    aspect-ratio: 8 / 3;
+    object-fit: cover;
+    border-radius: 16px;
+    background: var(--surface-soft);
+  }
+  .event-identity {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 28px;
+    margin-top: 20px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
+  }
+  .event-identity .page-heading {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .event-identity h1,
+  .event-identity h2 {
+    overflow-wrap: anywhere;
+  }
+  .event-logo {
+    width: 112px;
+    height: 112px;
+    flex-shrink: 0;
+    object-fit: contain;
+    border: 4px solid white;
+    border-radius: 16px;
+    background: white;
+    box-shadow: var(--shadow-card);
+  }
+  @media (max-width: 639px) {
+    .event-identity {
+      padding: 16px;
+      gap: 14px;
+      align-items: flex-start;
+    }
+    .event-logo {
+      width: 68px;
+      height: 68px;
+      border-radius: 12px;
+    }
+    .event-identity h1 {
+      font-size: 1.35rem;
+      line-height: 1.2;
+    }
+    .event-identity .eyebrow {
+      font-size: 10px;
+    }
+  }
+  .event-image-preview + div:has(input[type='file']:focus-visible) .btn {
+    outline: 3px solid #b5100f;
+    outline-offset: 3px;
+  }
   .brand {
     display: inline-flex;
     align-items: center;

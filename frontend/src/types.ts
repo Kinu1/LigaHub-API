@@ -15,6 +15,8 @@ export type Field = {
 export type Event = {
   id: string;
   publicId: string;
+  logoImage?: string | null;
+  bannerImage?: string | null;
   title: string;
   description: string;
   location: string;
@@ -61,7 +63,10 @@ export type Registration = {
   suspended?: boolean;
   suspendedAt?: string | null;
   cancellationRequestedAt: string | null;
-  event: Pick<Event, 'title' | 'publicId' | 'status'>;
+  event: Pick<
+    Event,
+    'title' | 'publicId' | 'status' | 'logoImage' | 'bannerImage'
+  >;
   payments: Payment[];
 };
 export const reviewReasons: Record<string, string> = {
