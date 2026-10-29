@@ -19,6 +19,7 @@ import {
 import { PaymentAccountsService } from './payment-accounts.service.js';
 import { AuthorizeAccountDto, CreatePaymentDto } from './payment.dto.js';
 import { PaymentsService } from './payments.service.js';
+import { PaymentHistoryQuery } from './payment-history.query.js';
 import { BadRequestException } from '@nestjs/common';
 
 const registrationIdPipe = new ParseUUIDPipe({
@@ -33,6 +34,16 @@ export class PaymentsController {
     @Inject(PaymentAccountsService)
     private readonly accounts: PaymentAccountsService,
   ) {}
+
+  @Post('registrations/:id/payment-review/confirmation')
+  @Header('Cache-Control', 'no-store')
+  @Roles('admin', 'organizer')
+  confirmReview(
+    @Param('id', registrationIdPipe) id: string,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.payments.confirmPaymentReview(id, actor);
+  }
 
   @Post('payments/accounts/authorize')
   @Roles('admin', 'organizer')
@@ -137,14 +148,10 @@ export class PaymentsController {
   @Roles('admin', 'organizer')
   history(
     @CurrentUser() actor: AuthenticatedUser,
-    @Query('page') page?: string,
+    @Query() query: PaymentHistoryQuery,
     @Headers('x-browser-client') browser?: string,
   ) {
-    if (page !== undefined && (typeof page !== 'string' || !/^\d+$/.test(page)))
-      throw new BadRequestException('A página informada é inválida.');
-    const parsed = Number(page ?? 1);
-    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100_000)
-      throw new BadRequestException('A página informada é inválida.');
-    return this.payments.history(actor, parsed, browser === '1');
+    query.assertPeriod();
+    return this.payments.history(actor, query.page, browser === '1', query);
   }
 }

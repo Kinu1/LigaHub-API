@@ -3,17 +3,20 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service.js';
 import { Prisma, type AuditLog } from '../../generated/prisma/client.js';
 import type { AuthenticatedUser } from '../auth/auth.decorators.js';
 import type { PaginationDto } from '../../common/pagination.js';
 import type { AuditQueryDto } from './audit-query.dto.js';
+import type { OperationsQueryDto } from './operations-query.dto.js';
 import { auditDetails } from './audit-details.js';
 
 @Injectable()
 export class AdminService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+
   async dashboard(actor: AuthenticatedUser) {
     const event = actor.role === 'admin' ? {} : { ownerId: actor.id };
     const [
@@ -105,6 +108,163 @@ export class AdminService {
       approvedBaseAmountInCents: approved._sum.amountInCents ?? 0,
       generatedAt: now,
     };
+  }
+
+  async operations(query: OperationsQueryDto) {
+    try {
+      const page = query.page || 1;
+      const limit = query.limit || 20;
+      const now = new Date();
+
+      const flags = {
+        backgroundJobsEnabled: process.env.BACKGROUND_JOBS_ENABLED === 'true',
+        backgroundTimersEnabled:
+          process.env.BACKGROUND_TIMERS_ENABLED !== 'false',
+        emailDeliveryEnabled: process.env.EMAIL_DELIVERY_ENABLED === 'true',
+        paymentReconciliationEnabled:
+          process.env.PAYMENT_RECONCILIATION_ENABLED !== 'false',
+      };
+
+      const [
+        jobs,
+        emailQueueCounts,
+        oldestEmailNext,
+        accessQueueCounts,
+        oldestAccessNext,
+        failedPayments,
+        failedPaymentsTotal,
+      ] = await Promise.all([
+        this.prisma.backgroundJob.findMany({
+          where: { name: { in: ['emails', 'payments'] } },
+        }),
+        this.prisma.emailOutbox.groupBy({
+          by: ['status'],
+          _count: true,
+        }),
+        this.prisma.emailOutbox.findFirst({
+          where: { status: 'pending' },
+          orderBy: { nextAttemptAt: 'asc' },
+          select: { nextAttemptAt: true },
+        }),
+        this.prisma.accessEmailOutbox.groupBy({
+          by: ['status'],
+          _count: true,
+        }),
+        this.prisma.accessEmailOutbox.findFirst({
+          where: { status: 'pending' },
+          orderBy: { nextAttemptAt: 'asc' },
+          select: { nextAttemptAt: true },
+        }),
+        this.prisma.paymentAttempt.findMany({
+          where: { lastSyncErrorCode: { not: null } },
+          skip: (page - 1) * limit,
+          take: limit,
+          orderBy: [{ lastSyncAttemptAt: 'desc' }, { id: 'desc' }],
+          select: {
+            id: true,
+            registrationId: true,
+            method: true,
+            amountInCents: true,
+            status: true,
+            lastSyncAttemptAt: true,
+            lastSyncSucceededAt: true,
+            lastSyncErrorCode: true,
+            createdAt: true,
+            updatedAt: true,
+            registration: {
+              select: {
+                event: {
+                  select: { id: true, title: true },
+                },
+              },
+            },
+          },
+        }),
+        this.prisma.paymentAttempt.count({
+          where: { lastSyncErrorCode: { not: null } },
+        }),
+      ]);
+
+      const routineMap = new Map(jobs.map((j) => [j.name, j]));
+      const routines = (['emails', 'payments'] as const).map((name) => {
+        const job = routineMap.get(name);
+        const activeLease = Boolean(
+          job?.leaseExpiresAt && job.leaseExpiresAt > now,
+        );
+        const unfinished = Boolean(job?.startedAt && !job.finishedAt);
+        return {
+          name,
+          startedAt: job?.startedAt ?? null,
+          finishedAt: job?.finishedAt ?? null,
+          lastSucceededAt: job?.lastSucceededAt ?? null,
+          lastFailedAt: job?.lastFailedAt ?? null,
+          status: unfinished
+            ? activeLease
+              ? 'running'
+              : 'unfinished'
+            : (job?.status ?? null),
+          errorCode: job?.errorCode ?? null,
+          runCount: job?.runCount ?? 0,
+          failureCount: job?.failureCount ?? 0,
+          processedCount: unfinished ? null : (job?.processedCount ?? 0),
+          succeededCount: unfinished ? null : (job?.succeededCount ?? 0),
+          failedCount: unfinished ? null : (job?.failedCount ?? 0),
+          skippedCount: unfinished ? null : (job?.skippedCount ?? 0),
+          activeLease,
+          leaseExpiresAt: job?.leaseExpiresAt ?? null,
+        };
+      });
+
+      const formatQueue = (
+        counts: { status: string; _count: number }[],
+        oldest: { nextAttemptAt: Date } | null,
+      ) => {
+        const map = new Map(counts.map((c) => [c.status, c._count]));
+        return {
+          pending: map.get('pending') ?? 0,
+          processing: map.get('processing') ?? 0,
+          sent: map.get('sent') ?? 0,
+          failed: map.get('failed') ?? 0,
+          skipped: map.get('skipped') ?? 0,
+          oldestNextAttemptAt: oldest?.nextAttemptAt ?? null,
+        };
+      };
+
+      const queues = {
+        confirmation: formatQueue(emailQueueCounts, oldestEmailNext),
+        access: formatQueue(accessQueueCounts, oldestAccessNext),
+      };
+
+      const items = failedPayments.map((p) => ({
+        id: p.id,
+        registrationId: p.registrationId,
+        event: p.registration?.event ?? null,
+        method: p.method,
+        amountInCents: p.amountInCents,
+        status: p.status,
+        lastSyncAttemptAt: p.lastSyncAttemptAt ?? null,
+        lastSyncSucceededAt: p.lastSyncSucceededAt ?? null,
+        lastSyncErrorCode: p.lastSyncErrorCode ?? null,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+      }));
+
+      return {
+        flags,
+        routines,
+        queues,
+        failedPayments: {
+          items,
+          total: failedPaymentsTotal,
+          page,
+          limit,
+        },
+      };
+    } catch {
+      throw new ServiceUnavailableException(
+        'Diagnóstico operacional indisponível.',
+      );
+    }
   }
 
   async audit(query: AuditQueryDto) {

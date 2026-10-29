@@ -1,4 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import {
+  FinanceFilters,
+  emptyPaymentFilters,
+  paymentHistoryUrl,
+  type PaymentFilters,
+} from './finance-filters';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -32,6 +38,7 @@ import {
 } from '../ui';
 import {
   money,
+  reviewReasonText,
   date,
   formatCpf,
   type Event,
@@ -626,6 +633,11 @@ export function EventDetails() {
                                 <td data-label="Estado">
                                   <div>
                                     <Status value={r.status} />
+                                    {r.status === 'payment_review' && (
+                                      <p className="mt-2 text-xs">
+                                        {reviewReasonText(r.reviewReason)}
+                                      </p>
+                                    )}
                                     {r.cancellationRequestedAt && (
                                       <p
                                         className={`mt-2 text-xs ${r.status === 'canceled' ? 'text-zinc-500' : 'text-amber-800'}`}
@@ -646,6 +658,22 @@ export function EventDetails() {
                                   {date(r.reservationExpiresAt)}
                                 </td>
                                 <td data-label="Ação">
+                                  {r.status === 'payment_review' && (
+                                    <Confirm
+                                      title="Reavaliar confirmação?"
+                                      description="Consulta o pagamento e confirma apenas se todas as regras permitirem. Não estorna. Ajustes financeiros devem ser feitos na conta do provedor e depois sincronizados."
+                                      onConfirm={async () => {
+                                        await api(
+                                          `/registrations/${r.id}/payment-review/confirmation`,
+                                          { method: 'POST' },
+                                          false,
+                                        );
+                                        await invalidate();
+                                      }}
+                                    >
+                                      Reavaliar confirmação
+                                    </Confirm>
+                                  )}
                                   <Confirm
                                     title={
                                       r.suspendedAt
@@ -704,6 +732,9 @@ export function EventDetails() {
 export function FinancePage() {
   const { user } = useAuth();
   const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState<PaymentFilters>({
+    ...emptyPaymentFilters,
+  });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const account = useQuery({
@@ -717,8 +748,8 @@ export function FinancePage() {
     },
   });
   const payments = useQuery({
-    queryKey: ['payments', page],
-    queryFn: () => api<Page<PaymentHistory>>(`/payments?page=${page}`),
+    queryKey: ['payments', page, filters],
+    queryFn: () => api<Page<PaymentHistory>>(paymentHistoryUrl(page, filters)),
   });
   return (
     <>
@@ -776,6 +807,12 @@ export function FinancePage() {
       </section>
       <section className="card">
         <h2 className="mb-5">Histórico de pagamentos</h2>
+        <FinanceFilters
+          onApply={(next) => {
+            setPage(1);
+            setFilters(next);
+          }}
+        />
         <QueryState query={payments}>
           {payments.data?.items.length ? (
             <>
@@ -783,6 +820,7 @@ export function FinancePage() {
                 <thead>
                   <tr>
                     <th>Data</th>
+                    <th>Evento</th>
                     <th>Nome completo do pagador</th>
                     <th>CPF do pagador</th>
                     <th>Forma</th>
@@ -794,6 +832,9 @@ export function FinancePage() {
                   {payments.data.items.map((p) => (
                     <tr key={p.id}>
                       <td data-label="Data">{date(p.createdAt)}</td>
+                      <td data-label="Evento">
+                        {p.event?.title ?? 'Não informado'}
+                      </td>
                       <td
                         data-label="Nome completo do pagador"
                         className="break-words"
@@ -827,7 +868,7 @@ export function FinancePage() {
               />
             </>
           ) : (
-            <Empty title="Nenhum pagamento ainda" />
+            <Empty title="Nenhum pagamento encontrado" />
           )}
         </QueryState>
       </section>

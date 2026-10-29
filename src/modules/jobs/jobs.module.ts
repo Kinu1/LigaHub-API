@@ -6,11 +6,13 @@ import { PaymentsModule } from '../payments/payments.module.js';
 import { JobsController } from './jobs.controller.js';
 import { JobsGuard } from './jobs.guard.js';
 import { JobsRunner } from './jobs.runner.js';
+import { JobsSchedule } from './jobs.schedule.js';
 
 @Module({
   imports: [PrismaModule, NotificationsModule, PaymentsModule],
   controllers: [JobsController],
-  providers: [JobsGuard, JobsRunner],
+  providers: [JobsGuard, JobsRunner, JobsSchedule],
+  exports: [JobsRunner, JobsSchedule],
 })
 export class JobsModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

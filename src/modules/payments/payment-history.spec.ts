@@ -33,16 +33,18 @@ describe('Histórico privado de pagamentos', () => {
       page: 2,
       limit: 50,
     });
-    const where = { registration: { event: { ownerId: actor.id } } };
+    const where = { AND: [{ registration: { event: { ownerId: actor.id } } }] };
     expect(prisma.paymentAttempt.findMany).toHaveBeenLastCalledWith(
       expect.objectContaining({ where, skip: 50, take: 50 }),
     );
     expect(prisma.paymentAttempt.count).toHaveBeenLastCalledWith({ where });
     await service.history({ ...actor, role: 'admin' }, 1, true);
     expect(prisma.paymentAttempt.findMany).toHaveBeenLastCalledWith(
-      expect.objectContaining({ where: {} }),
+      expect.objectContaining({ where: { AND: [{}] } }),
     );
-    expect(prisma.paymentAttempt.count).toHaveBeenLastCalledWith({ where: {} });
+    expect(prisma.paymentAttempt.count).toHaveBeenLastCalledWith({
+      where: { AND: [{}] },
+    });
   });
 
   it('valida e normaliza o nome no servidor e conserva compatibilidade com clientes anteriores', async () => {

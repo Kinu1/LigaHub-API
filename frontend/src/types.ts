@@ -54,6 +54,7 @@ export type Registration = {
   name: string;
   email: string;
   status: string;
+  reviewReason?: string | null;
   answers: Record<string, unknown>;
   priceInCents: number;
   reservationExpiresAt: string;
@@ -63,7 +64,24 @@ export type Registration = {
   event: Pick<Event, 'title' | 'publicId' | 'status'>;
   payments: Payment[];
 };
+export const reviewReasons: Record<string, string> = {
+  capacity_full:
+    'Todas as vagas estão ocupadas por confirmações ou reservas vigentes.',
+  registration_canceled: 'A inscrição está cancelada.',
+  participant_cancellation_requested:
+    'O participante solicitou o cancelamento.',
+  registration_suspended: 'A inscrição está suspensa.',
+  owner_inactive: 'O organizador responsável está inativo.',
+  event_unpublished: 'O evento não está publicado.',
+  event_started: 'O evento já começou.',
+  invalid_registration_state: 'O estado da inscrição não permite confirmação.',
+  reason_not_recorded:
+    'Motivo não registrado; consulte o pagamento antes de resolver',
+};
+export const reviewReasonText = (reason?: string | null) =>
+  reviewReasons[reason ?? ''] ?? reviewReasons.reason_not_recorded;
 export type PaymentHistory = Payment & {
+  event?: { id: string; title: string };
   payer: { name: string; cpf: string } | null;
 };
 export const formatCpf = (value?: string | null) =>

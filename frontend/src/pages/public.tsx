@@ -29,6 +29,7 @@ import {
 } from '../ui';
 import {
   money,
+  reviewReasonText,
   date,
   formatCpf,
   type Event,
@@ -454,8 +455,8 @@ export function ParticipantPage() {
         )}
         {registration.status === 'payment_review' && (
           <Notice>
-            O pagamento precisa de análise do organizador. Aguarde a
-            atualização.
+            {reviewReasonText(registration.reviewReason)} O pagamento precisa de
+            análise do organizador. Aguarde a atualização.
           </Notice>
         )}
         {registration.suspended && (
