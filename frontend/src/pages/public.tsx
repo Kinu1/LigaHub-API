@@ -91,6 +91,7 @@ export function PublicEvent() {
   const query = useQuery({
     queryKey: ['public-event', publicId],
     queryFn: () => api<Event>(`/public/events/${publicId}`),
+    refetchInterval: 30000,
   });
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [answerErrors, setAnswerErrors] = useState<Record<string, string>>({});
@@ -150,7 +151,11 @@ export function PublicEvent() {
           {!event.acceptingRegistrations ? (
             <div className="card">
               <Notice>
-                Este evento não está aceitando inscrições no momento.
+                {event.status === 'published' &&
+                event.registrationStartsAt &&
+                new Date(event.registrationStartsAt) > new Date()
+                  ? `As inscrições abrem em ${date(event.registrationStartsAt)} (horário de Brasília).`
+                  : 'Este evento não está aceitando inscrições no momento.'}
               </Notice>
               <Link
                 className="btn secondary"

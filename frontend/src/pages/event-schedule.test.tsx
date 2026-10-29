@@ -28,9 +28,11 @@ describe('Data e horário do evento', () => {
     const group = within(
       screen.getByRole('group', { name: 'Início do evento' }),
     );
-    fireEvent.change(group.getByLabelText('Data'), {
-      target: { value: '2026-10-25' },
-    });
+    await user.selectOptions(group.getByLabelText('Ano'), '2026');
+    await user.selectOptions(group.getByLabelText('Mês'), '10');
+    await user.selectOptions(group.getByLabelText('Dia'), '25');
+    expect(group.getByRole('option', { name: 'Domingo, 25' })).toBeTruthy();
+    expect(group.getByRole('option', { name: 'Outubro' })).toBeTruthy();
     expect(screen.getByRole('alert').textContent).toBe(
       'Informe o horário para esta data.',
     );

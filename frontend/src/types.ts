@@ -21,6 +21,7 @@ export type Event = {
   startsAt: string | null;
   endsAt: string | null;
   registrationDeadline: string | null;
+  registrationStartsAt: string | null;
   priceInCents: number;
   capacity: number;
   ownerId: string;

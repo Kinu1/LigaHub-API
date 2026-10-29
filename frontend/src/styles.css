@@ -90,6 +90,25 @@
   }
 }
 @layer components {
+  .schedule-field {
+    border-left: 3px solid var(--line);
+    padding-left: 16px;
+  }
+  .schedule-field:focus-within {
+    border-left-color: #b5100f;
+  }
+  input.schedule-input {
+    min-height: 52px;
+    background: var(--surface-soft);
+    font-variant-numeric: tabular-nums;
+    color-scheme: light;
+  }
+  .schedule-input::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    background-color: white;
+  }
   .brand {
     display: inline-flex;
     align-items: center;

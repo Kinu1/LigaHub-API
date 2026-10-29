@@ -39,6 +39,7 @@ const createSchema = (existingPriceInCents?: number) =>
       startsAt: scheduleValue,
       endsAt: scheduleValue,
       registrationDeadline: scheduleValue,
+      registrationStartsAt: scheduleValue,
       price: z
         .string()
         .regex(
@@ -61,6 +62,19 @@ const createSchema = (existingPriceInCents?: number) =>
       ownerId: z.string(),
     })
     .superRefine((value, context) => {
+      const deadline = value.registrationDeadline || value.startsAt;
+      if (
+        value.registrationStartsAt &&
+        !scheduleError(value.registrationStartsAt) &&
+        (!deadline ||
+          (!scheduleError(deadline) && value.registrationStartsAt >= deadline))
+      )
+        context.addIssue({
+          code: 'custom',
+          path: ['registrationStartsAt'],
+          message:
+            'A abertura deve ser antes do encerramento das inscrições e do início do evento.',
+        });
       if (
         value.endsAt &&
         !scheduleError(value.endsAt) &&
@@ -139,6 +153,7 @@ export function EventEditor() {
       startsAt: '',
       endsAt: '',
       registrationDeadline: '',
+      registrationStartsAt: '',
       price: '',
       capacity: 50,
       reservationMinutes: 15,
@@ -158,6 +173,7 @@ export function EventEditor() {
         startsAt: localDate(e.startsAt),
         endsAt: localDate(e.endsAt),
         registrationDeadline: localDate(e.registrationDeadline),
+        registrationStartsAt: localDate(e.registrationStartsAt),
         price: (e.priceInCents / 100).toFixed(2),
         capacity: e.capacity,
         reservationMinutes: e.reservationMinutes,
@@ -193,6 +209,7 @@ export function EventEditor() {
       'startsAt',
       'endsAt',
       'registrationDeadline',
+      'registrationStartsAt',
     ],
     ['price', 'capacity', 'reservationMinutes', 'ownerId'],
     [],
@@ -231,6 +248,8 @@ export function EventEditor() {
           endsAt: isoDate(v.endsAt) ?? (id ? null : undefined),
           registrationDeadline:
             isoDate(v.registrationDeadline) ?? (id ? null : undefined),
+          registrationStartsAt:
+            isoDate(v.registrationStartsAt) ?? (id ? null : undefined),
           ...(id && query.data?.priceInCents === toCents(v.price)
             ? {}
             : { priceInCents: toCents(v.price) }),
@@ -310,24 +329,44 @@ export function EventEditor() {
                 </Field>
                 <ScheduleSection
                   deadline={
-                    <Controller
-                      name="registrationDeadline"
-                      control={form.control}
-                      render={({ field, fieldState }) => (
-                        <ScheduleField
-                          title="Encerramento das inscrições"
-                          description="Pode ser antes ou no mesmo horário de início do evento."
-                          {...field}
-                          onChange={(value) => {
-                            form.setValue(field.name, value, {
-                              shouldDirty: true,
-                              shouldValidate: true,
-                            });
-                          }}
-                          error={fieldState.error?.message}
-                        />
-                      )}
-                    />
+                    <>
+                      <Controller
+                        name="registrationStartsAt"
+                        control={form.control}
+                        render={({ field, fieldState }) => (
+                          <ScheduleField
+                            title="Início das inscrições"
+                            description="Em branco, as inscrições abrem ao publicar o evento."
+                            {...field}
+                            onChange={(value) => {
+                              form.setValue(field.name, value, {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              });
+                            }}
+                            error={fieldState.error?.message}
+                          />
+                        )}
+                      />
+                      <Controller
+                        name="registrationDeadline"
+                        control={form.control}
+                        render={({ field, fieldState }) => (
+                          <ScheduleField
+                            title="Encerramento das inscrições"
+                            description="Pode ser antes ou no mesmo horário de início do evento."
+                            {...field}
+                            onChange={(value) => {
+                              form.setValue(field.name, value, {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              });
+                            }}
+                            error={fieldState.error?.message}
+                          />
+                        )}
+                      />
+                    </>
                   }
                 >
                   <Controller
@@ -459,6 +498,18 @@ export function EventEditor() {
                   </div>
                 </div>
                 <div className="rounded-xl bg-zinc-50 p-5">
+                  <p className="mb-2 text-sm">
+                    Início das inscrições:{' '}
+                    {values.registrationStartsAt
+                      ? date(isoDate(values.registrationStartsAt))
+                      : 'Ao publicar o evento'}
+                  </p>
+                  <p className="mb-5 text-sm">
+                    Encerramento das inscrições:{' '}
+                    {date(
+                      isoDate(values.registrationDeadline || values.startsAt),
+                    )}
+                  </p>
                   <h2 className="mb-4">Prévia do formulário</h2>
                   <QuestionsPreview fields={fields} />
                 </div>

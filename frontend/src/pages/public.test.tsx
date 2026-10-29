@@ -160,6 +160,18 @@ describe('Inscrição e pagamento', () => {
     ).toBeTruthy();
     expect(screen.queryByText(/Esta inscrição foi cancelada/)).toBeNull();
   });
+  it('informa a abertura agendada sem exibir o formulário de inscrição', async () => {
+    vi.mocked(api).mockResolvedValue({
+      ...event,
+      status: 'published',
+      acceptingRegistrations: false,
+      registrationStartsAt: '2099-01-01T12:00:00Z',
+    });
+    show(<PublicEvent />);
+    expect(await screen.findByText(/As inscrições abrem em/)).toBeTruthy();
+    expect(screen.queryByLabelText('Nome completo')).toBeNull();
+    expect(send).not.toHaveBeenCalled();
+  });
   it('valida perguntas obrigatórias e mantém dados ao voltar da revisão', async () => {
     vi.mocked(api).mockResolvedValue(event);
     show(<PublicEvent />);

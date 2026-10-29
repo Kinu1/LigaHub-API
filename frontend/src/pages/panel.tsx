@@ -499,6 +499,12 @@ export function EventDetails() {
                   ['Valor', money(event.priceInCents)],
                   ['Capacidade', `${event.capacity} vagas`],
                   ['Prazo', date(event.registrationDeadline)],
+                  [
+                    'Abertura das inscrições',
+                    event.registrationStartsAt
+                      ? date(event.registrationStartsAt)
+                      : 'Ao publicar',
+                  ],
                 ].map(([k, v]) => (
                   <div className="flex justify-between gap-4" key={k}>
                     <dt className="muted">{k}</dt>
