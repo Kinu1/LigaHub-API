@@ -12,7 +12,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, LoginPage } from './auth';
 import { Layout, PublicLayout } from './layout';
 const Dashboard = React.lazy(() =>
-  import('./pages/panel').then((m) => ({ default: m.Dashboard })),
+  import('./pages/dashboard').then((m) => ({ default: m.Dashboard })),
 );
 const EventsPage = React.lazy(() =>
   import('./pages/panel').then((m) => ({ default: m.EventsPage })),

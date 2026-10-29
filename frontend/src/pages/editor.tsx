@@ -306,7 +306,7 @@ export function EventEditor() {
       <Heading title={id ? 'Editar evento' : 'Prepare seu próximo encontro'}>
         Um passo de cada vez, do primeiro detalhe ao convite.
       </Heading>
-      <ol className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <ol className="editor-steps mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4" aria-label="Etapas do evento">
         {steps.map((label, index) => (
           <li
             key={label}
@@ -319,7 +319,7 @@ export function EventEditor() {
         ))}
       </ol>
       {error && <Notice>{error}</Notice>}
-      <form onSubmit={form.handleSubmit(submit)}>
+      <form className="editor-form" onSubmit={form.handleSubmit(submit)}>
         <MotionSection change={step}>
           <section className="card">
             {step === 0 && (

@@ -60,8 +60,8 @@ function Steps({ step }: { step: number }) {
 }
 function EventSummary({ event }: { event: Event }) {
   return (
-    <aside className="card self-start lg:sticky lg:top-6">
-      <p className="eyebrow">SEU PRÓXIMO ENCONTRO</p>
+    <aside className="card event-summary self-start lg:sticky lg:top-6" aria-label="Resumo do evento">
+      <p className="eyebrow">SUA PARTICIPAÇÃO</p>
       <h2 className="text-2xl">{event.title}</h2>
       <div className="my-6 space-y-4">
         <p className="muted flex items-start gap-3 text-sm">
@@ -78,10 +78,10 @@ function EventSummary({ event }: { event: Event }) {
         <p className="mt-1 text-3xl font-semibold tracking-tight">
           {money(event.priceInCents)}
         </p>
-        <p className="muted mt-4 text-xs">
+        {event.availableSpots !== undefined && <p className="muted mt-4 text-xs">
           {event.availableSpots} vaga(s) disponível(is) segundo a última
           consulta.
-        </p>
+        </p>}
       </div>
     </aside>
   );
@@ -145,7 +145,7 @@ export function PublicEvent() {
           Preencha seus dados e garanta sua participação.
         </Heading>
       </EventArtwork>
-      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+      <div className="public-event-grid grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <section>
           <p className="muted mb-7 whitespace-pre-wrap leading-relaxed">
             {event.description}

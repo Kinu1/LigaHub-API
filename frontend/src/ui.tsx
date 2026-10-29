@@ -42,8 +42,8 @@ export function Heading({
 }) {
   return (
     <header className="page-heading">
-      <div>
-        <p className="eyebrow">{eyebrow || 'LIGAHUB'}</p>
+      <div className="min-w-0">
+        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
         <h1>{title}</h1>
         {children && <p className="muted mt-2">{children}</p>}
       </div>
@@ -69,9 +69,16 @@ export function Notice({
   );
 }
 export function Status({ value }: { value: string }) {
+  const tone = ['published', 'confirmed', 'approved'].includes(value)
+    ? 'badge-good'
+    : ['pending', 'reserved', 'created', 'in_process', 'authorized', 'payment_review', 'in_mediation'].includes(value)
+      ? 'badge-warning'
+      : ['canceled', 'cancelled', 'rejected', 'charged_back', 'suspended', 'failed'].includes(value)
+        ? 'badge-danger'
+        : '';
   return (
     <span
-      className={`badge ${['published', 'confirmed', 'approved'].includes(value) ? 'badge-good' : ''}`}
+      className={`badge ${tone}`}
     >
       {labels[value] || value}
     </span>

@@ -23,13 +23,31 @@ export function Layout() {
   const [open, setOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
+  const sidebar = useRef<HTMLElement>(null);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !open) menuButton.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     closeButton.current?.focus();
     const dismiss = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setOpen(false);
-        menuButton.current?.focus();
+      }
+      if (event.key === 'Tab') {
+        const targets = sidebar.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])');
+        if (!targets?.length) return;
+        const first = targets[0];
+        const last = targets[targets.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       }
     };
     window.addEventListener('keydown', dismiss);
@@ -44,6 +62,15 @@ export function Layout() {
     media.addEventListener('change', change);
     return () => media.removeEventListener('change', change);
   }, []);
+  useEffect(() => {
+    if (desktop) setOpen(false);
+  }, [desktop]);
+  useEffect(() => {
+    if (!open || desktop) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, [open, desktop]);
   const [error, setError] = useState('');
   if (loading) return <Loading />;
   if (!user) return <Navigate to="/login" replace />;
@@ -73,9 +100,10 @@ export function Layout() {
         />
       )}
       <aside
+        ref={sidebar}
         id="menu-gestao"
         inert={!open && !desktop}
-        className={`app-sidebar fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-zinc-200 px-5 py-7 transition-transform lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`app-sidebar fixed inset-y-0 left-0 z-40 flex w-64 flex-col overflow-y-auto border-r border-zinc-200 px-5 py-6 transition-transform lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="mb-10 flex items-center justify-between">
           <Link to="/painel">
@@ -91,10 +119,12 @@ export function Layout() {
           </button>
         </div>
         <p className="mb-3 px-4 text-[10px] font-semibold tracking-widest text-zinc-500">
-          ESPAÇO DA LIGA
+          GESTÃO
         </p>
-        <nav className="space-y-1">
-          {links.map(([path, label, Icon]) => (
+        <nav className="space-y-1" aria-label="Menu de gestão">
+          {links.map(([path, label, Icon], index) => (
+            <div key={path}>
+            {index === 3 && <p className="mb-2 mt-6 px-4 text-[10px] font-semibold tracking-widest text-zinc-500">ADMINISTRAÇÃO</p>}
             <NavLink
               key={path}
               to={path}
@@ -102,9 +132,10 @@ export function Layout() {
               className="nav-link"
               onClick={() => setOpen(false)}
             >
-              <Icon size={19} />
+              <Icon size={19} aria-hidden="true" />
               {label}
             </NavLink>
+            </div>
           ))}
         </nav>
         <div className="mt-auto border-t border-zinc-100 pt-5">
@@ -134,7 +165,7 @@ export function Layout() {
           </button>
         </div>
       </aside>
-      <div className="lg:ml-64">
+      <div className="min-w-0 lg:ml-64" inert={open && !desktop}>
         <header className="app-topbar flex h-20 items-center justify-between border-b border-zinc-200 px-5 sm:px-9">
           <div className="flex items-center gap-3">
             <button
@@ -152,8 +183,7 @@ export function Layout() {
                 <Brand />
               </span>
               <span className="hidden sm:inline">
-                Gestão <span className="mx-2 text-zinc-300">/</span> Liga
-                acadêmica
+                {user.role === 'admin' ? 'Administração' : 'Minha liga'} <span className="mx-2 text-zinc-300">/</span> {links.find(([path]) => path === pathname)?.[1] || 'Eventos'}
               </span>
             </span>
           </div>

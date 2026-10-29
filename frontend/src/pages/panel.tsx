@@ -3,16 +3,14 @@ import {
   FinanceFilters,
   emptyPaymentFilters,
   paymentHistoryUrl,
+  paymentFiltersFromSearch,
   type PaymentFilters,
 } from './finance-filters';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Plus,
   ArrowUpRight,
-  CalendarDays,
-  Users,
-  Wallet,
   Copy,
   Check,
   Search,
@@ -83,153 +81,14 @@ function QueryState({
     </>
   );
 }
-type Overview = {
-  events: number;
-  drafts: number;
-  confirmed: number;
-  cancellationRequests: number;
-  pendingPayments: number;
-  approvedBaseAmountInCents: number;
-  accountConnected: boolean;
-};
-export function Dashboard() {
-  const { user } = useAuth();
-  const query = useQuery({
-    queryKey: ['overview'],
-    queryFn: () => api<Overview>('/dashboard'),
-  });
-  const info = query.data;
-  return (
-    <>
-      <Heading
-        eyebrow="ESPAÇO DA LIGA"
-        title={`Olá, ${user?.name.split(' ')[0] || 'organizador'}`}
-        action={
-          <Link className="btn" to="/painel/eventos/novo">
-            <Plus size={18} />
-            Criar evento
-          </Link>
-        }
-      >
-        Tudo pronto para o seu próximo encontro?
-      </Heading>
-      <QueryState query={query}>
-        {info && (
-          <>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                [CalendarDays, 'Eventos', info.events],
-                [Users, 'Inscrições confirmadas', info.confirmed],
-                [
-                  Wallet,
-                  'Valor base aprovado',
-                  money(info.approvedBaseAmountInCents),
-                ],
-                [CalendarDays, 'Pagamentos pendentes', info.pendingPayments],
-              ].map(([Icon, label, value]) => {
-                const I = Icon as typeof CalendarDays;
-                return (
-                  <div key={String(label)} className="card metric-card">
-                    <div className="mb-5 flex justify-between">
-                      <span className="text-sm text-zinc-500">
-                        {String(label)}
-                      </span>
-                      <I size={18} className="text-red-700" />
-                    </div>
-                    <p className="text-3xl font-semibold tracking-tight">
-                      {String(value)}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-7 grid gap-5 lg:grid-cols-[1.5fr_1fr]">
-              <section className="card">
-                <p className="eyebrow">PRÓXIMOS PASSOS</p>
-                <h2>O que precisa de atenção</h2>
-                <div className="mt-6 space-y-4">
-                  {!info.accountConnected && (
-                    <Action
-                      to="/painel/financeiro"
-                      title="Conectar conta de recebimento"
-                      description="Prepare o Mercado Pago para receber inscrições."
-                    />
-                  )}
-                  {info.drafts > 0 && (
-                    <Action
-                      to="/painel/eventos?status=draft"
-                      title={`${info.drafts} evento(s) em rascunho`}
-                      description="Revise os detalhes e publique quando estiver pronto."
-                    />
-                  )}
-                  {info.cancellationRequests > 0 && (
-                    <Action
-                      to="/painel/eventos"
-                      title={`${info.cancellationRequests} solicitação(ões) de cancelamento`}
-                      description="Abra as inscrições de cada evento para analisar."
-                    />
-                  )}
-                  {info.accountConnected &&
-                    info.drafts === 0 &&
-                    info.cancellationRequests === 0 && (
-                      <Empty title="Tudo em dia">
-                        Crie um evento ou acompanhe suas inscrições.
-                      </Empty>
-                    )}
-                </div>
-              </section>
-              <section className="card attention-panel">
-                <span className="inline-flex rounded-xl bg-white p-3 text-red-700">
-                  <CalendarDays />
-                </span>
-                <h2 className="mt-6">O próximo encontro começa aqui.</h2>
-                <p className="muted mt-3">
-                  Defina os detalhes, personalize as perguntas e compartilhe o
-                  link com os participantes.
-                </p>
-                <Link
-                  to="/painel/eventos/novo"
-                  className="mt-6 inline-flex items-center gap-2 font-semibold text-red-800"
-                >
-                  Preparar um evento <ArrowUpRight size={17} />
-                </Link>
-              </section>
-            </div>
-          </>
-        )}
-      </QueryState>
-    </>
-  );
-}
-function Action({
-  to,
-  title,
-  description,
-}: {
-  to: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <Link
-      to={to}
-      className="flex items-center justify-between gap-4 rounded-xl border border-zinc-200 p-4 hover:border-red-300"
-    >
-      <div>
-        <p className="font-medium">{title}</p>
-        <p className="muted mt-1 text-sm">{description}</p>
-      </div>
-      <ArrowUpRight size={18} />
-    </Link>
-  );
-}
+export { Dashboard } from './dashboard';
 export function EventsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const querySearch = useDebounced(search);
-  const [status, setStatus] = useState(
-    new URLSearchParams(location.search).get('status') || '',
-  );
+  const [params, setParams] = useSearchParams();
+  const status = ['draft', 'published', 'suspended', 'closed'].includes(params.get('status') || '') ? params.get('status')! : '';
+  const cancellations = params.get('attention') === 'cancellation';
   const query = useQuery({
     queryKey: ['events', page, querySearch, status],
     queryFn: () =>
@@ -250,7 +109,7 @@ export function EventsPage() {
       >
         Organize cada detalhe do próximo encontro.
       </Heading>
-      <div className="mb-6 flex flex-wrap gap-3">
+      <div className="filter-bar mb-6 flex flex-wrap gap-3">
         <label className="relative min-w-0 flex-1">
           <Search className="absolute left-3 top-3.5 text-zinc-400" size={18} />
           <input
@@ -269,7 +128,12 @@ export function EventsPage() {
           className="sm:max-w-48"
           value={status}
           onChange={(e) => {
-            setStatus(e.target.value);
+            setParams((current) => {
+              const next = new URLSearchParams(current);
+              if (e.target.value) next.set('status', e.target.value);
+              else next.delete('status');
+              return next;
+            });
             setPage(1);
           }}
         >
@@ -288,33 +152,24 @@ export function EventsPage() {
           ))}
         </select>
       </div>
-      <QueryState query={query}>
+      {cancellations && <Notice success>Selecione um evento para consultar suas solicitações abertas de cancelamento. Esta lista inclui todos os eventos; não indica quais têm solicitações.</Notice>}
+      <QueryState query={query} hasData={!!query.data}>
+        {query.data && <p className="muted mb-4 text-sm" role="status">{query.data.total} evento(s) encontrado(s){status ? ` · ${ {draft: 'Rascunho', published: 'Publicado', suspended: 'Suspenso', closed: 'Encerrado'}[status]}` : ' · Todos os estados'}</p>}
         {query.data?.items.length ? (
           <>
-            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            <div className="event-list divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white">
               {query.data.items.map((event) => (
-                <article key={event.id} className="card flex flex-col">
-                  <div className="mb-7 flex justify-between">
-                    <span className="grid h-11 w-11 place-items-center rounded-xl bg-red-50 text-red-700">
-                      <CalendarDays size={23} />
-                    </span>
-                    <Status value={event.status} />
+                <article key={event.id} className="event-list-row grid min-w-0 gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                  <div className="min-w-0">
+                    <h2 className="break-words text-base">
+                      <Link className="hover:underline" to={`/painel/eventos/${event.id}${cancellations ? '?status=cancellation' : ''}`} aria-label={`${cancellations ? 'Analisar cancelamentos de' : 'Gerenciar evento'} ${event.title}`}>
+                        {event.title}
+                      </Link>
+                    </h2>
+                    <p className="muted mt-1 text-sm">{date(event.startsAt)} · {event.location || 'Local a confirmar'}</p>
+                    <p className="muted mt-1 text-sm">{money(event.priceInCents)} · Capacidade: {event.capacity} vagas</p>
                   </div>
-                  <h2>{event.title}</h2>
-                  <p className="muted mt-3 text-sm">{date(event.startsAt)}</p>
-                  <p className="muted mt-1 text-sm">
-                    {event.location || 'Local a confirmar'}
-                  </p>
-                  <div className="mt-6 flex justify-between border-t border-zinc-100 pt-4 text-sm">
-                    <span>{money(event.priceInCents)}</span>
-                    <span className="muted">{event.capacity} vagas</span>
-                  </div>
-                  <Link
-                    className="btn secondary mt-6"
-                    to={`/painel/eventos/${event.id}`}
-                  >
-                    Gerenciar evento <ArrowUpRight size={16} />
-                  </Link>
+                  <div><Status value={event.status} /></div>
                 </article>
               ))}
             </div>
@@ -408,7 +263,8 @@ export function EventDetails() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const querySearch = useDebounced(search);
-  const [status, setStatus] = useState('');
+  const [params] = useSearchParams();
+  const [status, setStatus] = useState(['confirmed', 'reserved', 'expired', 'payment_review', 'cancellation'].includes(params.get('status') || '') ? params.get('status')! : '');
   const query = useQuery({
     queryKey: ['event', id],
     queryFn: () => api<Event>(`/events/${id}`),
@@ -449,7 +305,7 @@ export function EventDetails() {
               </Link>
             }
           >
-            <Status value={event.status} />
+            <Status value={event.status} /> <span className="ml-2">{date(event.startsAt)}{event.endsAt ? ` até ${date(event.endsAt)}` : ''}</span>
           </Heading>
           <div className="mb-6 flex flex-wrap gap-3">
             {event.status !== 'closed' && (
@@ -494,7 +350,8 @@ export function EventDetails() {
               <h2>Informações do encontro</h2>
               <dl className="mt-5 space-y-3 text-sm">
                 {[
-                  ['Data', date(event.startsAt)],
+                  ['Início', date(event.startsAt)],
+                  ['Término', date(event.endsAt)],
                   ['Local', event.location || 'A confirmar'],
                   ['Valor', money(event.priceInCents)],
                   ['Capacidade', `${event.capacity} vagas`],
@@ -595,12 +452,14 @@ export function EventDetails() {
                       <option value="confirmed">Confirmadas</option>
                       <option value="reserved">Reservadas</option>
                       <option value="expired">Expiradas</option>
+                      <option value="payment_review">Revisão necessária</option>
                       <option value="cancellation">
                         Cancelamento solicitado
                       </option>
                     </select>
                   </div>
-                  <QueryState query={registrations}>
+                  <QueryState query={registrations} hasData={!!registrations.data}>
+                    {registrations.data && <p className="muted mb-3 text-sm" role="status">{registrations.data.total} inscrição(ões) encontrada(s)</p>}
                     {registrations.data?.items.length ? (
                       <>
                         <table className="data-table">
@@ -716,7 +575,7 @@ export function EventDetails() {
                 </section>
               ) : (
                 <section className="card">
-                  <QueryState query={history}>
+                  <QueryState query={history} hasData={!!history.data}>
                     <AuditList data={history.data} />
                     {history.data && (
                       <Pager
@@ -738,9 +597,8 @@ export function EventDetails() {
 export function FinancePage() {
   const { user } = useAuth();
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState<PaymentFilters>({
-    ...emptyPaymentFilters,
-  });
+  const initialFilters = paymentFiltersFromSearch(location.search);
+  const [filters, setFilters] = useState<PaymentFilters>(initialFilters);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const account = useQuery({
@@ -762,10 +620,10 @@ export function FinancePage() {
       <Heading title="Financeiro">
         Recebimentos e conexão com Mercado Pago.
       </Heading>
-      <section className="card mb-6">
-        <h2>Conta de recebimento</h2>
-        <QueryState query={account}>
-          <p className="muted my-4">
+      <section className="card account-strip mb-6">
+        <h2 className="text-base">Conta de recebimento</h2>
+        <QueryState query={account} hasData={!!account.data}>
+          <p className="muted my-2 text-sm">
             {account.data?.connected
               ? 'Conta conectada ao Mercado Pago.'
               : 'Conecte a conta do organizador para habilitar pagamentos.'}{' '}
@@ -814,12 +672,14 @@ export function FinancePage() {
       <section className="card">
         <h2 className="mb-5">Histórico de pagamentos</h2>
         <FinanceFilters
+          initialFilters={initialFilters}
           onApply={(next) => {
             setPage(1);
             setFilters(next);
           }}
         />
-        <QueryState query={payments}>
+        <QueryState query={payments} hasData={!!payments.data}>
+          {payments.data && <p className="muted mb-3 text-sm" role="status">{payments.data.total} pagamento(s) encontrado(s)</p>}
           {payments.data?.items.length ? (
             <>
               <table className="data-table payment-history-table">
@@ -928,7 +788,7 @@ export function UsersPage() {
                   <p className="muted text-sm">{u.email}</p>
                   <p className="mt-1 text-xs">
                     {u.role === 'admin' ? 'Administrador' : 'Organizador'} ·{' '}
-                    {u.active ? 'Ativo' : 'Suspenso'}
+                    <span className={`badge ${u.active ? 'badge-good' : 'badge-danger'}`}>{u.active ? 'Ativo' : 'Suspenso'}</span>
                   </p>
                 </div>
                 <Confirm
