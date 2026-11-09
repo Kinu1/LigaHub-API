@@ -944,7 +944,7 @@ export class PaymentsService {
     );
   }
 
-  async reconcile(): Promise<ReconcileResult> {
+  async reconcile(deadline?: number): Promise<ReconcileResult> {
     if (this.syncing) {
       return {
         status: 'skipped',
@@ -971,6 +971,7 @@ export class PaymentsService {
         ],
       });
       for (const attempt of attempts) {
+        if (deadline !== undefined && Date.now() + 30_000 >= deadline) break;
         processed++;
         let stage:
           'expire' | 'credentials' | 'provider' | 'response' | 'database' =

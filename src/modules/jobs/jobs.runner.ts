@@ -14,10 +14,11 @@ import { PaymentsService } from '../payments/payments.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 
 export type JobName = 'emails' | 'payments';
-export type JobSource = 'http' | 'timer';
+export type JobSource = 'http' | 'timer' | 'scheduler';
 
 export type JobRunOptions = {
   source?: JobSource;
+  deadline?: number;
 };
 
 export type JobOutcome = {
@@ -40,8 +41,9 @@ export class JobsRunner {
 
   private preflight(name: JobName, source: JobSource = 'http') {
     try {
-      if (source === 'http') {
-        if (process.env.BACKGROUND_JOBS_ENABLED !== 'true') throw new Error();
+      if (source === 'http' || source === 'scheduler') {
+        if (source === 'http' && process.env.BACKGROUND_JOBS_ENABLED !== 'true')
+          throw new Error();
         if (
           process.env[
             name === 'emails'
@@ -118,8 +120,8 @@ export class JobsRunner {
     try {
       const raw =
         name === 'emails'
-          ? await this.emails.processBatch()
-          : await this.payments.reconcile();
+          ? await this.emails.processBatch(undefined, options?.deadline)
+          : await this.payments.reconcile(options?.deadline);
       if (raw && typeof raw === 'object' && 'status' in raw) {
         outcome = {
           status: raw.status,

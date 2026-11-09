@@ -31,7 +31,10 @@ export class AccessEmailProcessor {
     )
       throw new Error('Configure o provedor de e-mail selecionado.');
   }
-  async processBatch(registrationId?: string): Promise<AccessBatchResult> {
+  async processBatch(
+    registrationId?: string,
+    deadline?: number,
+  ): Promise<AccessBatchResult> {
     let processed = 0;
     let succeeded = 0;
     let failed = 0;
@@ -41,6 +44,7 @@ export class AccessEmailProcessor {
     }
     this.preflight();
     for (let i = 0; i < 10; i++) {
+      if (deadline !== undefined && Date.now() + 30_000 >= deadline) break;
       const item = await this.claim(registrationId);
       if (!item) break;
       processed++;

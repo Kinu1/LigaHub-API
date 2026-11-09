@@ -115,6 +115,16 @@ function fixture(capacity = 1, occupied = 0) {
 }
 
 describe('PaymentsService', () => {
+  it('nao consulta o provedor quando o orçamento da reconciliacao acabou', async () => {
+    const setup = fixture();
+    Object.assign(setup.prisma.paymentAttempt, {
+      findMany: vi.fn().mockResolvedValue([setup.attempt]),
+    });
+    const result = await setup.service.reconcile(Date.now() + 1000);
+    expect(result.processed).toBe(0);
+    expect(setup.gateway.getPayment).not.toHaveBeenCalled();
+    expect(setup.gateway.searchPayment).not.toHaveBeenCalled();
+  });
   it('bloqueia checkout antes da abertura das inscrições', async () => {
     const setup = fixture();
     setup.registration.event.registrationStartsAt = new Date(

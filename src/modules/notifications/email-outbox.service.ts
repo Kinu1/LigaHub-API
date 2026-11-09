@@ -42,7 +42,10 @@ export class EmailOutboxService {
     private readonly accessEmails: AccessEmailProcessor,
   ) {}
 
-  async processBatch(registrationId?: string): Promise<OutboxBatchResult> {
+  async processBatch(
+    registrationId?: string,
+    deadline?: number,
+  ): Promise<OutboxBatchResult> {
     if (this.busy) {
       return {
         status: 'skipped',
@@ -99,8 +102,14 @@ export class EmailOutboxService {
     let accessResult: AccessBatchResult | undefined;
 
     try {
-      accessResult = await this.accessEmails.processBatch(registrationId);
+      accessResult = await this.accessEmails.processBatch(
+        registrationId,
+        deadline === undefined
+          ? undefined
+          : Math.min(deadline, Date.now() + 60_000),
+      );
       for (let i = 0; i < 10; i++) {
+        if (deadline !== undefined && Date.now() + 30_000 >= deadline) break;
         const item = await this.claim(registrationId);
         if (!item) break;
         confProcessed++;
