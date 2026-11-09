@@ -75,3 +75,8 @@ O histórico é imutável pelas rotas da API; administradores do banco podem edi
 ## Versionamento
 
 Branches de autenticação, eventos, inscrições, pagamentos e administração são encadeadas porque uma funcionalidade depende da anterior. Revise e integre na mesma ordem. `.github/workflows/backend.yml` verifica lint, compilação, testes e dependências a cada push ou PR.
+
+## Homologação AWS
+
+Preparação e procedimento de publicação com AWS, Supabase e Resend:
+[docs/HOMOLOGACAO_AWS.md](docs/HOMOLOGACAO_AWS.md).
