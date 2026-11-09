@@ -1,4 +1,6 @@
 import { JobsModule } from './modules/jobs/jobs.module.js';
+import { HealthController } from './health.controller.js';
+import { PrismaModule } from './prisma.module.js';
 import { Module } from '@nestjs/common';
 
 import { AppController } from './app.controller.js';
@@ -18,6 +20,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 
 @Module({
   imports: [
+    PrismaModule,
     JobsModule,
     EventsModule,
     UsersModule,
@@ -29,7 +32,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     NotificationsModule,
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
   ],
-  controllers: [AppController],
+  controllers: [AppController, HealthController],
   providers: [
     AppService,
     { provide: APP_FILTER, useClass: ApiExceptionFilter },
