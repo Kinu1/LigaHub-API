@@ -1,0 +1,104 @@
+name: Homologacao AWS (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Aplicar migracoes e publicar na AWS
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homologacao-aws
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://build:build@localhost:5432/build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run lint
+      - run: npm run build
+      - run: npm test
+      - run: node --test scripts/homologacao.test.mjs
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm ci --prefix frontend
+      - run: npm test --prefix frontend
+      - run: npm run build --prefix frontend
+      - run: npm audit --prefix frontend --omit=dev --audit-level=high
+      - uses: aws-actions/setup-sam@v2
+      - run: sam validate --lint --template-file infra/template.yaml
+      # argon2 and all other native dependencies must be built for Linux x86_64.
+      - run: sam build --use-container --template-file infra/template.yaml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homologacao-build
+          include-hidden-files: true
+          retention-days: 3
+          path: |
+            .aws-sam/build
+            frontend/dist
+
+  deploy:
+    if: inputs.deploy
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: homologation
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      STACK_NAME: ${{ vars.AWS_STACK_NAME }}
+      RUNTIME_PARAMETER: ${{ vars.RUNTIME_CONFIG_PARAMETER }}
+      ORIGIN_SECRET: ${{ secrets.CLOUDFRONT_ORIGIN_SECRET }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - uses: aws-actions/setup-sam@v2
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: actions/download-artifact@v4
+        with: { name: homologacao-build }
+      - name: Check configuration
+        shell: bash
+        run: |
+          test -n "$STACK_NAME" && test -n "$RUNTIME_PARAMETER" && test -n "$ORIGIN_SECRET" && test -n "$DIRECT_URL"
+      - run: npm ci
+      - name: Apply reviewed migrations to homologation only
+        run: npm run db:migrate
+      - name: Deploy with schedules disabled
+        shell: bash
+        run: |
+          sam deploy --template-file .aws-sam/build/template.yaml --stack-name "$STACK_NAME" \
+            --region "$AWS_REGION" --resolve-s3 --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset --no-fail-on-empty-changeset \
+            --parameter-overrides "RuntimeConfigParameter=$RUNTIME_PARAMETER" "CloudFrontOriginSecret=$ORIGIN_SECRET" \
+            EnableEmailSchedule=false EnablePaymentSchedule=false
+      - name: Publish frontend
+        shell: bash
+        run: |
+          bucket=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`FrontendBucket`].OutputValue' --output text)
+          distribution=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`DistributionId`].OutputValue' --output text)
+          test -n "$bucket" && test "$bucket" != None && test -n "$distribution" && test "$distribution" != None
+          aws s3 sync frontend/dist "s3://$bucket" --exclude index.html --cache-control 'public,max-age=31536000,immutable'
+          aws s3 cp frontend/dist/index.html "s3://$bucket/index.html" --cache-control 'no-cache,no-store,must-revalidate' --content-type text/html
+          aws cloudfront create-invalidation --distribution-id "$distribution" --paths '/*'

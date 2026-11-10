@@ -30,3 +30,9 @@ src/generated/prisma/
 # Artefatos locais dos testes com navegador
 playwright-report/
 test-results/
+
+# Homologacao: artefatos e segredos locais
+.aws-sam/
+samconfig.toml
+infra/runtime-config.local.json
+*.dump

@@ -81,6 +81,46 @@ describe('Flags e coordenador JobsSchedule', () => {
   const emails = { processBatch: vi.fn() } as unknown as EmailOutboxService;
   const payments = { reconcile: vi.fn() } as unknown as PaymentsService;
 
+  it('permite scheduler com HTTP desabilitado, exige flag e propaga o deadline', async () => {
+    vi.stubEnv('BACKGROUND_JOBS_ENABLED', 'false');
+    vi.stubEnv('PAYMENT_RECONCILIATION_ENABLED', 'true');
+    vi.stubEnv(
+      'CREDENTIALS_ENCRYPTION_KEY',
+      Buffer.alloc(32, 1).toString('base64'),
+    );
+    const query = vi.fn().mockResolvedValue([{ name: 'payments' }]);
+    const update = vi.fn().mockResolvedValue({ count: 1 });
+    const reconcile = vi
+      .fn()
+      .mockResolvedValue({
+        status: 'completed',
+        processed: 0,
+        succeeded: 0,
+        failed: 0,
+        skipped: 0,
+      });
+    const runner = new JobsRunner(
+      {
+        $queryRaw: query,
+        backgroundJob: { updateMany: update },
+      } as unknown as PrismaService,
+      emails,
+      { reconcile } as unknown as PaymentsService,
+    );
+    await expect(
+      runner.run('payments', { source: 'scheduler', deadline: 123 }),
+    ).resolves.toMatchObject({ status: 'completed' });
+    expect(reconcile).toHaveBeenCalledWith(123);
+    await expect(
+      runner.run('payments', { source: 'http' }),
+    ).rejects.toMatchObject({ status: 503 });
+    vi.stubEnv('PAYMENT_RECONCILIATION_ENABLED', 'false');
+    await expect(
+      runner.run('payments', { source: 'scheduler' }),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
   it.each(['emails', 'payments'] as const)(
     'não reivindica %s desabilitado via HTTP',
     async (name) => {

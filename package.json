@@ -31,6 +31,8 @@
     "test:browser": "playwright test"
   },
   "dependencies": {
+    "@aws-sdk/client-ssm": "3.1164.0",
+    "@codegenie/serverless-express": "5.0.0",
     "@nestjs/common": "^12.0.1",
     "@nestjs/core": "^12.0.1",
     "@nestjs/jwt": "^12.0.2",
@@ -66,6 +68,7 @@
     "@nestjs/schematics": "^12.0.0",
     "@nestjs/testing": "^12.0.1",
     "@playwright/test": "^1.64.1",
+    "@types/aws-lambda": "8.10.164",
     "@types/express": "^5.0.0",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.23.1",
