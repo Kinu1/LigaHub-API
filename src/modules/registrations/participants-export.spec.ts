@@ -53,6 +53,49 @@ beforeEach(() => {
 });
 
 describe('Participantes por tipo e exportação protegida', () => {
+  it('interrompe os recursos do writer quando o iterador falha após uma linha', async () => {
+    const OriginalWriter = ExcelJS.stream.xlsx.WorkbookWriter;
+    let writer: InstanceType<typeof OriginalWriter> | undefined;
+    const constructor = vi
+      .spyOn(ExcelJS.stream.xlsx, 'WorkbookWriter')
+      .mockImplementation(function (
+        options: ConstructorParameters<typeof OriginalWriter>[0],
+      ) {
+        writer = new OriginalWriter(options);
+        return writer;
+      });
+    async function* rows() {
+      yield {
+        name: 'Ana',
+        cpf: null,
+        email: 'ana@example.com',
+        registrationTypeName: null,
+        status: 'confirmed',
+        paymentStatus: 'free',
+        priceInCents: 0,
+      };
+      throw new Error('Lote seguinte falhou');
+    }
+    try {
+      await expect(
+        createParticipantsWorkbook('Jornada', rows()),
+      ).rejects.toThrow('Lote seguinte falhou');
+      const resources = writer as unknown as {
+        stream: { destroyed: boolean };
+        zip: { destroyed: boolean; _state: { aborted: boolean } };
+        getWorksheet(id: number): {
+          stream: { buffers: unknown[]; pipes: unknown[] };
+        };
+      };
+      expect(resources.stream.destroyed).toBe(true);
+      expect(resources.zip.destroyed).toBe(true);
+      expect(resources.zip._state.aborted).toBe(true);
+      expect(resources.getWorksheet(1).stream.buffers).toHaveLength(0);
+      expect(resources.getWorksheet(1).stream.pipes).toHaveLength(0);
+    } finally {
+      constructor.mockRestore();
+    }
+  });
   it('exige CPF nas novas inscrições antes de consultar o evento', async () => {
     await expect(
       service.reserve('public', {

@@ -1,5 +1,12 @@
 import ExcelJS from 'exceljs';
 import { Writable } from 'node:stream';
+import type { Transform } from 'node:stream';
+
+// ExcelJS 4 has no public abort API for its streaming writer. Keep its internal
+// resource access isolated here so failures also stop compression and row input.
+type StreamingResources = {
+  zip: Transform & { abort(): void };
+};
 
 export const participantStatusLabels: Record<string, string> = {
   reserved: 'Reservada',
@@ -54,6 +61,7 @@ export async function createParticipantsWorkbook(
     useStyles: true,
     useSharedStrings: false,
   });
+  const archive = (workbook as unknown as StreamingResources).zip;
   workbook.creator = 'LigaHub';
   const sheet = workbook.addWorksheet('Participantes', {
     views: [{ state: 'frozen', ySplit: 1 }],
@@ -123,6 +131,25 @@ export async function createParticipantsWorkbook(
     sheet.commit();
     await workbook.commit();
     return Buffer.concat(chunks);
+  } catch (error) {
+    archive.abort();
+    archive.destroy();
+    // ExcelJS StreamBuf is a legacy Duplex: destroy() alone does not release
+    // its own buffers or finish the input. Disconnect its pipes before ending.
+    const input = (
+      sheet as unknown as {
+        stream: {
+          pipes: unknown[];
+          unpipe(pipe: unknown): void;
+          read(): unknown;
+          end(): void;
+        };
+      }
+    ).stream;
+    for (const pipe of input.pipes) input.unpipe(pipe);
+    input.read();
+    input.end();
+    throw error;
   } finally {
     stream.destroy();
   }

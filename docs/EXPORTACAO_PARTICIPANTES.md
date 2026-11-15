@@ -20,8 +20,9 @@ CPF continua texto, inclusive zeros iniciais; textos iniciados com `=` não são
 fórmulas. O arquivo separa inscrição, situação financeira, última tentativa e
 alertas. As colunas de valor e CPF preservam suas posições anteriores.
 
-Validação: teste PostgreSQL com 502 inscrições, dois lotes, criação e exclusão de
+Validação: teste PostgreSQL com 502 inscrições com o mesmo `createdAt`, dois lotes, criação e exclusão de
 inscrições, alteração de nome/estado e reembolso numa conexão concorrente após
 o primeiro lote. As 502 linhas originais aparecem uma vez e o pagamento mantém
-o valor do snapshot. Testes unitários cobrem acesso, filtros combinados, CPF,
-limite, snapshot vazio, falha e conteúdo XLSX.
+o valor do snapshot, inclusive histórico real de mediação já resolvida. Testes
+unitários cobrem acesso, filtros combinados, CPF, limite, snapshot vazio, falha,
+encerramento dos recursos internos do ExcelJS e conteúdo XLSX.
