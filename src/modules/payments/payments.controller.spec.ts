@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Response } from 'express';
 import type { AuthenticatedUser } from '../auth/auth.decorators.js';
 import { PaymentAccountsService } from './payment-accounts.service.js';
 import type { PaymentsService } from './payments.service.js';
@@ -8,6 +9,11 @@ import { ValidationPipe } from '@nestjs/common';
 import { PaymentHistoryQuery } from './payment-history.query.js';
 import type { PrismaService } from '../../prisma.service.js';
 import type { PaymentGateway } from './payment.gateway.js';
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
 
 describe('Entradas dos endpoints de pagamento', () => {
   const actor: AuthenticatedUser = {
@@ -31,6 +37,72 @@ describe('Entradas dos endpoints de pagamento', () => {
       accounts,
     };
   }
+  it('volta ao Financeiro sem levar código, state ou credenciais na URL', async () => {
+    vi.stubEnv('FRONTEND_URL', 'https://ligahub.example');
+    const setup = fixture();
+    vi.spyOn(setup.accounts, 'callback').mockResolvedValue({
+      id: 'account',
+      ownerId: actor.id,
+      merchantId: 'merchant',
+      publicKey: 'public-key',
+      connected: true,
+    });
+    const response = { redirect: vi.fn() };
+    await setup.controller.callback(
+      'state-privado',
+      'codigo-privado',
+      undefined,
+      response as unknown as Response,
+    );
+    expect(response.redirect).toHaveBeenCalledExactlyOnceWith(
+      303,
+      `https://ligahub.example/painel/financeiro?mercadoPago=connected&ownerId=${actor.id}`,
+    );
+  });
+  it('trata falha do provedor sem expor seu conteúdo nem alterar a conexão anterior', async () => {
+    vi.stubEnv('FRONTEND_URL', 'https://ligahub.example');
+    const setup = fixture();
+    vi.spyOn(setup.accounts, 'callback').mockRejectedValue(
+      new Error('segredo-privado'),
+    );
+    const response = { redirect: vi.fn() };
+    await setup.controller.callback(
+      'state',
+      'code',
+      undefined,
+      response as unknown as Response,
+    );
+    expect(response.redirect).toHaveBeenCalledExactlyOnceWith(
+      303,
+      'https://ligahub.example/painel/financeiro?mercadoPago=error',
+    );
+  });
+  it('trata recusa antes de trocar o código OAuth', async () => {
+    vi.stubEnv('FRONTEND_URL', 'https://ligahub.example');
+    const setup = fixture();
+    const callback = vi.spyOn(setup.accounts, 'callback');
+    const response = { redirect: vi.fn() };
+    await setup.controller.callback(
+      'state',
+      '',
+      'access_denied',
+      response as unknown as Response,
+    );
+    expect(callback).not.toHaveBeenCalled();
+    expect(response.redirect).toHaveBeenCalledExactlyOnceWith(
+      303,
+      'https://ligahub.example/painel/financeiro?mercadoPago=canceled',
+    );
+  });
+  it('recusa site de retorno inválido antes de consumir o estado', async () => {
+    vi.stubEnv('FRONTEND_URL', 'https://user:secret@evil.example');
+    const setup = fixture();
+    const callback = vi.spyOn(setup.accounts, 'callback');
+    await expect(
+      setup.controller.callback('state', 'code', undefined, {} as Response),
+    ).rejects.toThrow('Configure o endereço');
+    expect(callback).not.toHaveBeenCalled();
+  });
   it.each([null, [], 'conteúdo'])(
     'deve recusar um corpo de webhook inválido: %j',
     (body) => {

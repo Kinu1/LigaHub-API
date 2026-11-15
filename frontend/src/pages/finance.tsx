@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, send } from '../api';
 import { useAuth } from '../auth';
 import { Button } from '../components/ui/button';
@@ -27,20 +27,56 @@ import {
   type PaymentFilters,
 } from './finance-filters';
 import { QueryState } from './query-state';
+
+type ConnectedAccount = {
+  connected: boolean;
+  merchantId?: string;
+  publicKey?: string;
+  isTest?: boolean;
+  createdAt?: string;
+  tokenExpiresAt?: string | null;
+};
+
 export function FinancePage() {
   const { user } = useAuth();
+  const [connectionReturn] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return {
+      result: params.get('mercadoPago'),
+      ownerId: params.get('ownerId'),
+    };
+  });
+  useEffect(() => {
+    if (
+      !['connected', 'error', 'canceled'].includes(
+        connectionReturn.result ?? '',
+      )
+    )
+      return;
+    const url = new URL(location.href);
+    url.searchParams.delete('mercadoPago');
+    history.replaceState(
+      history.state,
+      '',
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }, [connectionReturn]);
   const [page, setPage] = useState(1);
   const initialFilters = paymentFiltersFromSearch(location.search);
   const [filters, setFilters] = useState<PaymentFilters>(initialFilters);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const account = useQuery({
-    queryKey: ['account'],
+    queryKey: ['account', user?.id, connectionReturn.ownerId],
     queryFn: async () => {
       const users = user?.role === 'admin' ? await api<User[]>('/users') : [];
-      const owner = users.find((u) => u.role === 'organizer' && u.active);
-      return api<{ connected: boolean; merchantId?: string; isTest?: boolean }>(
-        `/payments/accounts${owner ? '?ownerId=' + owner.id : ''}`,
+      const ownerId =
+        user?.role === 'admin'
+          ? (connectionReturn.ownerId ??
+            users.find((u) => u.role === 'organizer' && u.active)?.id)
+          : undefined;
+      return api<ConnectedAccount>(
+        `/payments/accounts${ownerId ? '?ownerId=' + encodeURIComponent(ownerId) : ''}`,
       );
     },
   });
@@ -55,6 +91,20 @@ export function FinancePage() {
       </Heading>
       <section className="account-strip mb-6">
         <h2 className="text-base">Conta de recebimento</h2>
+        {connectionReturn.result === 'connected' && account.data?.connected && (
+          <Notice success>Conta do Mercado Pago conectada com sucesso.</Notice>
+        )}
+        {connectionReturn.result === 'error' && (
+          <Notice>
+            Não foi possível concluir a conexão. Tente conectar a conta
+            novamente.
+          </Notice>
+        )}
+        {connectionReturn.result === 'canceled' && (
+          <Notice>
+            A autorização foi cancelada. Sua conexão anterior foi preservada.
+          </Notice>
+        )}
         <QueryState query={account} hasData={!!account.data}>
           <p className="muted my-2 text-sm">
             {account.data?.connected
@@ -62,6 +112,50 @@ export function FinancePage() {
               : 'Conecte a conta do organizador para habilitar pagamentos.'}{' '}
             {account.data?.isTest ? 'Ambiente de teste.' : ''}
           </p>
+          {account.data?.connected && account.data.merchantId && (
+            <dl className="my-4 grid gap-4 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-muted-foreground">
+                  ID da conta Mercado Pago
+                </dt>
+                <dd className="mt-1 font-medium break-all">
+                  {account.data.merchantId}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Ambiente</dt>
+                <dd className="mt-1 font-medium">
+                  {account.data.isTest === true
+                    ? 'Teste'
+                    : account.data.isTest === false
+                      ? 'Produção — cobranças reais'
+                      : 'Não informado'}
+                </dd>
+              </div>
+              {account.data.publicKey && (
+                <div className="sm:col-span-2">
+                  <dt className="text-muted-foreground">Chave pública</dt>
+                  <dd className="mt-1 break-all">
+                    <code>{account.data.publicKey}</code>
+                  </dd>
+                </div>
+              )}
+              {account.data.createdAt && (
+                <div>
+                  <dt className="text-muted-foreground">Conectada em</dt>
+                  <dd className="mt-1">{date(account.data.createdAt)}</dd>
+                </div>
+              )}
+              {account.data.tokenExpiresAt && (
+                <div>
+                  <dt className="text-muted-foreground">
+                    Autorização válida até
+                  </dt>
+                  <dd className="mt-1">{date(account.data.tokenExpiresAt)}</dd>
+                </div>
+              )}
+            </dl>
+          )}
           <Button
             disabled={busy}
             onClick={async () => {
@@ -70,9 +164,9 @@ export function FinancePage() {
                 let ownerId: string | undefined;
                 if (user?.role === 'admin') {
                   const users = await api<User[]>('/users');
-                  ownerId = users.find(
-                    (u) => u.role === 'organizer' && u.active,
-                  )?.id;
+                  ownerId =
+                    connectionReturn.ownerId ??
+                    users.find((u) => u.role === 'organizer' && u.active)?.id;
                   if (!ownerId)
                     throw new Error(
                       'Cadastre e ative o organizador antes de conectar a conta.',

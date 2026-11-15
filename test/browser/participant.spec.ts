@@ -64,6 +64,54 @@ async function reviewCard(page: Page, installments = '3') {
   ).toBeVisible();
 }
 
+test('OAuth retorna ao Financeiro com sessão preservada e dados públicos da conta', async ({
+  page,
+  request,
+}) => {
+  const fixture = await control(request, 'fixture');
+  await page.goto('/login');
+  await page.getByLabel('E-mail', { exact: true }).fill(fixture.email);
+  await page
+    .getByLabel('Senha', { exact: true })
+    .fill('Senha-exclusiva-do-teste');
+  await page.getByRole('button', { name: /Entrar no painel/ }).click();
+  await expect(page).toHaveURL(/\/painel$/);
+  const csrf = await (await page.request.get('/api/browser/csrf')).json();
+  const start = await page.request.post('/api/payments/accounts/authorize', {
+    headers: { 'x-browser-client': '1', 'x-csrf-token': csrf.token },
+    data: {},
+  });
+  expect(start.ok()).toBeTruthy();
+  const authorization = new URL((await start.json()).authorizationUrl);
+  const callback = new URL(
+    '/api/payments/accounts/callback',
+    'http://localhost:3101',
+  );
+  callback.searchParams.set('state', authorization.searchParams.get('state')!);
+  callback.searchParams.set('code', 'codigo-oauth-do-navegador');
+  await page.goto(callback.toString());
+  await expect(page).toHaveURL(
+    new RegExp(`/painel/financeiro\\?ownerId=${fixture.ownerId}$`),
+  );
+  await expect(
+    page.getByText('Conta do Mercado Pago conectada com sucesso.'),
+  ).toBeVisible();
+  await expect(page.getByText('900000000', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('TEST-chave-publica-oauth', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('Autorização válida até', { exact: true }),
+  ).toBeVisible();
+  expect(page.url()).not.toContain('code=');
+  expect(page.url()).not.toContain('state=');
+  await page.reload();
+  await expect(
+    page.getByText('TEST-chave-publica-oauth', { exact: true }),
+  ).toBeVisible();
+  await control(request, 'cleanup');
+});
+
 test('cartão simulado preserva parcelas na revisão e confirma após aprovação', async ({
   page,
   request,
