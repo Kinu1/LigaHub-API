@@ -13,6 +13,7 @@ import type { AuthenticatedUser } from '../auth/auth.decorators.js';
 import type {
   CreateEventDto,
   EventPaginationDto,
+  RegistrationTypeDto,
   UpdateEventDto,
 } from './catalog.dto.js';
 import { validateForm } from './forms.js';
@@ -59,6 +60,47 @@ export function validateEventDates(event: {
     );
 }
 
+function validateRegistrationTypes(value: unknown) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 20)
+    throw new BadRequestException('Adicione de 1 a 20 tipos de inscrição.');
+  const ids = new Set<string>();
+  return value.map((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item))
+      throw new BadRequestException('Um tipo de inscrição é inválido.');
+    const type = item as Record<string, unknown>;
+    if (
+      Object.keys(type).some(
+        (key) => !['id', 'name', 'priceInCents', 'capacity'].includes(key),
+      ) ||
+      typeof type.id !== 'string' ||
+      !/^[a-zA-Z0-9_-]{1,80}$/.test(type.id) ||
+      ids.has(type.id) ||
+      typeof type.name !== 'string' ||
+      !type.name.trim() ||
+      type.name.length > 120 ||
+      !Number.isSafeInteger(type.priceInCents) ||
+      ((type.priceInCents as number) !== 0 &&
+        (type.priceInCents as number) < MIN_EVENT_PRICE_IN_CENTS) ||
+      (type.priceInCents as number) > 2147483647 ||
+      (type.capacity !== undefined &&
+        type.capacity !== null &&
+        (!Number.isSafeInteger(type.capacity) ||
+          (type.capacity as number) < 1 ||
+          (type.capacity as number) > 2147483647))
+    )
+      throw new BadRequestException(
+        'Os dados de um tipo de inscrição são inválidos.',
+      );
+    ids.add(type.id);
+    return {
+      id: type.id,
+      name: type.name.trim(),
+      priceInCents: type.priceInCents as number,
+      capacity: (type.capacity as number | null | undefined) ?? null,
+    };
+  });
+}
+
 @Injectable()
 export class CatalogService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
@@ -82,6 +124,8 @@ export class CatalogService {
       input.priceInCents < MIN_EVENT_PRICE_IN_CENTS
     )
       throw new BadRequestException(MIN_EVENT_PRICE_MESSAGE);
+    if (input.registrationTypes !== undefined)
+      validateRegistrationTypes(input.registrationTypes);
   }
 
   private async owner(
@@ -119,6 +163,15 @@ export class CatalogService {
         : null,
     };
     validateEventDates(dates);
+    const registrationTypes = validateRegistrationTypes(
+      input.registrationTypes ?? [
+        {
+          id: 'geral',
+          name: 'Inscrição geral',
+          priceInCents: input.priceInCents,
+        },
+      ],
+    );
     const title = input.title.trim();
     if (!title)
       throw new BadRequestException('O título do evento é obrigatório.');
@@ -130,6 +183,7 @@ export class CatalogService {
           id: randomUUID(),
           title,
           priceInCents: input.priceInCents,
+          registrationTypes,
           capacity: input.capacity,
           ownerId,
           description: input.description ?? '',
@@ -197,6 +251,15 @@ export class CatalogService {
         throw new ConflictException(
           'O preço não pode ser alterado após a primeira inscrição.',
         );
+      if (
+        registrations &&
+        input.registrationTypes !== undefined &&
+        JSON.stringify(validateRegistrationTypes(input.registrationTypes)) !==
+          JSON.stringify(event.registrationTypes)
+      )
+        throw new ConflictException(
+          'Os tipos de inscrição não podem ser alterados após a primeira inscrição.',
+        );
       const occupied = await tx.registration.count({
         where: {
           eventId: id,
@@ -257,6 +320,14 @@ export class CatalogService {
       if (input.location !== undefined) data.location = input.location ?? '';
       if (input.priceInCents !== undefined)
         data.priceInCents = input.priceInCents;
+      if (input.registrationTypes !== undefined) {
+        const types = validateRegistrationTypes(input.registrationTypes);
+        data.registrationTypes = types;
+        data.priceInCents = Math.max(
+          MIN_EVENT_PRICE_IN_CENTS,
+          types.find((type) => type.priceInCents > 0)?.priceInCents ?? 0,
+        );
+      }
       if (input.capacity !== undefined) data.capacity = input.capacity;
       if (input.reservationMinutes !== undefined)
         data.reservationMinutes = input.reservationMinutes;
@@ -341,6 +412,41 @@ export class CatalogService {
         ],
       },
     });
+    const configuredTypes = Array.isArray(event.registrationTypes)
+      ? (event.registrationTypes as unknown as RegistrationTypeDto[])
+      : [];
+    const sourceTypes = configuredTypes.length
+      ? configuredTypes
+      : [
+          {
+            id: 'geral',
+            name: 'Inscrição geral',
+            priceInCents: event.priceInCents,
+            capacity: null,
+          },
+        ];
+    const registrationTypes = await Promise.all(
+      sourceTypes.map(async (type) => {
+        const typeOccupied = await this.prisma.registration.count({
+          where: {
+            eventId: event.id,
+            registrationTypeId: type.id,
+            OR: [
+              { status: 'confirmed' },
+              { status: 'reserved', reservationExpiresAt: { gt: now } },
+            ],
+          },
+        });
+        return {
+          ...type,
+          capacity: type.capacity ?? null,
+          availableSpots:
+            type.capacity == null
+              ? null
+              : Math.max(0, type.capacity - typeOccupied),
+        };
+      }),
+    );
     const publicKey = event.ownerId
       ? (
           await this.prisma.paymentAccount.findFirst({
@@ -351,6 +457,16 @@ export class CatalogService {
         )?.publicKey
       : undefined;
     const availableSpots = Math.max(0, event.capacity - occupied);
+    const hasAvailableFreeType = registrationTypes.some(
+      (type) =>
+        type.priceInCents === 0 &&
+        (type.availableSpots === null || type.availableSpots > 0),
+    );
+    const hasAvailablePaidType = registrationTypes.some(
+      (type) =>
+        type.priceInCents > 0 &&
+        (type.availableSpots === null || type.availableSpots > 0),
+    );
     const acceptingRegistrations =
       event.status === 'published' &&
       event.owner?.active === true &&
@@ -358,7 +474,7 @@ export class CatalogService {
       (!event.registrationStartsAt || event.registrationStartsAt <= now) &&
       (!event.registrationDeadline || event.registrationDeadline > now) &&
       availableSpots > 0 &&
-      Boolean(publicKey);
+      (hasAvailableFreeType || (Boolean(publicKey) && hasAvailablePaidType));
     return {
       publicId: event.publicId,
       title: event.title,
@@ -371,6 +487,7 @@ export class CatalogService {
       registrationDeadline: event.registrationDeadline,
       registrationStartsAt: event.registrationStartsAt,
       priceInCents: event.priceInCents,
+      registrationTypes,
       status: event.status,
       form: event.form,
       reservationMinutes: event.reservationMinutes,

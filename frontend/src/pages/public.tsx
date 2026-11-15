@@ -1,3 +1,16 @@
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '../components/ui/alert-dialog';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Textarea } from '../components/ui/textarea';
 import { useEffect, useRef, useState } from 'react';
 import { EventArtwork } from './event-images';
 import {
@@ -35,6 +48,7 @@ import {
   formatCpf,
   type Event,
   type Registration,
+  type RegistrationType,
 } from '../types';
 const registrationSchema = z.object({
   name: z.string().trim().min(2, 'Informe seu nome completo.').max(120),
@@ -42,7 +56,10 @@ const registrationSchema = z.object({
 });
 function Steps({ step }: { step: number }) {
   return (
-    <ol className="mb-8 grid grid-cols-3 gap-2">
+    <ol
+      className="editor-steps mb-8 grid grid-cols-3 gap-2"
+      aria-label="Etapas da inscrição"
+    >
       {['Seus dados', 'Pagamento', 'Acompanhamento'].map((label, i) => (
         <li
           key={label}
@@ -58,30 +75,35 @@ function Steps({ step }: { step: number }) {
     </ol>
   );
 }
-function EventSummary({ event }: { event: Event }) {
+function EventSummary({ event, registrationType }: { event: Event; registrationType: RegistrationType }) {
   return (
-    <aside className="card event-summary self-start lg:sticky lg:top-6" aria-label="Resumo do evento">
+    <aside
+      className="event-summary order-first self-start lg:order-last lg:sticky lg:top-6"
+      aria-label="Resumo do evento"
+    >
       <p className="eyebrow">SUA PARTICIPAÇÃO</p>
       <h2 className="text-2xl">{event.title}</h2>
       <div className="my-6 space-y-4">
         <p className="muted flex items-start gap-3 text-sm">
-          <CalendarDays size={19} className="shrink-0 text-red-700" />
+          <CalendarDays size={19} className="shrink-0 text-primary" />
           {date(event.startsAt)}
         </p>
         <p className="muted flex items-start gap-3 text-sm">
-          <MapPin size={19} className="shrink-0 text-red-700" />
+          <MapPin size={19} className="shrink-0 text-primary" />
           {event.location || 'Local a confirmar'}
         </p>
       </div>
-      <div className="border-t border-zinc-100 pt-5">
-        <p className="muted text-sm">Valor da inscrição</p>
+      <div className="border-t border-border pt-5">
+        <p className="muted text-sm">{registrationType.name}</p>
         <p className="mt-1 text-3xl font-semibold tracking-tight">
-          {money(event.priceInCents)}
+          {registrationType.priceInCents === 0 ? 'Gratuita' : money(registrationType.priceInCents)}
         </p>
-        {event.availableSpots !== undefined && <p className="muted mt-4 text-xs">
-          {event.availableSpots} vaga(s) disponível(is) segundo a última
-          consulta.
-        </p>}
+        {event.availableSpots !== undefined && (
+          <p className="muted mt-4 text-xs">
+            {event.availableSpots} vaga(s) disponível(is) segundo a última
+            consulta.
+          </p>
+        )}
       </div>
     </aside>
   );
@@ -101,14 +123,31 @@ export function PublicEvent() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [reservedId, setReservedId] = useState('');
+  const [selectedTypeId, setSelectedTypeId] = useState('');
   const form = useForm<z.infer<typeof registrationSchema>>({
     resolver: zodResolver(registrationSchema),
   });
   const dirty =
     !done && (form.formState.isDirty || Object.keys(answers).length > 0);
   useUnsaved(dirty);
-  const blocker = useBlocker(dirty);
+  const leaveFocus = useRef<HTMLElement | null>(null);
+  const blocker = useBlocker(() => {
+    const leaving = dirty;
+    if (leaving) leaveFocus.current = document.activeElement as HTMLElement;
+    return leaving;
+  });
   const event = query.data;
+  const registrationTypes: RegistrationType[] = event?.registrationTypes?.length
+    ? event.registrationTypes
+    : event
+      ? [{ id: 'geral', name: 'Inscrição geral', priceInCents: event.priceInCents, capacity: null }]
+      : [];
+  const selectedRegistrationType = registrationTypes.find((type) => type.id === selectedTypeId) ?? registrationTypes[0] ?? {
+    id: 'geral',
+    name: 'Inscrição geral',
+    priceInCents: event?.priceInCents ?? 0,
+    capacity: null,
+  };
   useEffect(() => {
     if (reservedId) navigate(`/inscricao/${reservedId}`);
   }, [reservedId, navigate]);
@@ -132,9 +171,9 @@ export function PublicEvent() {
     return (
       <>
         <Notice>{query.error.message}</Notice>
-        <button className="btn secondary" onClick={() => query.refetch()}>
+        <Button variant="outline" onClick={() => query.refetch()}>
           Tentar novamente
-        </button>
+        </Button>
       </>
     );
   if (!event) return null;
@@ -160,12 +199,9 @@ export function PublicEvent() {
                   ? `As inscrições abrem em ${date(event.registrationStartsAt)} (horário de Brasília).`
                   : 'Este evento não está aceitando inscrições no momento.'}
               </Notice>
-              <Link
-                className="btn secondary"
-                to={`/recuperar?evento=${publicId}`}
-              >
-                Já me inscrevi
-              </Link>
+              <Button asChild variant="outline">
+                <Link to={`/recuperar?evento=${publicId}`}>Já me inscrevi</Link>
+              </Button>
             </div>
           ) : (
             <form
@@ -189,6 +225,10 @@ export function PublicEvent() {
                       <dt className="muted text-xs">E-MAIL</dt>
                       <dd className="break-all">{form.getValues('email')}</dd>
                     </div>
+                    <div>
+                      <dt className="muted text-xs">TIPO DE INSCRIÇÃO</dt>
+                      <dd>{selectedRegistrationType.name}</dd>
+                    </div>
                     {event.form.map((f) => (
                       <div key={f.id}>
                         <dt className="muted text-xs">{f.label}</dt>
@@ -202,28 +242,28 @@ export function PublicEvent() {
                       </div>
                     ))}
                   </dl>
-                  <div className="rounded-xl bg-zinc-50 p-4">
+                  <div className="rounded-xl bg-muted p-4">
                     <p className="text-sm">{event.title}</p>
                     <p className="mt-2 font-semibold">
-                      {money(event.priceInCents)}
+                      {selectedRegistrationType.priceInCents === 0 ? 'Inscrição gratuita' : money(selectedRegistrationType.priceInCents)}
                     </p>
                     <p className="muted mt-2 text-xs">
-                      Sua vaga será reservada pela API. O pagamento vem na
-                      próxima etapa.
+                      {selectedRegistrationType.priceInCents === 0
+                        ? 'Sua inscrição gratuita será confirmada pela API.'
+                        : 'Sua vaga será reservada pela API. O pagamento vem na próxima etapa.'}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-3">
-                    <button
+                    <Button
                       type="button"
-                      className="btn secondary"
+                      variant="outline"
                       disabled={busy}
                       onClick={() => setReview(false)}
                     >
                       Corrigir dados
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
-                      className="btn"
                       disabled={busy}
                       onClick={async () => {
                         setBusy(true);
@@ -231,7 +271,7 @@ export function PublicEvent() {
                         try {
                           const record = await send<{ id: string }>(
                             `/public/events/${publicId}/registrations`,
-                            { ...form.getValues(), answers },
+                            { ...form.getValues(), answers, registrationTypeId: selectedRegistrationType.id },
                           );
                           setDone(true);
                           setReservedId(record.id);
@@ -241,24 +281,35 @@ export function PublicEvent() {
                         }
                       }}
                     >
-                      {busy ? 'Reservando…' : 'Reservar e escolher pagamento →'}
-                    </button>
+                      {busy ? 'Reservando…' : selectedRegistrationType.priceInCents === 0 ? 'Confirmar inscrição gratuita' : 'Reservar e escolher pagamento →'}
+                    </Button>
                   </div>
                 </>
               ) : (
                 <>
+                  {registrationTypes.length > 1 && (
+                    <Field label="Tipo de inscrição">
+                      <select value={selectedRegistrationType.id} onChange={(e) => setSelectedTypeId(e.target.value)}>
+                        {registrationTypes.map((type) => (
+                          <option key={type.id} value={type.id} disabled={type.availableSpots === 0 || (type.priceInCents > 0 && !event.publicKey)}>
+                            {type.name} · {type.priceInCents === 0 ? 'Gratuita' : money(type.priceInCents)}{type.availableSpots === 0 ? ' · Esgotada' : type.priceInCents > 0 && !event.publicKey ? ' · Pagamento indisponível' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
                   <Field
                     label="Nome completo"
                     error={form.formState.errors.name?.message}
                   >
-                    <input autoComplete="name" {...form.register('name')} />
+                    <Input autoComplete="name" {...form.register('name')} />
                   </Field>
                   <Field
                     label="E-mail"
                     hint="Usaremos este endereço para enviar seu link pessoal."
                     error={form.formState.errors.email?.message}
                   >
-                    <input
+                    <Input
                       type="email"
                       autoComplete="email"
                       {...form.register('email')}
@@ -296,7 +347,7 @@ export function PublicEvent() {
                           ))}
                         </select>
                       ) : (
-                        <input
+                        <Input
                           type={f.type === 'number' ? 'number' : 'text'}
                           step={f.type === 'number' ? 'any' : undefined}
                           value={String(answers[f.id] ?? '')}
@@ -315,16 +366,16 @@ export function PublicEvent() {
                       )}
                     </Field>
                   ))}
-                  <button
-                    className="btn w-full"
+                  <Button
+                    className="w-full"
                     disabled={form.formState.isSubmitting}
                   >
                     Revisar minha inscrição →
-                  </button>
+                  </Button>
                 </>
               )}
               <Link
-                className="inline-block text-sm text-red-800"
+                className="inline-block text-sm text-primary"
                 to={`/recuperar?evento=${publicId}`}
               >
                 Já se inscreveu? Solicite seu link de acesso.
@@ -332,33 +383,47 @@ export function PublicEvent() {
             </form>
           )}
         </section>
-        <EventSummary event={event} />
+        <EventSummary event={event} registrationType={selectedRegistrationType} />
       </div>
-      {blocker.state === 'blocked' && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-          <div
-            className="card max-w-md"
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="leave-registration"
-          >
-            <h2 id="leave-registration">Sair sem concluir?</h2>
-            <p className="muted my-4">O preenchimento será perdido.</p>
-            <div className="flex gap-3">
-              <button
-                className="btn secondary"
-                autoFocus
-                onClick={() => blocker.reset()}
-              >
-                Continuar
-              </button>
-              <button className="btn" onClick={() => blocker.proceed()}>
-                Sair
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AlertDialog
+        open={blocker.state === 'blocked'}
+        onOpenChange={(open) => {
+          if (!open && blocker.state === 'blocked') blocker.reset();
+        }}
+      >
+        <AlertDialogContent
+          onCloseAutoFocus={(event) => {
+            // This dialog is opened by a route blocker, without a Radix trigger.
+            event.preventDefault();
+            leaveFocus.current?.focus();
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sair sem concluir?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O preenchimento será perdido.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={(event) => {
+                event.preventDefault();
+                blocker.reset?.();
+              }}
+            >
+              Continuar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                blocker.proceed?.();
+              }}
+            >
+              Sair
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -402,9 +467,9 @@ export function ParticipantPage() {
     return (
       <>
         <Notice>{accessError}</Notice>
-        <Link className="btn" to="/recuperar">
-          Solicitar novo link
-        </Link>
+        <Button asChild>
+          <Link to="/recuperar">Solicitar novo link</Link>
+        </Button>
       </>
     );
   if (!accessReady || query.isPending) return <Loading />;
@@ -412,12 +477,16 @@ export function ParticipantPage() {
     return (
       <>
         <Notice>{query.error.message}</Notice>
-        <Link className="btn" to="/recuperar">
-          Solicitar link de acesso
-        </Link>
-        <button className="btn secondary ml-3" onClick={() => query.refetch()}>
+        <Button asChild>
+          <Link to="/recuperar">Solicitar link de acesso</Link>
+        </Button>
+        <Button
+          variant="outline"
+          className="ml-3"
+          onClick={() => query.refetch()}
+        >
           Tentar novamente
-        </button>
+        </Button>
       </>
     );
   if (!registration) return null;
@@ -507,7 +576,7 @@ export function ParticipantPage() {
       {canPay && (
         <Checkout registration={registration} refresh={() => query.refetch()} />
       )}
-      <section className="card mt-6">
+      <section className="data-section mt-8">
         <h2>Pagamentos e acompanhamento</h2>
         {pending && (
           <p className="muted mt-3">
@@ -519,7 +588,7 @@ export function ParticipantPage() {
           <p className="muted mt-4">Nenhum pagamento iniciado.</p>
         ) : (
           registration.payments.map((p) => (
-            <div key={p.id} className="mt-5 border-t border-zinc-100 pt-5">
+            <div key={p.id} className="mt-5 border-t border-border pt-5">
               <div className="flex flex-wrap justify-between gap-3">
                 <p>
                   {p.method === 'pix' ? 'Pix' : `Cartão · ${p.installments}x`}
@@ -538,7 +607,7 @@ export function ParticipantPage() {
                   <div className="mt-5">
                     {p.checkout.qrCodeBase64 && (
                       <img
-                        className="mx-auto h-52 w-52"
+                        className="payment-sdk-light mx-auto h-52 w-52"
                         src={`data:image/png;base64,${p.checkout.qrCodeBase64}`}
                         alt="QR Code para pagamento Pix"
                       />
@@ -550,9 +619,9 @@ export function ParticipantPage() {
           ))
         )}
         <div className="mt-6 flex flex-wrap gap-3">
-          <button className="btn secondary" onClick={() => query.refetch()}>
+          <Button variant="outline" onClick={() => query.refetch()}>
             Atualizar situação
-          </button>
+          </Button>
           {!registration.cancellationRequestedAt &&
             registration.status !== 'canceled' && (
               <Confirm
@@ -596,7 +665,7 @@ function ReservationTimer({
     }
   }, [remaining, refresh]);
   return (
-    <p className="mt-4 rounded-xl bg-zinc-50 p-3 text-sm">
+    <p className="mt-4 rounded-xl bg-muted p-3 text-sm">
       {remaining
         ? `Tempo estimado de reserva: ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`
         : 'Prazo encerrado. Consultando a situação da reserva.'}
@@ -607,14 +676,15 @@ function PixCopy({ code }: { code: string }) {
   const [message, setMessage] = useState('');
   return (
     <div className="mt-4">
-      <textarea
+      <Textarea
         readOnly
         value={code}
         aria-label="Código Pix copia e cola"
         className="text-xs"
       />
-      <button
-        className="btn secondary mt-3"
+      <Button
+        variant="outline"
+        className="mt-3"
         onClick={async () => {
           try {
             await navigator.clipboard.writeText(code);
@@ -626,7 +696,7 @@ function PixCopy({ code }: { code: string }) {
       >
         <Copy size={17} />
         Copiar código Pix
-      </button>
+      </Button>
       <p role="status" className="muted mt-2 text-sm">
         {message}
       </p>
@@ -729,20 +799,15 @@ function Checkout({
             situação ou repita a mesma tentativa, sem alterar os dados.
           </Notice>
           <div className="flex flex-wrap gap-3">
-            <button
-              className="btn secondary"
-              disabled={busy}
-              onClick={() => refresh()}
-            >
+            <Button variant="outline" disabled={busy} onClick={() => refresh()}>
               Consultar resultado
-            </button>
-            <button
-              className="btn"
+            </Button>
+            <Button
               disabled={busy}
               onClick={() => attempt.current && pay(attempt.current.body)}
             >
               Repetir mesma tentativa
-            </button>
+            </Button>
           </div>
         </>
       ) : reviewBody ? (
@@ -767,49 +832,47 @@ function Checkout({
             </p>
           )}
           <div className="flex gap-3">
-            <button
-              className="btn secondary"
+            <Button
+              variant="outline"
               disabled={busy}
               onClick={() => setReviewBody(undefined)}
             >
               Corrigir
-            </button>
-            <button
-              className="btn"
-              disabled={busy}
-              onClick={() => pay(reviewBody)}
-            >
+            </Button>
+            <Button disabled={busy} onClick={() => pay(reviewBody)}>
               {busy ? 'Enviando…' : 'Confirmar pagamento'}
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
         <>
           <div className="my-5 flex gap-3">
-            <button
-              className={`btn ${method === 'pix' ? '' : 'secondary'}`}
+            <Button
+              variant={method === 'pix' ? 'default' : 'outline'}
+              aria-pressed={method === 'pix'}
               onClick={() => {
                 setMethod('pix');
                 setError('');
               }}
             >
               Pix
-            </button>
-            <button
-              className={`btn ${method === 'card' ? '' : 'secondary'}`}
+            </Button>
+            <Button
+              variant={method === 'card' ? 'default' : 'outline'}
+              aria-pressed={method === 'card'}
               onClick={() => {
                 setMethod('card');
                 setError('');
               }}
             >
               Cartão
-            </button>
+            </Button>
           </div>
           <Field
             label="Nome completo do pagador"
             hint="Informe o nome da pessoa responsável por este pagamento."
           >
-            <input
+            <Input
               autoComplete="name"
               value={payerName}
               maxLength={120}
@@ -843,7 +906,7 @@ function Checkout({
                 label="CPF do pagador"
                 hint="Necessário para processar o pagamento."
               >
-                <input
+                <Input
                   inputMode="numeric"
                   autoComplete="off"
                   value={cpf}
@@ -851,49 +914,49 @@ function Checkout({
                   onChange={(e) => setCpf(e.target.value)}
                 />
               </Field>
-              <button className="btn" disabled={busy}>
-                Revisar pagamento Pix
-              </button>
+              <Button disabled={busy}>Revisar pagamento Pix</Button>
             </form>
           ) : sdk && config.data ? (
-            <CardPayment
-              key={config.data.publicKey}
-              initialization={{
-                amount: config.data.amountInCents / 100,
-                payer: { email: registration.email },
-              }}
-              customization={{
-                paymentMethods: {
-                  maxInstallments: config.data.maxInstallments,
-                },
-              }}
-              onSubmit={async (data) => {
-                if (payerName.trim().length < 2) {
-                  setError('Informe o nome completo do pagador.');
-                  return;
+            <div className="payment-sdk-light">
+              <CardPayment
+                key={config.data.publicKey}
+                initialization={{
+                  amount: config.data.amountInCents / 100,
+                  payer: { email: registration.email },
+                }}
+                customization={{
+                  paymentMethods: {
+                    maxInstallments: config.data.maxInstallments,
+                  },
+                }}
+                onSubmit={async (data) => {
+                  if (payerName.trim().length < 2) {
+                    setError('Informe o nome completo do pagador.');
+                    return;
+                  }
+                  setReviewBody({
+                    method: 'card',
+                    cardToken: data.token,
+                    paymentMethodId: data.payment_method_id,
+                    issuerId:
+                      data.issuer_id === undefined
+                        ? undefined
+                        : String(data.issuer_id),
+                    installments: data.installments,
+                    payerName: payerName.trim(),
+                    cpf: (data.payer.identification?.number || '').replace(
+                      /\D/g,
+                      '',
+                    ),
+                  });
+                }}
+                onError={() =>
+                  setError(
+                    'Não foi possível carregar ou validar o cartão. Verifique os dados e tente novamente.',
+                  )
                 }
-                setReviewBody({
-                  method: 'card',
-                  cardToken: data.token,
-                  paymentMethodId: data.payment_method_id,
-                  issuerId:
-                    data.issuer_id === undefined
-                      ? undefined
-                      : String(data.issuer_id),
-                  installments: data.installments,
-                  payerName: payerName.trim(),
-                  cpf: (data.payer.identification?.number || '').replace(
-                    /\D/g,
-                    '',
-                  ),
-                });
-              }}
-              onError={() =>
-                setError(
-                  'Não foi possível carregar ou validar o cartão. Verifique os dados e tente novamente.',
-                )
-              }
-            />
+              />
+            </div>
           ) : (
             <Loading />
           )}
@@ -945,7 +1008,7 @@ export function RecoveryPage() {
           label="Link ou identificador do evento"
           error={form.formState.errors.publicId?.message}
         >
-          <input
+          <Input
             {...form.register('publicId')}
             onChange={(e) => {
               const value = e.target.value.trim();
@@ -958,17 +1021,20 @@ export function RecoveryPage() {
           />
         </Field>
         <Field label="Seu e-mail" error={form.formState.errors.email?.message}>
-          <input
+          <Input
             type="email"
             autoComplete="email"
             {...form.register('email')}
           />
         </Field>
-        <button className="btn w-full" disabled={form.formState.isSubmitting}>
+        <Button
+          className="h-auto min-h-9 w-full whitespace-normal"
+          disabled={form.formState.isSubmitting}
+        >
           {form.formState.isSubmitting
             ? 'Solicitando…'
             : 'Enviar link de acesso'}
-        </button>
+        </Button>
       </form>
     </div>
   );
@@ -995,9 +1061,9 @@ export function StatusPage() {
     return (
       <>
         <Notice>Solicite um novo link para consultar sua inscrição.</Notice>
-        <Link className="btn" to="/recuperar">
-          Solicitar link
-        </Link>
+        <Button asChild>
+          <Link to="/recuperar">Solicitar link</Link>
+        </Button>
       </>
     );
   if (query.isPending) return <Loading />;
@@ -1005,9 +1071,9 @@ export function StatusPage() {
     return (
       <>
         <Notice>{query.error.message}</Notice>
-        <Link className="btn" to="/recuperar">
-          Solicitar novo link
-        </Link>
+        <Button asChild>
+          <Link to="/recuperar">Solicitar novo link</Link>
+        </Button>
       </>
     );
   return (
@@ -1038,9 +1104,13 @@ export function StatusPage() {
         <p className="muted mt-3">
           {date(query.data?.event.startsAt)} · {query.data?.event.location}
         </p>
-        <Link className="btn secondary mt-6" to="/recuperar">
-          Solicitar acesso à gestão da inscrição
-        </Link>
+        <Button
+          asChild
+          variant="outline"
+          className="mt-6 h-auto min-h-9 whitespace-normal"
+        >
+          <Link to="/recuperar">Solicitar acesso à gestão da inscrição</Link>
+        </Button>
       </section>
     </div>
   );

@@ -9,6 +9,7 @@ import {
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ThemeProvider, ThemeToggle } from '../theme';
 import { EventEditor } from './editor';
 import { api, send } from '../api';
 
@@ -21,11 +22,32 @@ vi.mock('../api', async (original) => ({
   send: vi.fn(),
 }));
 
-function show(edit = false) {
+function show(edit = false, withTheme = false) {
   const router = createMemoryRouter(
     [
-      { path: '/painel/eventos/novo', element: <EventEditor /> },
-      { path: '/painel/eventos/:id/editar', element: <EventEditor /> },
+      { path: '/painel/eventos', element: <p>Lista de eventos</p> },
+      {
+        path: '/painel/eventos/novo',
+        element: withTheme ? (
+          <ThemeProvider>
+            <ThemeToggle />
+            <EventEditor />
+          </ThemeProvider>
+        ) : (
+          <EventEditor />
+        ),
+      },
+      {
+        path: '/painel/eventos/:id/editar',
+        element: withTheme ? (
+          <ThemeProvider>
+            <ThemeToggle />
+            <EventEditor />
+          </ThemeProvider>
+        ) : (
+          <EventEditor />
+        ),
+      },
       { path: '/painel/eventos/:id', element: <p>Evento salvo</p> },
     ],
     {
@@ -57,15 +79,8 @@ describe('Preço mínimo no editor de eventos', () => {
     await user.type(screen.getByLabelText('Nome do evento'), 'Jornada');
     function fill(title: string, day: string, time: string) {
       const group = within(screen.getByRole('group', { name: title }));
-      const [year, month, date] = day.split('-').map(Number);
-      fireEvent.change(group.getByLabelText('Ano'), {
-        target: { value: String(year) },
-      });
-      fireEvent.change(group.getByLabelText('Mês'), {
-        target: { value: String(month) },
-      });
-      fireEvent.change(group.getByLabelText('Dia'), {
-        target: { value: String(date) },
+      fireEvent.change(group.getByLabelText('Data'), {
+        target: { value: day },
       });
       fireEvent.change(group.getByLabelText('Horário'), {
         target: { value: time },
@@ -168,4 +183,137 @@ describe('Preço mínimo no editor de eventos', () => {
     );
     expect(vi.mocked(send).mock.calls[0][1]).not.toHaveProperty('priceInCents');
   });
+});
+
+describe('Navegação segura no editor', () => {
+  it('mantém os campos entre etapas e permite cancelar ou confirmar a saída com foco seguro', async () => {
+    show();
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText('Nome do evento'));
+    await user.paste('Encontro preservado');
+    await user.click(screen.getByLabelText('Descrição'));
+    await user.paste('Descrição preservada');
+    await user.click(screen.getByLabelText('Local'));
+    await user.paste('Auditório');
+    await user.click(screen.getByRole('button', { name: 'Continuar' }));
+    await user.click(screen.getByLabelText('Preço da inscrição (R$)'));
+    await user.paste('25,00');
+    await user.clear(screen.getByLabelText('Capacidade'));
+    await user.type(screen.getByLabelText('Capacidade'), '75');
+    await user.click(screen.getByRole('button', { name: 'Anterior' }));
+    expect(screen.getByLabelText('Nome do evento')).toHaveProperty(
+      'value',
+      'Encontro preservado',
+    );
+    expect(screen.getByLabelText('Descrição')).toHaveProperty(
+      'value',
+      'Descrição preservada',
+    );
+    expect(screen.getByLabelText('Local')).toHaveProperty('value', 'Auditório');
+    const back = screen.getByRole('link', { name: /Voltar aos eventos/ });
+    await user.click(back);
+    const dialog = await screen.findByRole('alertdialog', {
+      name: 'Sair sem salvar?',
+    });
+    expect(dialog.getAttribute('aria-describedby')).toBeTruthy();
+    const cancel = within(dialog).getByRole('button', {
+      name: 'Continuar editando',
+    });
+    await waitFor(() => expect(document.activeElement).toBe(cancel));
+    await user.tab();
+    expect(document.activeElement).toBe(
+      within(dialog).getByRole('button', { name: 'Sair sem salvar' }),
+    );
+    await user.tab();
+    expect(document.activeElement).toBe(cancel);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(back));
+    expect(screen.getByLabelText('Nome do evento')).toHaveProperty(
+      'value',
+      'Encontro preservado',
+    );
+    await user.click(screen.getByRole('button', { name: 'Continuar' }));
+    expect(screen.getByLabelText('Preço da inscrição (R$)')).toHaveProperty(
+      'value',
+      '25,00',
+    );
+    expect(screen.getByLabelText('Capacidade')).toHaveProperty('value', '75');
+    await user.click(back);
+    await user.click(
+      await screen.findByRole('button', { name: 'Continuar editando' }),
+    );
+    expect(screen.getByLabelText('Capacidade')).toHaveProperty('value', '75');
+    await user.click(back);
+    await user.click(
+      await screen.findByRole('button', { name: 'Sair sem salvar' }),
+    );
+    expect(await screen.findByText('Lista de eventos')).toBeTruthy();
+    expect(send).not.toHaveBeenCalled();
+  });
+});
+
+it('preserves the four-step review, questions and form values when changing theme', async () => {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+  localStorage.removeItem('ligahub:theme');
+  try {
+    show(false, true);
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText('Nome do evento'));
+    await user.paste('Jornada');
+    await user.click(screen.getByRole('button', { name: 'Continuar' }));
+    await user.click(screen.getByLabelText('Preço da inscrição (R$)'));
+    await user.paste('30,00');
+    await user.click(screen.getByRole('button', { name: 'Continuar' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Adicionar pergunta' }),
+    );
+    await user.click(screen.getByLabelText('O que você quer perguntar?'));
+    await user.paste('Instituição');
+    await user.click(screen.getByRole('button', { name: /^Tema:/ }));
+    await user.click(
+      await screen.findByRole('menuitemradio', { name: 'Escuro' }),
+    );
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+    expect(screen.getByLabelText('O que você quer perguntar?')).toHaveProperty(
+      'value',
+      'Instituição',
+    );
+    await user.click(screen.getByRole('button', { name: 'Continuar' }));
+    expect(screen.getByRole('heading', { name: 'Jornada' })).toBeTruthy();
+    expect(screen.getByLabelText('Instituição (opcional)')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Salvar evento' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Anterior' }));
+    expect(screen.getByLabelText('O que você quer perguntar?')).toHaveProperty(
+      'value',
+      'Instituição',
+    );
+    await user.click(screen.getByRole('button', { name: 'Anterior' }));
+    expect(screen.getByLabelText('Preço da inscrição (R$)')).toHaveProperty(
+      'value',
+      '30,00',
+    );
+    await user.click(screen.getByRole('button', { name: /^Tema:/ }));
+    await user.click(
+      await screen.findByRole('menuitemradio', { name: 'Claro' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Anterior' }));
+    expect(screen.getByLabelText('Nome do evento')).toHaveProperty(
+      'value',
+      'Jornada',
+    );
+    expect(send).not.toHaveBeenCalled();
+  } finally {
+    vi.unstubAllGlobals();
+    localStorage.removeItem('ligahub:theme');
+    document.documentElement.classList.remove('dark');
+    document.documentElement.style.colorScheme = '';
+  }
 });

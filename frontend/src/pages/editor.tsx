@@ -26,7 +26,9 @@ import {
   type Event,
   type Field as FormField,
   type User,
+  type RegistrationType,
 } from '../types';
+type RegistrationDraft = { id: string; name: string; price: string; capacity: string };
 const scheduleValue = z.string().superRefine((value, context) => {
   const message = scheduleError(value);
   if (message) context.addIssue({ code: 'custom', message });
@@ -51,7 +53,7 @@ const createSchema = (existingPriceInCents?: number) =>
         )
         .refine(
           (v) =>
-            Number(v.replace(',', '.')) >= 0.5 ||
+            Number(v.replace(',', '.')) === 0 || Number(v.replace(',', '.')) >= 0.5 ||
             (existingPriceInCents !== undefined &&
               toCents(v) === existingPriceInCents),
           'O preço mínimo da inscrição é R$ 0,50.',
@@ -133,6 +135,11 @@ export function EventEditor() {
   const [step, setStep] = useState(0);
   const [fields, setFields] = useState<FormField[]>([]);
   const [fieldsDirty, setFieldsDirty] = useState(false);
+  const [registrationTypes, setRegistrationTypes] = useState<RegistrationDraft[]>([
+    { id: crypto.randomUUID(), name: 'Inscrição geral', price: '', capacity: '' },
+  ]);
+  const [registrationTypesDirty, setRegistrationTypesDirty] = useState(false);
+  const [registrationTypesError, setRegistrationTypesError] = useState('');
   const [showQuestionErrors, setShowQuestionErrors] = useState(false);
   const [saved, setSaved] = useState(false);
   const [savedId, setSavedId] = useState('');
@@ -167,11 +174,11 @@ export function EventEditor() {
       ownerId: '',
     },
   });
-  const dirty = !saved && (form.formState.isDirty || fieldsDirty);
+  const dirty = !saved && (form.formState.isDirty || fieldsDirty || registrationTypesDirty);
   useUnsaved(dirty);
   const blocker = useBlocker(dirty);
   useEffect(() => {
-    if (query.data && !form.formState.isDirty && !fieldsDirty) {
+    if (query.data && !form.formState.isDirty && !fieldsDirty && !registrationTypesDirty) {
       const e = query.data;
       form.reset({
         title: e.title,
@@ -189,8 +196,11 @@ export function EventEditor() {
         ownerId: e.ownerId,
       });
       setFields(e.form);
+      setRegistrationTypes(e.registrationTypes?.length
+        ? e.registrationTypes.map((type) => ({ id: type.id, name: type.name, price: (type.priceInCents / 100).toFixed(2), capacity: type.capacity == null ? '' : String(type.capacity) }))
+        : [{ id: crypto.randomUUID(), name: 'Inscrição geral', price: (e.priceInCents / 100).toFixed(2), capacity: '' }]);
     }
-  }, [query.data, form]);
+  }, [query.data, form, fieldsDirty, registrationTypesDirty]);
   useEffect(() => {
     if (!id && users.data) {
       const organizer = users.data.find(
@@ -241,15 +251,25 @@ export function EventEditor() {
     }
     return true;
   };
+  const validateTypes = () => {
+    const valid = registrationTypes.length > 0 && registrationTypes.every((type) =>
+      type.name.trim() && /^\d+(?:[.,]\d{1,2})?$/.test(type.price) &&
+      (toCents(type.price) === 0 || toCents(type.price) >= 50) &&
+      (type.capacity === '' || (Number.isInteger(Number(type.capacity)) && Number(type.capacity) > 0)));
+    setRegistrationTypesError(valid ? '' : 'Cada tipo precisa de categoria e valor válido (gratuito ou a partir de R$ 0,50); vagas devem ser positivas.');
+    return valid;
+  };
   const submit = async (v: Values) => {
     if (preparingImage) return;
     setError('');
+    if (!validateTypes()) { setStep(1); return; }
     if (!validateFields()) return;
     if (user?.role === 'admin' && !v.ownerId) {
       setError('Cadastre um organizador ativo antes de criar o evento.');
       return;
     }
     try {
+      const types: RegistrationType[] = registrationTypes.map((type) => ({ id: type.id, name: type.name.trim(), priceInCents: toCents(type.price), capacity: type.capacity === '' ? null : Number(type.capacity) }));
       const event = await send<Event>(
         id ? `/events/${id}` : '/events',
         {
@@ -267,6 +287,7 @@ export function EventEditor() {
           ...(id && query.data?.priceInCents === toCents(v.price)
             ? {}
             : { priceInCents: toCents(v.price) }),
+          ...(!id || registrationTypesDirty ? { registrationTypes: types } : {}),
           capacity: v.capacity,
           reservationMinutes: v.reservationMinutes,
           ...(user?.role === 'admin' ? { ownerId: v.ownerId } : {}),
@@ -283,6 +304,7 @@ export function EventEditor() {
       setSavedId(event.id);
       form.reset(v);
       setFieldsDirty(false);
+      setRegistrationTypesDirty(false);
       await client.invalidateQueries({ queryKey: ['events'] });
       await client.invalidateQueries({ queryKey: ['event', id] });
     } catch (e) {
@@ -466,19 +488,47 @@ export function EventEditor() {
             {step === 1 && (
               <div className="space-y-5">
                 <h2>Vagas e pagamento</h2>
+                <input type="hidden" {...form.register('price')} />
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div><h3 className="font-semibold">Tipos de inscrição</h3><p className="muted mt-1 text-sm">Crie categorias com valores e limites de vagas diferentes.</p></div>
+                    <button type="button" className="btn secondary" onClick={() => {
+                      setRegistrationTypes((items) => [...items, { id: crypto.randomUUID(), name: '', price: '', capacity: '' }]);
+                      setRegistrationTypesDirty(true);
+                    }}>Adicionar tipo</button>
+                  </div>
+                  {registrationTypes.map((type, index) => {
+                    const update = (patch: Partial<RegistrationDraft>) => {
+                      setRegistrationTypes((items) => items.map((item) => item.id === type.id ? { ...item, ...patch } : item));
+                      setRegistrationTypesDirty(true);
+                      if (index === 0 && patch.price !== undefined) form.setValue('price', patch.price, { shouldDirty: true, shouldValidate: true });
+                    };
+                    return <div key={type.id} className="rounded-xl border border-border p-4">
+                      <div className="mb-4 flex min-h-10 items-center justify-between gap-3">
+                        <h4 className="font-medium">Tipo {index + 1}</h4>
+                        {registrationTypes.length > 1 && <button type="button" className="btn secondary" onClick={() => {
+                          const next = registrationTypes.filter((item) => item.id !== type.id);
+                          setRegistrationTypes(next);
+                          setRegistrationTypesDirty(true);
+                          form.setValue('price', next[0].price, { shouldDirty: true, shouldValidate: true });
+                        }}>Remover</button>}
+                      </div>
+                      <div className="grid items-start gap-4 sm:grid-cols-3">
+                        <Field label="Categoria"><input value={type.name} maxLength={120} placeholder="Estudante, profissional..." onChange={(e) => update({ name: e.target.value })} /></Field>
+                        <div className="grid gap-2">
+                          <Field label="Valor (R$)" error={index === 0 ? err.price?.message : undefined}>
+                            <input inputMode="decimal" value={type.price} placeholder="Mínimo: R$ 0,50" onChange={(e) => update({ price: e.target.value })} />
+                          </Field>
+                          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={type.price === '0' || type.price === '0.00'} onChange={(e) => update({ price: e.target.checked ? '0' : '' })} />Gratuita</label>
+                        </div>
+                        <Field label="Vagas deste tipo" hint="Deixe vazio para usar somente o limite geral do evento."><input type="number" min={1} value={type.capacity} placeholder="Sem limite próprio" onChange={(e) => update({ capacity: e.target.value })} /></Field>
+                      </div>
+                    </div>;
+                  })}
+                  {registrationTypesError && <p role="alert" className="text-sm text-destructive">{registrationTypesError}</p>}
+                </div>
                 <div className="grid gap-5 sm:grid-cols-2">
-                  <Field
-                    label="Preço da inscrição (R$)"
-                    hint="Valor mínimo: R$ 0,50."
-                    error={err.price?.message}
-                  >
-                    <input
-                      inputMode="decimal"
-                      {...form.register('price')}
-                      placeholder="25,00"
-                    />
-                  </Field>
-                  <Field label="Capacidade" error={err.capacity?.message}>
+                  <Field label="Capacidade total do evento" error={err.capacity?.message}>
                     <input
                       type="number"
                       min={1}
@@ -515,7 +565,7 @@ export function EventEditor() {
                   </Field>
                 )}
                 <p className="muted text-sm">
-                  Após a primeira inscrição, o preço, as perguntas e o
+                  Após a primeira inscrição, os tipos de inscrição, as perguntas e o
                   responsável não poderão ser alterados.
                 </p>
               </div>
@@ -552,7 +602,7 @@ export function EventEditor() {
                   <div>
                     <p className="muted text-xs">INSCRIÇÃO</p>
                     <p className="mt-2 font-semibold">
-                      {money(toCents(values.price))}
+                      {registrationTypes.map((type) => <span className="block" key={type.id}>{type.name || 'Categoria sem nome'} · {toCents(type.price) === 0 ? 'Gratuita' : money(toCents(type.price))}</span>)}
                     </p>
                   </div>
                 </div>
@@ -598,6 +648,7 @@ export function EventEditor() {
               disabled={preparingImage}
               onClick={async () => {
                 setError('');
+                if (step === 1 && !validateTypes()) return;
                 if (await form.trigger(group[step])) {
                   if (step !== 2 || validateFields()) setStep(step + 1);
                 }
