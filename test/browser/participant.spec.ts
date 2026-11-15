@@ -64,7 +64,7 @@ async function reviewCard(page: Page, installments = '3') {
   ).toBeVisible();
 }
 
-test('OAuth retorna ao Financeiro com sessão preservada e dados públicos da conta', async ({
+test('OAuth retorna ao Financeiro com sessão preservada e apenas status da conta', async ({
   page,
   request,
 }) => {
@@ -94,20 +94,20 @@ test('OAuth retorna ao Financeiro com sessão preservada e dados públicos da co
     new RegExp(`/painel/financeiro\\?ownerId=${fixture.ownerId}$`),
   );
   await expect(
-    page.getByText('Conta do Mercado Pago conectada com sucesso.'),
+    page.getByText('Conta conectada ao Mercado Pago.'),
   ).toBeVisible();
-  await expect(page.getByText('900000000', { exact: true })).toBeVisible();
+  await expect(page.getByText('900000000', { exact: true })).toHaveCount(0);
   await expect(
     page.getByText('TEST-chave-publica-oauth', { exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByText('Autorização válida até', { exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   expect(page.url()).not.toContain('code=');
   expect(page.url()).not.toContain('state=');
   await page.reload();
   await expect(
-    page.getByText('TEST-chave-publica-oauth', { exact: true }),
+    page.getByText('Conta conectada ao Mercado Pago.'),
   ).toBeVisible();
   await control(request, 'cleanup');
 });

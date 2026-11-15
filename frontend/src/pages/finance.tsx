@@ -30,11 +30,6 @@ import { QueryState } from './query-state';
 
 type ConnectedAccount = {
   connected: boolean;
-  merchantId?: string;
-  publicKey?: string;
-  isTest?: boolean;
-  createdAt?: string;
-  tokenExpiresAt?: string | null;
 };
 
 export function FinancePage() {
@@ -91,9 +86,6 @@ export function FinancePage() {
       </Heading>
       <section className="account-strip mb-6">
         <h2 className="text-base">Conta de recebimento</h2>
-        {connectionReturn.result === 'connected' && account.data?.connected && (
-          <Notice success>Conta do Mercado Pago conectada com sucesso.</Notice>
-        )}
         {connectionReturn.result === 'error' && (
           <Notice>
             Não foi possível concluir a conexão. Tente conectar a conta
@@ -106,56 +98,14 @@ export function FinancePage() {
           </Notice>
         )}
         <QueryState query={account} hasData={!!account.data}>
-          <p className="muted my-2 text-sm">
+          <p
+            className="muted my-2 text-sm"
+            role={account.data?.connected ? 'status' : undefined}
+          >
             {account.data?.connected
               ? 'Conta conectada ao Mercado Pago.'
-              : 'Conecte a conta do organizador para habilitar pagamentos.'}{' '}
-            {account.data?.isTest ? 'Ambiente de teste.' : ''}
+              : 'Conecte a conta do organizador para habilitar pagamentos.'}
           </p>
-          {account.data?.connected && account.data.merchantId && (
-            <dl className="my-4 grid gap-4 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="text-muted-foreground">
-                  ID da conta Mercado Pago
-                </dt>
-                <dd className="mt-1 font-medium break-all">
-                  {account.data.merchantId}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Ambiente</dt>
-                <dd className="mt-1 font-medium">
-                  {account.data.isTest === true
-                    ? 'Teste'
-                    : account.data.isTest === false
-                      ? 'Produção — cobranças reais'
-                      : 'Não informado'}
-                </dd>
-              </div>
-              {account.data.publicKey && (
-                <div className="sm:col-span-2">
-                  <dt className="text-muted-foreground">Chave pública</dt>
-                  <dd className="mt-1 break-all">
-                    <code>{account.data.publicKey}</code>
-                  </dd>
-                </div>
-              )}
-              {account.data.createdAt && (
-                <div>
-                  <dt className="text-muted-foreground">Conectada em</dt>
-                  <dd className="mt-1">{date(account.data.createdAt)}</dd>
-                </div>
-              )}
-              {account.data.tokenExpiresAt && (
-                <div>
-                  <dt className="text-muted-foreground">
-                    Autorização válida até
-                  </dt>
-                  <dd className="mt-1">{date(account.data.tokenExpiresAt)}</dd>
-                </div>
-              )}
-            </dl>
-          )}
           <Button
             disabled={busy}
             onClick={async () => {

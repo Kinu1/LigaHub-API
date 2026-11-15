@@ -43,7 +43,7 @@ beforeEach(() => {
 afterEach(() => history.replaceState({}, '', '/'));
 
 describe('Conta conectada no Financeiro', () => {
-  it('confirma o retorno com os dados autorizados e mantém filtros ao limpar o aviso da URL', async () => {
+  it('confirma o retorno sem exibir os dados da conta e mantém filtros ao limpar o aviso da URL', async () => {
     history.replaceState(
       {},
       '',
@@ -51,12 +51,12 @@ describe('Conta conectada no Financeiro', () => {
     );
     const view = show();
     expect(
-      await screen.findByText('Conta do Mercado Pago conectada com sucesso.'),
+      await screen.findByText('Conta conectada ao Mercado Pago.'),
     ).toBeTruthy();
-    expect(screen.getByText('900000001')).toBeTruthy();
-    expect(screen.getByText('APP_USR-publica-de-teste')).toBeTruthy();
-    expect(screen.getByText('Produção — cobranças reais')).toBeTruthy();
-    expect(screen.getByText('Autorização válida até')).toBeTruthy();
+    expect(screen.queryByText('900000001')).toBeNull();
+    expect(screen.queryByText('APP_USR-publica-de-teste')).toBeNull();
+    expect(screen.queryByText('Produção — cobranças reais')).toBeNull();
+    expect(screen.queryByText('Autorização válida até')).toBeNull();
     expect(location.search).toBe('?method=pix');
     expect(
       (
@@ -71,9 +71,7 @@ describe('Conta conectada no Financeiro', () => {
     history.replaceState({}, '', '/painel/financeiro?mercadoPago=connected');
     show();
     await screen.findByText(/Conecte a conta do organizador/);
-    expect(
-      screen.queryByText('Conta do Mercado Pago conectada com sucesso.'),
-    ).toBeNull();
+    expect(screen.queryByText('Conta conectada ao Mercado Pago.')).toBeNull();
   });
   it.each([
     [
@@ -90,7 +88,9 @@ describe('Conta conectada no Financeiro', () => {
       history.replaceState({}, '', `/painel/financeiro?mercadoPago=${result}`);
       show();
       expect(screen.getByRole('alert').textContent).toBe(message);
-      expect(await screen.findByText('900000001')).toBeTruthy();
+      expect(
+        await screen.findByText('Conta conectada ao Mercado Pago.'),
+      ).toBeTruthy();
     },
   );
   it('consulta a conta do organizador que voltou do OAuth quando o usuário é administrador', async () => {
@@ -113,7 +113,9 @@ describe('Conta conectada no Financeiro', () => {
         '/payments/accounts?ownerId=outro-organizador',
       ),
     );
-    expect(await screen.findByText('conta-do-retorno')).toBeTruthy();
+    expect(
+      await screen.findByText('Conta conectada ao Mercado Pago.'),
+    ).toBeTruthy();
   });
   it('ignora ownerId recebido na URL quando o usuário é organizador', async () => {
     history.replaceState(
@@ -122,7 +124,7 @@ describe('Conta conectada no Financeiro', () => {
       '/painel/financeiro?ownerId=outro-organizador',
     );
     show();
-    await screen.findByText('900000001');
+    await screen.findByText('Conta conectada ao Mercado Pago.');
     expect(api).toHaveBeenCalledWith('/payments/accounts');
     expect(api).not.toHaveBeenCalledWith(
       '/payments/accounts?ownerId=outro-organizador',

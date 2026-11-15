@@ -56,7 +56,7 @@ Para testes locais, inicie a API na porta 3000 e encaminhe um túnel HTTPS para 
 2. Chame `POST /payments/accounts/authorize` com `{}` e JWT. Como administrador, envie `{ "ownerId": "UUID_DO_ORGANIZADOR" }`.
 3. Abra `authorizationUrl` e autorize a conta que receberá os pagamentos.
 4. O callback consome o estado uma única vez, armazena credenciais criptografadas e redireciona automaticamente para o Financeiro do site configurado em `FRONTEND_URL`. O destino é fixo: `/painel/financeiro`. Códigos, state e credenciais não são encaminhados ao site.
-5. O Financeiro confirma a conexão após consultar a API autenticada e mostra ID da conta Mercado Pago, ambiente, chave pública, data da conexão e validade da autorização. Administradores retornam à conta do responsável que acabou de autorizar. `GET /payments/accounts` inclui esses campos com `Cache-Control: no-store`; tokens e segredos permanecem criptografados no servidor.
+5. O Financeiro confirma a conexão após consultar a API autenticada e mostra apenas que a conta está conectada. Administradores retornam à conta do responsável que acabou de autorizar. `GET /payments/accounts` permanece protegido por autenticação e `Cache-Control: no-store`; tokens e segredos permanecem criptografados no servidor.
 
 O callback usa HTTP 303 e `Referrer-Policy: no-referrer`. Em caso de recusa ou falha, retorna ao Financeiro com um aviso genérico, preservando a conexão anterior. O parâmetro de aviso é removido da URL após a página abrir. `FRONTEND_URL` deve ser uma origem HTTPS; HTTP de loopback é permitido apenas fora de `NODE_ENV=production`. A alteração do callback exige uma nova tentativa de conexão para observar o retorno completo; códigos antigos são de uso único.
 
