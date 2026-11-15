@@ -97,7 +97,7 @@ describe('Preço mínimo no editor de eventos', () => {
     ).toBeTruthy();
     fill('Início das inscrições', '2030-01-01', '09:00');
     await user.click(screen.getByRole('button', { name: 'Continuar' }));
-    await user.type(screen.getByLabelText('Preço da inscrição (R$)'), '25,00');
+    await user.type(screen.getByLabelText('Valor (R$)'), '25,00');
     await user.click(screen.getByRole('button', { name: 'Continuar' }));
     await user.click(screen.getByRole('button', { name: 'Continuar' }));
     await user.click(screen.getByRole('button', { name: 'Salvar evento' }));
@@ -117,8 +117,8 @@ describe('Preço mínimo no editor de eventos', () => {
     await user.type(screen.getByLabelText('Nome do evento'), 'Jornada');
     await user.click(screen.getByRole('button', { name: 'Continuar' }));
     for (const value of ['0,01', '0,49', '0.49']) {
-      await user.clear(screen.getByLabelText('Preço da inscrição (R$)'));
-      await user.type(screen.getByLabelText('Preço da inscrição (R$)'), value);
+      await user.clear(screen.getByLabelText('Valor (R$)'));
+      await user.type(screen.getByLabelText('Valor (R$)'), value);
       await user.click(screen.getByRole('button', { name: 'Continuar' }));
       expect(
         await screen.findByText('O preço mínimo da inscrição é R$ 0,50.'),
@@ -134,7 +134,7 @@ describe('Preço mínimo no editor de eventos', () => {
       show();
       await user.type(screen.getByLabelText('Nome do evento'), 'Jornada');
       await user.click(screen.getByRole('button', { name: 'Continuar' }));
-      await user.type(screen.getByLabelText('Preço da inscrição (R$)'), price);
+      await user.type(screen.getByLabelText('Valor (R$)'), price);
       await user.click(screen.getByRole('button', { name: 'Continuar' }));
       await user.click(screen.getByRole('button', { name: 'Continuar' }));
       await user.click(screen.getByRole('button', { name: 'Salvar evento' }));
@@ -196,10 +196,10 @@ describe('Navegação segura no editor', () => {
     await user.click(screen.getByLabelText('Local'));
     await user.paste('Auditório');
     await user.click(screen.getByRole('button', { name: 'Continuar' }));
-    await user.click(screen.getByLabelText('Preço da inscrição (R$)'));
+    await user.click(screen.getByLabelText('Valor (R$)'));
     await user.paste('25,00');
-    await user.clear(screen.getByLabelText('Capacidade'));
-    await user.type(screen.getByLabelText('Capacidade'), '75');
+    await user.clear(screen.getByLabelText('Capacidade total do evento'));
+    await user.type(screen.getByLabelText('Capacidade total do evento'), '75');
     await user.click(screen.getByRole('button', { name: 'Anterior' }));
     expect(screen.getByLabelText('Nome do evento')).toHaveProperty(
       'value',
@@ -234,16 +234,16 @@ describe('Navegação segura no editor', () => {
       'Encontro preservado',
     );
     await user.click(screen.getByRole('button', { name: 'Continuar' }));
-    expect(screen.getByLabelText('Preço da inscrição (R$)')).toHaveProperty(
+    expect(screen.getByLabelText('Valor (R$)')).toHaveProperty(
       'value',
       '25,00',
     );
-    expect(screen.getByLabelText('Capacidade')).toHaveProperty('value', '75');
+    expect(screen.getByLabelText('Capacidade total do evento')).toHaveProperty('value', '75');
     await user.click(back);
     await user.click(
       await screen.findByRole('button', { name: 'Continuar editando' }),
     );
-    expect(screen.getByLabelText('Capacidade')).toHaveProperty('value', '75');
+    expect(screen.getByLabelText('Capacidade total do evento')).toHaveProperty('value', '75');
     await user.click(back);
     await user.click(
       await screen.findByRole('button', { name: 'Sair sem salvar' }),
@@ -269,7 +269,7 @@ it('preserves the four-step review, questions and form values when changing them
     await user.click(screen.getByLabelText('Nome do evento'));
     await user.paste('Jornada');
     await user.click(screen.getByRole('button', { name: 'Continuar' }));
-    await user.click(screen.getByLabelText('Preço da inscrição (R$)'));
+    await user.click(screen.getByLabelText('Valor (R$)'));
     await user.paste('30,00');
     await user.click(screen.getByRole('button', { name: 'Continuar' }));
     await user.click(
@@ -296,7 +296,7 @@ it('preserves the four-step review, questions and form values when changing them
       'Instituição',
     );
     await user.click(screen.getByRole('button', { name: 'Anterior' }));
-    expect(screen.getByLabelText('Preço da inscrição (R$)')).toHaveProperty(
+    expect(screen.getByLabelText('Valor (R$)')).toHaveProperty(
       'value',
       '30,00',
     );

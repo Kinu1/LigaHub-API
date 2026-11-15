@@ -1,6 +1,7 @@
 import { MotionSection } from '../experience';
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '../components/ui/alert-dialog';
 import { EventArtwork, EventImageInput } from './event-images';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useBlocker } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Controller, useForm } from 'react-hook-form';
@@ -176,7 +177,11 @@ export function EventEditor() {
   });
   const dirty = !saved && (form.formState.isDirty || fieldsDirty || registrationTypesDirty);
   useUnsaved(dirty);
-  const blocker = useBlocker(dirty);
+  const leaveFocus = useRef<HTMLElement | null>(null);
+  const blocker = useBlocker(() => {
+    if (dirty) leaveFocus.current = document.activeElement as HTMLElement;
+    return dirty;
+  });
   useEffect(() => {
     if (query.data && !form.formState.isDirty && !fieldsDirty && !registrationTypesDirty) {
       const e = query.data;
@@ -252,6 +257,7 @@ export function EventEditor() {
     return true;
   };
   const validateTypes = () => {
+    if (id && !registrationTypesDirty) return true;
     const valid = registrationTypes.length > 0 && registrationTypes.every((type) =>
       type.name.trim() && /^\d+(?:[.,]\d{1,2})?$/.test(type.price) &&
       (toCents(type.price) === 0 || toCents(type.price) >= 50) &&
@@ -648,8 +654,8 @@ export function EventEditor() {
               disabled={preparingImage}
               onClick={async () => {
                 setError('');
-                if (step === 1 && !validateTypes()) return;
                 if (await form.trigger(group[step])) {
+                  if (step === 1 && !validateTypes()) return;
                   if (step !== 2 || validateFields()) setStep(step + 1);
                 }
               }}
@@ -668,31 +674,21 @@ export function EventEditor() {
           )}
         </div>
       </form>
-      {blocker.state === 'blocked' && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-          <div
-            className="card max-w-md"
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="unsaved-title"
-          >
-            <h2 id="unsaved-title">Sair sem salvar?</h2>
-            <p className="muted my-4">Seu preenchimento será perdido.</p>
-            <div className="flex gap-3">
-              <button
-                className="btn secondary"
-                autoFocus
-                onClick={() => blocker.reset()}
-              >
-                Continuar editando
-              </button>
-              <button className="btn" onClick={() => blocker.proceed()}>
-                Sair sem salvar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AlertDialog open={blocker.state === 'blocked'} onOpenChange={(open) => { if (!open && blocker.state === 'blocked') blocker.reset(); }}>
+        <AlertDialogContent onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          leaveFocus.current?.focus();
+        }}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sair sem salvar?</AlertDialogTitle>
+            <AlertDialogDescription>Seu preenchimento será perdido.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => blocker.state === 'blocked' && blocker.reset()}>Continuar editando</AlertDialogCancel>
+            <AlertDialogAction onClick={() => blocker.state === 'blocked' && blocker.proceed()}>Sair sem salvar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

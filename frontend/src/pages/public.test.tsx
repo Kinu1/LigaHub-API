@@ -232,7 +232,7 @@ describe('Inscrição e pagamento', () => {
     expect(vi.mocked(send).mock.calls[0][1]).toEqual({
       name: 'Ana Silva',
       email: 'ana@exemplo.com',
-      answers: { instituicao: 'Universidade' },
+      answers: { instituicao: 'Universidade' }, registrationTypeId: 'geral',
     });
   });
   it('não apresenta pagamento pendente como inscrição confirmada', async () => {
