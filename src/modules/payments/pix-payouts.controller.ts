@@ -7,6 +7,8 @@ import {
   Post,
   Put,
   Query,
+  Param,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import {
   IsIn,
@@ -17,6 +19,8 @@ import {
   Max,
   MaxLength,
   Min,
+  IsISO8601,
+  Matches,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
@@ -27,6 +31,7 @@ import {
 import { PixDestinationsService } from './pix-destinations.service.js';
 import { PixPayoutsService } from './pix-payouts.service.js';
 import { pixKeyTypes } from './pix-payout.policy.js';
+import { ManualPayoutsService } from './manual-payouts.service.js';
 
 class OwnerQuery {
   @IsOptional() @IsUUID('4') ownerId?: string;
@@ -42,6 +47,13 @@ class ApprovePixDestinationDto {
 class PayoutHistoryQuery {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100_000) page = 1;
 }
+class ManualReceiptDto {
+  @IsString()
+  @Matches(/^[A-Za-z0-9][A-Za-z0-9._/-]{5,119}$/)
+  receiptId!: string;
+  @IsISO8601({ strict: true }) paidAt!: string;
+  @IsInt() @Min(1) amountInCents!: number;
+}
 
 @Controller('payments')
 @Roles('admin', 'organizer')
@@ -50,6 +62,7 @@ export class PixPayoutsController {
     @Inject(PixDestinationsService)
     private readonly destinations: PixDestinationsService,
     @Inject(PixPayoutsService) private readonly payouts: PixPayoutsService,
+    @Inject(ManualPayoutsService) private readonly manual: ManualPayoutsService,
   ) {}
 
   @Get('pix-destination')
@@ -92,5 +105,35 @@ export class PixPayoutsController {
     @Query() query: PayoutHistoryQuery,
   ) {
     return this.payouts.history(actor, query.page);
+  }
+
+  @Post('payouts/:id/manual-reservation')
+  @Roles('admin')
+  @Header('Cache-Control', 'no-store')
+  prepare(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.manual.prepare(actor, id);
+  }
+
+  @Post('payouts/:id/manual-confirmation')
+  @Roles('admin')
+  @Header('Cache-Control', 'no-store')
+  confirm(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() input: ManualReceiptDto,
+  ) {
+    return this.manual.confirm(actor, id, input);
+  }
+
+  @Get('payouts/:id/receipt')
+  @Header('Cache-Control', 'no-store')
+  receipt(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.manual.receipt(actor, id);
   }
 }

@@ -1,5 +1,21 @@
 # Pix na conta da plataforma e repasse integral
 
+## Operação escolhida: repasse manual
+
+Configurar `MERCADO_PAGO_PAYOUT_MODE=manual` e `MERCADO_PAGO_PAYOUTS_ENABLED=false`. Este é o modo padrão. Não exige habilitar Payouts nem registrar chave Ed25519, porque a aplicação não envia dinheiro. O Mercado Pago continua confirmando as cobranças pelo webhook e pela reconciliação.
+
+1. No Financeiro, cadastrar a chave Pix do organizador e aprová-la como administrador após conferir o beneficiário. O cadastro fica disponível mesmo antes de configurar a conta centralizada.
+2. Configurar `MERCADO_PAGO_PIX_PLATFORM_ACCOUNT_ID` com o UUID interno da conta Mercado Pago da plataforma já conectada por OAuth, depois de cadastrar e aprovar o destino. Antes disso, as cobranças continuam usando a configuração anterior. Apenas novas cobranças centralizadas entram no controle de repasses.
+3. Quando a inscrição estiver confirmada e o pagamento aprovado/acreditado, localizar o repasse pelo evento e participante e clicar em **Reservar e visualizar repasse**. A aplicação consulta o pagamento novamente, valida a inscrição e a chave, e reserva a operação para aquele administrador. Não envia uma transferência.
+4. No aplicativo do Mercado Pago, transferir o valor integral à chave exibida e conferir o beneficiário antes de confirmar. As tarifas são assumidas pela plataforma.
+5. No LigaHub, informar o **ID da transação no comprovante**, data/hora e marcar que o valor integral já foi transferido. Clicar em **Registrar repasse realizado**. É registrado o identificador do comprovante, não um upload de imagem/PDF. O histórico passa a mostrar **Repasse manual registrado**. O organizador pode consultar esse registro, mas não marcar repasses como pagos.
+
+A reserva não expira automaticamente: se a página for fechada, o mesmo administrador usa **Retomar registro do repasse**, confere seu extrato e conclui o registro sem enviar outro Pix. Outro administrador não pode tomar a reserva nem registrar o comprovante. Não apagar a reserva para tentar novamente; uma operação já feita precisa ser reconciliada pelo extrato. Comprovantes têm identificador único, valor integral obrigatório e ficam criptografados, com auditoria. Repetir o mesmo registro não duplica o lançamento.
+
+**Repasse manual registrado** significa que o administrador informou a transferência. Não é confirmação automática do banco. Pagamentos já enviados automaticamente ou com resultado incerto não podem ser convertidos em repasse manual. Estornos após o envio devem ser tratados operacionalmente; o registro de uma transferência efetivamente realizada permanece possível mesmo que a inscrição seja cancelada depois da reserva.
+
+## Integração automática opcional, desativada
+
 Fluxo: cliente → conta Mercado Pago da plataforma → chave Pix aprovada do organizador.
 O organizador recebe **100% do valor da inscrição**. A plataforma assume as tarifas e precisa manter saldo suficiente, inclusive para essa diferença. O processamento assíncrono não garante crédito imediato no banco.
 
@@ -11,7 +27,7 @@ O organizador recebe **100% do valor da inscrição**. A plataforma assume as ta
 4. Enviar **somente `public.pem`** à equipe de Integrações do Mercado Pago e confirmar que a conta/aplicação está habilitada para Payouts no Brasil. As credenciais comuns de Checkout e o segredo do webhook não substituem esse processo.
 5. Em ambiente de teste separado, usar conta, credenciais e chave Pix de teste, `MERCADO_PAGO_TEST_MODE=true` e o UUID da conta de teste em `MERCADO_PAGO_PIX_PLATFORM_ACCOUNT_ID`. O painel Financeiro passa a oferecer o cadastro da chave. Cada chave precisa de aprovação de um administrador, após conferência do beneficiário e da titularidade fora do sistema. A validação de formato local não comprova a titularidade bancária.
 6. No Financeiro, o organizador cadastra sua chave. O administrador seleciona o organizador, confere os dados e usa **Aprovar chave Pix conferida**. Qualquer alteração revoga a aprovação. A aprovação fica vinculada à versão exibida da chave.
-7. Depois da habilitação e homologação, configurar em produção `MERCADO_PAGO_TEST_MODE=false`, `MERCADO_PAGO_PIX_PLATFORM_ACCOUNT_ID=<UUID da conta real da plataforma>`, `MERCADO_PAGO_PAYOUTS_PRIVATE_KEY_BASE64=<PEM privado em base64>` e `MERCADO_PAGO_PAYOUTS_ENABLED=true`. Reiniciar o serviço. Manter as rotinas de reconciliação habilitadas. Em Lambda, usar os mesmos campos no SecureString do runtime; o agendador de pagamentos existente também processa a fila de repasses.
+7. Somente se for escolhida automação no futuro, depois da habilitação e homologação, configurar em produção `MERCADO_PAGO_TEST_MODE=false`, `MERCADO_PAGO_PIX_PLATFORM_ACCOUNT_ID=<UUID da conta real da plataforma>`, `MERCADO_PAGO_PAYOUT_MODE=automatic`, `MERCADO_PAGO_PAYOUTS_PRIVATE_KEY_BASE64=<PEM privado em base64>` e `MERCADO_PAGO_PAYOUTS_ENABLED=true`. Reiniciar o serviço. Manter as rotinas de reconciliação habilitadas. Em Lambda, usar os mesmos campos no SecureString do runtime; o agendador de pagamentos existente também processa a fila de repasses.
 8. Conferir uma inscrição de teste: pagamento aprovado/acreditado e inscrição confirmada → repasse `processing` → `paid` somente após consultar `success/accredited` na transação. HTTP 202 não comprova crédito.
 
 Deixar `MERCADO_PAGO_PIX_PLATFORM_ACCOUNT_ID` vazio mantém o fluxo anterior. `MERCADO_PAGO_PAYOUTS_ENABLED=false` interrompe o worker, mas **não cancela transferências já aceitas** pelo provedor. O recebimento centralizado pode ficar configurado com o worker desabilitado; nesse caso as novas cobranças são recebidas e os repasses ficam na fila.

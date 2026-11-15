@@ -13,6 +13,7 @@ import {
   destinationFingerprint,
   normalizePixKey,
   platformPixAccountId,
+  payoutMode,
 } from './pix-payout.policy.js';
 
 @Injectable()
@@ -36,7 +37,9 @@ export class PixDestinationsService {
     // Somente uma consulta autenticada do próprio organizador ou administrador obtém a chave.
     return {
       platformPix: !!platformPixAccountId(),
+      payoutMode: payoutMode(),
       automaticPayoutsEnabled:
+        payoutMode() === 'automatic' &&
         process.env.MERCADO_PAGO_PAYOUTS_ENABLED === 'true',
       destination: destination
         ? {

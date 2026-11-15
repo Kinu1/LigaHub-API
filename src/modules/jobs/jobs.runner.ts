@@ -14,6 +14,7 @@ import { encryptCredential } from '../payments/payment-security.js';
 import { PaymentsService } from '../payments/payments.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { PixPayoutsService } from '../payments/pix-payouts.service.js';
+import { payoutMode } from '../payments/pix-payout.policy.js';
 
 export type JobName = 'emails' | 'payments';
 export type JobSource = 'http' | 'timer' | 'scheduler';
@@ -128,6 +129,7 @@ export class JobsRunner {
       const transfers =
         name === 'payments' &&
         this.payouts &&
+        payoutMode() === 'automatic' &&
         process.env.MERCADO_PAGO_PAYOUTS_ENABLED === 'true'
           ? await this.payouts.process(
               Math.min(options?.deadline ?? Infinity, Date.now() + 60_000),
