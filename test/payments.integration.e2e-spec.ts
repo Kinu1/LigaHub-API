@@ -1183,6 +1183,7 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
       where: { id: eventId },
     });
     const replacement = await registrations.reserve(event.publicId, {
+      cpf: '12345678909',
       name: 'Novo participante',
       email: 'substituto@ligahub.test',
       answers: {},
@@ -1237,6 +1238,7 @@ describe('Pagamentos: consistência com PostgreSQL e provedor simulado', () => {
     });
     await expect(
       registrations.reserve(event.publicId, {
+        cpf: '12345678909',
         name: 'Outro participante',
         email: 'outro@ligahub.test',
         answers: {},

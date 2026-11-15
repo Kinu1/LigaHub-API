@@ -4,6 +4,7 @@ import {
   type APIRequestContext,
   type Page,
 } from '@playwright/test';
+import ExcelJS from 'exceljs';
 
 async function control(
   request: APIRequestContext,
@@ -29,6 +30,9 @@ async function reserve(page: Page, publicId: string) {
     .getByLabel('Nome completo', { exact: true })
     .fill('Ana Participante');
   await page.getByLabel(/E-mail/).fill('ana@example.com');
+  await page
+    .getByLabel('CPF do participante', { exact: true })
+    .fill('123.456.789-09');
   await page.getByRole('button', { name: /Revisar minha/ }).click();
   await page.getByRole('button', { name: /Reservar e escolher/ }).click();
   await expect(page).toHaveURL(/\/inscricao\/[0-9a-f-]+$/);
@@ -38,7 +42,11 @@ async function reserve(page: Page, publicId: string) {
   return new URL(page.url()).pathname.split('/').pop()!;
 }
 async function pay(page: Page) {
-  await page.getByLabel(/CPF do pagador/).fill('12345678909');
+  await expect(page.getByLabel(/CPF do pagador/)).toHaveValue('12345678909');
+  await expect(page.getByLabel(/CPF do pagador/)).toHaveAttribute(
+    'readonly',
+    '',
+  );
   await page.getByRole('button', { name: 'Revisar pagamento Pix' }).click();
   await page.getByRole('button', { name: 'Confirmar pagamento' }).click();
 }
@@ -231,6 +239,83 @@ test('administrador filtra o financeiro e a API recusa filtros inválidos', asyn
     path: info.outputPath('operacao.png'),
     fullPage: true,
   });
+});
+
+test('organizador consulta CPF, filtra categorias e exporta participantes em Excel', async ({
+  page,
+  request,
+}, info) => {
+  const fixture = await control(request, 'fixture');
+  await control(request, 'participant-types');
+  await reserve(page, fixture.publicId);
+  await pay(page);
+  await expect(page.getByText('Pendente', { exact: true })).toBeVisible();
+  await page.goto(`/eventos/${fixture.publicId}`);
+  await page
+    .getByLabel('Tipo de inscrição', { exact: true })
+    .selectOption('convidado');
+  await page
+    .getByLabel('Nome completo', { exact: true })
+    .fill('Bruno Convidado');
+  await page.getByLabel('E-mail', { exact: true }).fill('bruno@example.com');
+  await page
+    .getByLabel('CPF do participante', { exact: true })
+    .fill('52998224725');
+  await page.getByRole('button', { name: /Revisar minha/ }).click();
+  await page
+    .getByRole('button', { name: 'Confirmar inscrição gratuita' })
+    .click();
+  await expect(page).toHaveURL(/\/inscricao\/[0-9a-f-]+$/);
+  await page.goto('/login');
+  await page.getByLabel('E-mail', { exact: true }).fill(fixture.email);
+  await page
+    .getByLabel('Senha', { exact: true })
+    .fill('Senha-exclusiva-do-teste');
+  await page.getByRole('button', { name: /Entrar no painel/ }).click();
+  await expect(page).toHaveURL(/\/painel$/);
+  await page.goto(`/painel/eventos/${fixture.eventId}`);
+  await expect(
+    page.getByText('Ana Participante', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('Bruno Convidado', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText('123.456.789-09', { exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: info.outputPath('participantes-por-tipo.png'),
+    fullPage: true,
+  });
+  await page
+    .getByLabel('Tipo de inscrição', { exact: true })
+    .selectOption('estudante');
+  await expect(page.getByText('Bruno Convidado', { exact: true })).toHaveCount(
+    0,
+  );
+  const downloadEvent = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Exportar Excel' }).click();
+  const download = await downloadEvent;
+  expect(download.suggestedFilename()).toMatch(/\.xlsx$/);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile((await download.path())!);
+  const sheet = workbook.getWorksheet('Participantes')!;
+  expect(sheet.rowCount).toBe(2);
+  expect(sheet.getCell('B2').value).toBe('Estudante');
+  expect(sheet.getCell('C2').value).toBe('Ana Participante');
+  expect(sheet.getCell('D2').value).toBe('12345678909');
+  expect(sheet.getCell('E2').value).toBe('ana@example.com');
+  expect(sheet.getCell('G2').value).toBe('Pendente');
+  expect(
+    (
+      await request.get(
+        `http://127.0.0.1:3100/events/${fixture.eventId}/registrations/export`,
+      )
+    ).status(),
+  ).toBe(401);
 });
 
 test.afterEach(async ({ request }) => {

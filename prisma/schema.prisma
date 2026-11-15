@@ -63,6 +63,7 @@ model Registration {
   event                   AcademicEvent    @relation(fields: [eventId], references: [id])
   name                    String
   email                   String
+  participantCpfEncrypted String?
   answers                 Json
   formSnapshot            Json
   priceInCents            Int

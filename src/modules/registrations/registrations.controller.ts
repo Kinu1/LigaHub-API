@@ -76,6 +76,7 @@ export class RegistrationsController {
   }
   @Public()
   @Get('public/registrations/:id')
+  @Header('Cache-Control', 'no-store')
   @ApiHeader({ name: 'x-registration-token', required: true })
   details(
     @Param('id', uuid()) id: string,
@@ -102,6 +103,7 @@ export class RegistrationsController {
     return this.registrations.renew(id, token);
   }
   @Get('events/:eventId/registrations')
+  @Header('Cache-Control', 'no-store')
   @Roles('admin', 'organizer')
   @ApiBearerAuth()
   list(
@@ -110,6 +112,31 @@ export class RegistrationsController {
     @Query() pagination: RegistrationPaginationDto,
   ) {
     return this.registrations.list(eventId, actor, pagination);
+  }
+  @Get('events/:eventId/registrations/export')
+  @Roles('admin', 'organizer')
+  @ApiBearerAuth()
+  @Header('Cache-Control', 'no-store')
+  async exportParticipants(
+    @Param('eventId', uuid()) eventId: string,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Query() pagination: RegistrationPaginationDto,
+    @Res() response: Response,
+  ) {
+    const file = await this.registrations.exportParticipants(
+      eventId,
+      actor,
+      pagination,
+    );
+    response.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="participantes-${eventId}.xlsx"`,
+    );
+    response.send(file);
   }
   @Patch('registrations/:id/suspension')
   @Roles('admin', 'organizer')

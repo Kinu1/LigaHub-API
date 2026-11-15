@@ -52,6 +52,10 @@ import {
 } from '../types';
 const registrationSchema = z.object({
   name: z.string().trim().min(2, 'Informe seu nome completo.').max(120),
+  cpf: z
+    .string()
+    .transform((value) => value.replace(/[.\-\s]/g, ''))
+    .refine((value) => /^\d{11}$/.test(value), 'Informe o CPF com 11 dígitos.'),
   email: z.email('Informe um e-mail válido.').max(254),
 });
 function Steps({ step }: { step: number }) {
@@ -75,7 +79,13 @@ function Steps({ step }: { step: number }) {
     </ol>
   );
 }
-function EventSummary({ event, registrationType }: { event: Event; registrationType: RegistrationType }) {
+function EventSummary({
+  event,
+  registrationType,
+}: {
+  event: Event;
+  registrationType: RegistrationType;
+}) {
   return (
     <aside
       className="event-summary order-first self-start lg:order-last lg:sticky lg:top-6"
@@ -96,7 +106,9 @@ function EventSummary({ event, registrationType }: { event: Event; registrationT
       <div className="border-t border-border pt-5">
         <p className="muted text-sm">{registrationType.name}</p>
         <p className="mt-1 text-3xl font-semibold tracking-tight">
-          {registrationType.priceInCents === 0 ? 'Gratuita' : money(registrationType.priceInCents)}
+          {registrationType.priceInCents === 0
+            ? 'Gratuita'
+            : money(registrationType.priceInCents)}
         </p>
         {event.availableSpots !== undefined && (
           <p className="muted mt-4 text-xs">
@@ -126,6 +138,7 @@ export function PublicEvent() {
   const [selectedTypeId, setSelectedTypeId] = useState('');
   const form = useForm<z.infer<typeof registrationSchema>>({
     resolver: zodResolver(registrationSchema),
+    defaultValues: { cpf: '' },
   });
   const dirty =
     !done && (form.formState.isDirty || Object.keys(answers).length > 0);
@@ -140,14 +153,24 @@ export function PublicEvent() {
   const registrationTypes: RegistrationType[] = event?.registrationTypes?.length
     ? event.registrationTypes
     : event
-      ? [{ id: 'geral', name: 'Inscrição geral', priceInCents: event.priceInCents, capacity: null }]
+      ? [
+          {
+            id: 'geral',
+            name: 'Inscrição geral',
+            priceInCents: event.priceInCents,
+            capacity: null,
+          },
+        ]
       : [];
-  const selectedRegistrationType = registrationTypes.find((type) => type.id === selectedTypeId) ?? registrationTypes[0] ?? {
-    id: 'geral',
-    name: 'Inscrição geral',
-    priceInCents: event?.priceInCents ?? 0,
-    capacity: null,
-  };
+  const selectedRegistrationType = registrationTypes.find(
+    (type) => type.id === selectedTypeId,
+  ) ??
+    registrationTypes[0] ?? {
+      id: 'geral',
+      name: 'Inscrição geral',
+      priceInCents: event?.priceInCents ?? 0,
+      capacity: null,
+    };
   useEffect(() => {
     if (reservedId) navigate(`/inscricao/${reservedId}`);
   }, [reservedId, navigate]);
@@ -226,6 +249,14 @@ export function PublicEvent() {
                       <dd className="break-all">{form.getValues('email')}</dd>
                     </div>
                     <div>
+                      <dt className="muted text-xs">CPF DO PARTICIPANTE</dt>
+                      <dd>
+                        {formatCpf(
+                          form.getValues('cpf')?.replace(/[.\-\s]/g, ''),
+                        )}
+                      </dd>
+                    </div>
+                    <div>
                       <dt className="muted text-xs">TIPO DE INSCRIÇÃO</dt>
                       <dd>{selectedRegistrationType.name}</dd>
                     </div>
@@ -245,7 +276,9 @@ export function PublicEvent() {
                   <div className="rounded-xl bg-muted p-4">
                     <p className="text-sm">{event.title}</p>
                     <p className="mt-2 font-semibold">
-                      {selectedRegistrationType.priceInCents === 0 ? 'Inscrição gratuita' : money(selectedRegistrationType.priceInCents)}
+                      {selectedRegistrationType.priceInCents === 0
+                        ? 'Inscrição gratuita'
+                        : money(selectedRegistrationType.priceInCents)}
                     </p>
                     <p className="muted mt-2 text-xs">
                       {selectedRegistrationType.priceInCents === 0
@@ -271,7 +304,15 @@ export function PublicEvent() {
                         try {
                           const record = await send<{ id: string }>(
                             `/public/events/${publicId}/registrations`,
-                            { ...form.getValues(), answers, registrationTypeId: selectedRegistrationType.id },
+                            {
+                              ...form.getValues(),
+                              cpf:
+                                form
+                                  .getValues('cpf')
+                                  ?.replace(/[.\-\s]/g, '') || undefined,
+                              answers,
+                              registrationTypeId: selectedRegistrationType.id,
+                            },
                           );
                           setDone(true);
                           setReservedId(record.id);
@@ -281,7 +322,11 @@ export function PublicEvent() {
                         }
                       }}
                     >
-                      {busy ? 'Reservando…' : selectedRegistrationType.priceInCents === 0 ? 'Confirmar inscrição gratuita' : 'Reservar e escolher pagamento →'}
+                      {busy
+                        ? 'Reservando…'
+                        : selectedRegistrationType.priceInCents === 0
+                          ? 'Confirmar inscrição gratuita'
+                          : 'Reservar e escolher pagamento →'}
                     </Button>
                   </div>
                 </>
@@ -289,10 +334,28 @@ export function PublicEvent() {
                 <>
                   {registrationTypes.length > 1 && (
                     <Field label="Tipo de inscrição">
-                      <select value={selectedRegistrationType.id} onChange={(e) => setSelectedTypeId(e.target.value)}>
+                      <select
+                        value={selectedRegistrationType.id}
+                        onChange={(e) => setSelectedTypeId(e.target.value)}
+                      >
                         {registrationTypes.map((type) => (
-                          <option key={type.id} value={type.id} disabled={type.availableSpots === 0 || (type.priceInCents > 0 && !event.publicKey)}>
-                            {type.name} · {type.priceInCents === 0 ? 'Gratuita' : money(type.priceInCents)}{type.availableSpots === 0 ? ' · Esgotada' : type.priceInCents > 0 && !event.publicKey ? ' · Pagamento indisponível' : ''}
+                          <option
+                            key={type.id}
+                            value={type.id}
+                            disabled={
+                              type.availableSpots === 0 ||
+                              (type.priceInCents > 0 && !event.publicKey)
+                            }
+                          >
+                            {type.name} ·{' '}
+                            {type.priceInCents === 0
+                              ? 'Gratuita'
+                              : money(type.priceInCents)}
+                            {type.availableSpots === 0
+                              ? ' · Esgotada'
+                              : type.priceInCents > 0 && !event.publicKey
+                                ? ' · Pagamento indisponível'
+                                : ''}
                           </option>
                         ))}
                       </select>
@@ -303,6 +366,19 @@ export function PublicEvent() {
                     error={form.formState.errors.name?.message}
                   >
                     <Input autoComplete="name" {...form.register('name')} />
+                  </Field>
+                  <Field
+                    label="CPF do participante"
+                    hint="Obrigatório. O pagamento deverá usar este mesmo CPF."
+                    error={form.formState.errors.cpf?.message}
+                  >
+                    <Input
+                      inputMode="numeric"
+                      autoComplete="off"
+                      maxLength={14}
+                      placeholder="000.000.000-00"
+                      {...form.register('cpf')}
+                    />
                   </Field>
                   <Field
                     label="E-mail"
@@ -383,7 +459,10 @@ export function PublicEvent() {
             </form>
           )}
         </section>
-        <EventSummary event={event} registrationType={selectedRegistrationType} />
+        <EventSummary
+          event={event}
+          registrationType={selectedRegistrationType}
+        />
       </div>
       <AlertDialog
         open={blocker.state === 'blocked'}
@@ -720,7 +799,7 @@ function Checkout({
   refresh: () => Promise<unknown>;
 }) {
   const [method, setMethod] = useState<'pix' | 'card'>('pix');
-  const [cpf, setCpf] = useState('');
+  const [cpf, setCpf] = useState(registration.cpf ?? '');
   const [payerName, setPayerName] = useState(registration.name);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -904,12 +983,17 @@ function Checkout({
             >
               <Field
                 label="CPF do pagador"
-                hint="Necessário para processar o pagamento."
+                hint={
+                  registration.cpf
+                    ? 'O pagamento deve usar o mesmo CPF do participante.'
+                    : 'Necessário para processar o pagamento.'
+                }
               >
                 <Input
                   inputMode="numeric"
                   autoComplete="off"
                   value={cpf}
+                  readOnly={Boolean(registration.cpf)}
                   maxLength={14}
                   onChange={(e) => setCpf(e.target.value)}
                 />
@@ -922,7 +1006,17 @@ function Checkout({
                 key={config.data.publicKey}
                 initialization={{
                   amount: config.data.amountInCents / 100,
-                  payer: { email: registration.email },
+                  payer: {
+                    email: registration.email,
+                    ...(registration.cpf
+                      ? {
+                          identification: {
+                            type: 'CPF',
+                            number: registration.cpf,
+                          },
+                        }
+                      : {}),
+                  },
                 }}
                 customization={{
                   paymentMethods: {
@@ -930,6 +1024,16 @@ function Checkout({
                   },
                 }}
                 onSubmit={async (data) => {
+                  if (
+                    registration.cpf &&
+                    data.payer.identification?.number?.replace(/\D/g, '') !==
+                      registration.cpf
+                  ) {
+                    setError(
+                      'O CPF do pagador deve ser o mesmo CPF do participante.',
+                    );
+                    return;
+                  }
                   if (payerName.trim().length < 2) {
                     setError('Informe o nome completo do pagador.');
                     return;

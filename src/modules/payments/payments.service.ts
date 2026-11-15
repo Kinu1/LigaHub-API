@@ -137,6 +137,13 @@ export class PaymentsService {
         'O cartão de débito deve ser pago em uma parcela.',
       );
     const registration = await this.participant(registrationId, token);
+    if (
+      registration.participantCpfEncrypted &&
+      decryptCredential(registration.participantCpfEncrypted) !== input.cpf
+    )
+      throw new BadRequestException(
+        'O CPF do pagador deve ser o mesmo CPF do participante.',
+      );
     const requestHash = digest(
       JSON.stringify({
         method: input.method,

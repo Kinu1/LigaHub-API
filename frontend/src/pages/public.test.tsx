@@ -192,6 +192,10 @@ describe('Inscrição e pagamento', () => {
     const user = userEvent.setup();
     await screen.findByLabelText('Nome completo');
     await user.type(screen.getByLabelText('Nome completo'), 'Ana Silva');
+    await user.type(
+      screen.getByLabelText('CPF do participante'),
+      '12345678909',
+    );
     await user.type(screen.getByLabelText(/E-mail/), 'ana@exemplo.com');
     await user.click(screen.getByRole('button', { name: /Revisar minha/ }));
     expect(await screen.findByText('Preencha esta resposta.')).toBeTruthy();
@@ -216,6 +220,10 @@ describe('Inscrição e pagamento', () => {
     const user = userEvent.setup();
     await screen.findByLabelText('Nome completo');
     await user.type(screen.getByLabelText('Nome completo'), 'Ana Silva');
+    await user.type(
+      screen.getByLabelText('CPF do participante'),
+      '12345678909',
+    );
     await user.type(screen.getByLabelText(/E-mail/), 'ana@exemplo.com');
     await user.type(screen.getByLabelText(/Instituição/), 'Universidade');
     await user.click(screen.getByRole('button', { name: /Revisar minha/ }));
@@ -232,7 +240,9 @@ describe('Inscrição e pagamento', () => {
     expect(vi.mocked(send).mock.calls[0][1]).toEqual({
       name: 'Ana Silva',
       email: 'ana@exemplo.com',
-      answers: { instituicao: 'Universidade' }, registrationTypeId: 'geral',
+      answers: { instituicao: 'Universidade' },
+      registrationTypeId: 'geral',
+      cpf: '12345678909',
     });
   });
   it('não apresenta pagamento pendente como inscrição confirmada', async () => {
@@ -368,6 +378,10 @@ describe('Preservação de preenchimento e tema', () => {
     const router = show(<PublicEvent />);
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText('Nome completo'), 'Ana Silva');
+    await user.type(
+      screen.getByLabelText('CPF do participante'),
+      '12345678909',
+    );
     await user.type(screen.getByLabelText('E-mail'), 'ana@exemplo.com');
     await user.type(screen.getByLabelText('Instituição *'), 'FABA');
     const recovery = screen.getByRole('link', { name: /Já se inscreveu/ });

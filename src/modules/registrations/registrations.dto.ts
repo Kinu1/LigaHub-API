@@ -7,11 +7,17 @@ import {
   IsString,
   MaxLength,
   MinLength,
+  Matches,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { PaginationDto } from '../../common/pagination.js';
 export class RegistrationPaginationDto extends PaginationDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  @Matches(/^[a-zA-Z0-9_-]{1,80}$/)
+  registrationTypeId?: string;
   @IsOptional() @IsString() @MaxLength(254) search?: string;
   @IsOptional()
   @IsIn([
@@ -26,6 +32,13 @@ export class RegistrationPaginationDto extends PaginationDto {
 }
 
 export class CreateRegistrationDto {
+  @ApiProperty({
+    description:
+      'CPF obrigatório do participante. O pagamento deve usar o mesmo CPF.',
+  })
+  @IsString()
+  @Matches(/^\d{11}$/)
+  cpf!: string;
   @ApiProperty() @IsString() @MinLength(2) @MaxLength(120) name!: string;
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim().toLowerCase() : value,

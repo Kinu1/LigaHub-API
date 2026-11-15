@@ -109,7 +109,23 @@ const gateway = {
     );
   },
 };
+const { ThrottlerStorage, ThrottlerStorageService } =
+  await import('@nestjs/throttler');
+const throttleStorage = new ThrottlerStorageService();
 const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+  // Cada cenário tem seu próprio contador; os limites continuam ativos dentro do cenário.
+  .overrideProvider(ThrottlerStorage)
+  .useValue({
+    increment(key, ...args) {
+      return throttleStorage.increment(
+        `${fixture?.eventId ?? 'setup'}:${key}`,
+        ...args,
+      );
+    },
+    onApplicationShutdown() {
+      throttleStorage.onApplicationShutdown();
+    },
+  })
   .overrideProvider(PaymentGateway)
   .useValue(gateway)
   .overrideProvider(EmailGateway)
@@ -280,6 +296,28 @@ control('post', '/__browser/fixture', async () => {
 control('post', '/__browser/cleanup', async () => {
   await cleanup();
   return { cleaned: true };
+});
+control('post', '/__browser/participant-types', async () => {
+  await prisma.user.update({
+    where: { id: fixture.ownerId },
+    data: { role: 'organizer' },
+  });
+  await prisma.academicEvent.update({
+    where: { id: fixture.eventId },
+    data: {
+      capacity: 10,
+      registrationTypes: [
+        {
+          id: 'estudante',
+          name: 'Estudante',
+          priceInCents: 2500,
+          capacity: null,
+        },
+        { id: 'convidado', name: 'Convidado', priceInCents: 0, capacity: null },
+      ],
+    },
+  });
+  return { updated: true };
 });
 control('get', '/__browser/messages', async () => messages);
 control('post', '/__browser/failed-email', async () => {

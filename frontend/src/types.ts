@@ -62,6 +62,9 @@ export type Payment = {
   } | null;
 };
 export type Registration = {
+  cpf?: string | null;
+  registrationTypeId?: string | null;
+  paymentStatus?: string;
   id: string;
   name: string;
   email: string;
@@ -128,6 +131,8 @@ export const date = (value?: string | null) =>
       }).format(new Date(value))
     : 'A confirmar';
 export const labels: Record<string, string> = {
+  free: 'Gratuita',
+  unpaid: 'Sem pagamento',
   draft: 'Rascunho',
   published: 'Publicado',
   suspended: 'Suspenso',
