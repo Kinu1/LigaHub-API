@@ -635,10 +635,27 @@ export function EventDetails() {
                             <TableCell data-label="Pagamento">
                               <Status
                                 value={
+                                  r.financialStatus ??
                                   r.paymentStatus ??
                                   (r.priceInCents === 0 ? 'free' : 'unpaid')
                                 }
                               />
+                              {r.latestPaymentStatus && (
+                                <div className="mt-2 text-xs">
+                                  Última tentativa:{' '}
+                                  <Status value={r.latestPaymentStatus} />
+                                </div>
+                              )}
+                              {r.financialWarnings?.map((warning) => (
+                                <p
+                                  key={warning}
+                                  className="mt-2 text-xs text-warning"
+                                >
+                                  {warning === 'multiple_approvals'
+                                    ? 'Mais de um pagamento aprovado'
+                                    : 'Histórico de contestação'}
+                                </p>
+                              ))}
                             </TableCell>
                             <TableCell
                               className="whitespace-normal break-words"

@@ -65,6 +65,9 @@ export type Registration = {
   cpf?: string | null;
   registrationTypeId?: string | null;
   paymentStatus?: string;
+  financialStatus?: string;
+  latestPaymentStatus?: string;
+  financialWarnings?: ('multiple_approvals' | 'dispute_history')[];
   id: string;
   name: string;
   email: string;

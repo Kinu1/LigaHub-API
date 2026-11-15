@@ -16,6 +16,60 @@ vi.mock('../auth', () => ({
 }));
 beforeEach(() => vi.resetAllMocks());
 
+it('separa situação financeira, última tentativa e inscrição cancelada', async () => {
+  vi.mocked(api).mockImplementation(async (path) =>
+    path.includes('/registrations?')
+      ? {
+          items: [
+            {
+              id: 'r',
+              name: 'Ana',
+              email: 'ana@example.com',
+              answers: {},
+              status: 'canceled',
+              priceInCents: 2500,
+              paymentStatus: 'rejected',
+              financialStatus: 'approved',
+              latestPaymentStatus: 'rejected',
+              financialWarnings: ['multiple_approvals', 'dispute_history'],
+              reservationExpiresAt: '2026-11-15T10:00:00Z',
+              cancellationRequestedAt: null,
+            },
+          ],
+          total: 1,
+        }
+      : {
+          id: 'event',
+          publicId: 'public',
+          title: 'Encontro',
+          status: 'closed',
+          form: [],
+          capacity: 10,
+          priceInCents: 2500,
+        },
+  );
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <MemoryRouter initialEntries={['/events/event']}>
+        <Routes>
+          <Route path="/events/:id" element={<EventDetails />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  const row = (await screen.findByText('Ana')).closest('tr')!;
+  expect(within(row).getByText('Aprovado')).toBeTruthy();
+  expect(within(row).getByText(/Última tentativa/)).toBeTruthy();
+  expect(within(row).getByText('Recusado')).toBeTruthy();
+  expect(within(row).getByText('Cancelada')).toBeTruthy();
+  expect(within(row).getByText('Mais de um pagamento aprovado')).toBeTruthy();
+  expect(within(row).getByText('Histórico de contestação')).toBeTruthy();
+});
+
 describe('Navegação das abas do evento', () => {
   it('associa cada aba ao seu painel e preserva busca e estado ao navegar pelo teclado', async () => {
     vi.mocked(api).mockImplementation(async (path) => {
