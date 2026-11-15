@@ -17,11 +17,15 @@ const prisma = {
   academicEvent: { findUnique: vi.fn() },
   registration: { findMany: vi.fn(), count: vi.fn() },
   auditLog: { findMany: vi.fn() },
+  $transaction: vi.fn(),
+  $executeRaw: vi.fn(),
 };
 const service = new RegistrationsService(prisma as unknown as PrismaService);
 
 beforeEach(() => {
   vi.resetAllMocks();
+  prisma.$transaction.mockImplementation((work) => work(prisma));
+  prisma.$executeRaw.mockResolvedValue(0);
   prisma.auditLog.findMany.mockResolvedValue([]);
   process.env.CREDENTIALS_ENCRYPTION_KEY = Buffer.alloc(32, 2).toString(
     'base64',
@@ -40,7 +44,7 @@ beforeEach(() => {
       registrationTypeId: 'estudante',
       registrationTypeName: 'Estudante',
       status: 'confirmed',
-      payments: [{ status: 'approved' }],
+      payments: [{ id: 'payment', status: 'approved' }],
       priceInCents: 2500,
       reservationExpiresAt: new Date(Date.now() + 60000),
     },
@@ -149,7 +153,14 @@ describe('Participantes por tipo e exportação protegida', () => {
     });
   });
   it('exporta todas as páginas e mantém CPF e texto literal no XLSX', async () => {
-    prisma.registration.count.mockResolvedValue(101);
+    prisma.registration.count.mockResolvedValue(501);
+    const row = (await prisma.registration.findMany())[0];
+    prisma.registration.findMany.mockClear();
+    prisma.registration.findMany
+      .mockResolvedValueOnce(
+        Array.from({ length: 500 }, (_, i) => ({ ...row, id: `r${i}` })),
+      )
+      .mockResolvedValueOnce([{ ...row, id: 'last' }]);
     const file = await service.exportParticipants('event', actor, {
       page: 8,
       limit: 20,
@@ -157,9 +168,16 @@ describe('Participantes por tipo e exportação protegida', () => {
     });
     expect(prisma.registration.findMany).toHaveBeenCalledTimes(2);
     expect(prisma.registration.findMany.mock.calls[1][0]).toMatchObject({
-      skip: 100,
-      take: 100,
+      cursor: { id: 'r499' },
+      skip: 1,
+      take: 1,
       where: { registrationTypeId: 'estudante' },
+    });
+    expect(prisma.registration.count).toHaveBeenCalledTimes(1);
+    expect(prisma.academicEvent.findUnique).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: 'RepeatableRead',
+      timeout: 120000,
     });
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(file as unknown as ExcelJS.Buffer);
@@ -192,6 +210,30 @@ describe('Participantes por tipo e exportação protegida', () => {
     await expect(
       service.exportParticipants('event', actor, { page: 1, limit: 20 }),
     ).rejects.toThrow('50.000');
+    expect(prisma.registration.findMany).not.toHaveBeenCalled();
+  });
+  it('aceita o limite exato e propaga falhas sem retornar arquivo parcial', async () => {
+    prisma.registration.count.mockResolvedValue(50000);
+    prisma.registration.findMany.mockRejectedValue(
+      new Error('Consulta interrompida'),
+    );
+    await expect(
+      service.exportParticipants('event', actor, { page: 1, limit: 20 }),
+    ).rejects.toThrow('Consulta interrompida');
+  });
+  it('produz cabeçalho sem consultar lotes para um snapshot vazio', async () => {
+    prisma.registration.count.mockResolvedValue(0);
+    const file = await service.exportParticipants('event', actor, {
+      page: 9,
+      limit: 20,
+    });
+    expect(prisma.registration.findMany).not.toHaveBeenCalled();
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(file as unknown as ExcelJS.Buffer);
+    expect(workbook.getWorksheet(1)!.rowCount).toBe(1);
+    expect(workbook.getWorksheet(1)!.getCell('I1').value).toBe(
+      'Última tentativa',
+    );
   });
   it.each(['12345678909', '52998224725'])('aceita CPF válido %s', (cpf) =>
     expect(validParticipantCpf(cpf)).toBe(true),

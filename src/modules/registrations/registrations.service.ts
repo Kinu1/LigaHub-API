@@ -28,6 +28,28 @@ import { validParticipantCpf } from './participant-cpf.js';
 import { createParticipantsWorkbook } from './participants-export.js';
 import type { RegistrationPaginationDto } from './registrations.dto.js';
 
+const participantSelect = {
+  id: true,
+  name: true,
+  email: true,
+  answers: true,
+  formSnapshot: true,
+  reviewReason: true,
+  priceInCents: true,
+  registrationTypeName: true,
+  registrationTypeId: true,
+  participantCpfEncrypted: true,
+  payments: {
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    select: { id: true, status: true },
+  },
+  status: true,
+  reservationExpiresAt: true,
+  suspendedAt: true,
+  cancellationRequestedAt: true,
+  createdAt: true,
+} satisfies Prisma.RegistrationSelect;
+
 export const hashParticipantToken = (token: string): string =>
   createHash('sha256').update(token).digest('hex');
 
@@ -420,8 +442,12 @@ export class RegistrationsService {
     });
   }
 
-  private async eventAccess(eventId: string, actor: AuthenticatedUser) {
-    const event = await this.prisma.academicEvent.findUnique({
+  private async eventAccess(
+    eventId: string,
+    actor: AuthenticatedUser,
+    db: Prisma.TransactionClient = this.prisma,
+  ) {
+    const event = await db.academicEvent.findUnique({
       where: { id: eventId },
     });
     if (!event) throw new NotFoundException('Evento não encontrado.');
@@ -430,13 +456,11 @@ export class RegistrationsService {
     return event;
   }
 
-  async list(
+  private participantFilters(
     eventId: string,
-    actor: AuthenticatedUser,
     pagination: RegistrationPaginationDto,
+    now: Date,
   ) {
-    await this.eventAccess(eventId, actor);
-    const now = new Date();
     const where: Prisma.RegistrationWhereInput = {
       eventId,
       ...(pagination.registrationTypeId &&
@@ -494,57 +518,60 @@ export class RegistrationsService {
         { OR: [{ registrationTypeId: 'geral' }, { registrationTypeId: null }] },
       ];
     }
+    return where;
+  }
+
+  async list(
+    eventId: string,
+    actor: AuthenticatedUser,
+    pagination: RegistrationPaginationDto,
+  ) {
+    await this.eventAccess(eventId, actor);
+    const now = new Date();
+    const where = this.participantFilters(eventId, pagination, now);
     const [items, total] = await Promise.all([
       this.prisma.registration.findMany({
         where,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (pagination.page - 1) * pagination.limit,
         take: pagination.limit,
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          answers: true,
-          formSnapshot: true,
-          reviewReason: true,
-          priceInCents: true,
-          registrationTypeName: true,
-          registrationTypeId: true,
-          participantCpfEncrypted: true,
-          payments: {
-            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-            select: { id: true, status: true },
-          },
-          status: true,
-          reservationExpiresAt: true,
-          suspendedAt: true,
-          cancellationRequestedAt: true,
-          createdAt: true,
-        },
+        select: participantSelect,
       }),
       this.prisma.registration.count({ where }),
     ]);
-    const disputed = await this.disputedPayments(this.prisma, items);
     return {
-      items: items.map(({ participantCpfEncrypted, payments, ...item }) => ({
-        ...item,
-        cpf: participantCpfEncrypted
-          ? decryptCredential(participantCpfEncrypted)
-          : null,
-        ...participantFinancial(
-          item.priceInCents,
-          payments,
-          payments.some((payment) => disputed.has(payment.id)),
-        ),
-        status:
-          item.status === 'reserved' && item.reservationExpiresAt <= now
-            ? 'expired'
-            : item.status,
-      })),
+      items: await this.presentParticipants(this.prisma, items, now),
       total,
       page: pagination.page,
       limit: pagination.limit,
     };
+  }
+
+  private async presentParticipants<
+    T extends {
+      participantCpfEncrypted: string | null;
+      payments: { id: string; status: string }[];
+      priceInCents: number;
+      status: string;
+      reservationExpiresAt: Date;
+    },
+  >(db: Prisma.TransactionClient, items: T[], now: Date) {
+    const disputed = await this.disputedPayments(db, items);
+    return items.map(({ participantCpfEncrypted, payments, ...item }) => ({
+      ...item,
+      cpf: participantCpfEncrypted
+        ? decryptCredential(participantCpfEncrypted)
+        : null,
+      ...participantFinancial(
+        item.priceInCents,
+        payments,
+        payments.some((payment) => disputed.has(payment.id)),
+      ),
+      status:
+        item.status === 'reserved' && item.reservationExpiresAt <= now
+          ? 'expired'
+          : item.status,
+    }));
   }
 
   private async disputedPayments(
@@ -576,31 +603,53 @@ export class RegistrationsService {
     actor: AuthenticatedUser,
     pagination: RegistrationPaginationDto,
   ) {
-    const event = await this.eventAccess(eventId, actor);
-    const filters = {
-      search: pagination.search,
-      status: pagination.status,
-      registrationTypeId: pagination.registrationTypeId,
-    };
-    const first = await this.list(eventId, actor, {
-      ...filters,
-      page: 1,
-      limit: 100,
-    });
-    if (first.total > 50000)
-      throw new BadRequestException(
-        'A exportação suporta até 50.000 participantes. Filtre por tipo de inscrição ou situação.',
-      );
-    const rows = [...first.items];
-    for (let page = 2; page <= Math.ceil(first.total / 100); page++) {
-      const batch = await this.list(eventId, actor, {
-        ...filters,
-        page,
-        limit: 100,
-      });
-      rows.push(...batch.items);
-    }
-    return createParticipantsWorkbook(event.title, rows);
+    const now = new Date();
+    const where = this.participantFilters(eventId, pagination, now);
+    return this.prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+        const event = await this.eventAccess(eventId, actor, tx);
+        const total = await tx.registration.count({ where });
+        if (total > 50000)
+          throw new BadRequestException(
+            'A exportação suporta até 50.000 participantes. Filtre por tipo de inscrição ou situação.',
+          );
+        const presentParticipants = this.presentParticipants.bind(this);
+        async function* rows() {
+          let cursor: string | undefined;
+          for (let fetched = 0; fetched < total;) {
+            const batch = await tx.registration.findMany({
+              where,
+              orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+              ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+              take: Math.min(500, total - fetched),
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                participantCpfEncrypted: true,
+                registrationTypeName: true,
+                status: true,
+                reservationExpiresAt: true,
+                priceInCents: true,
+                payments: participantSelect.payments,
+              },
+            });
+            if (!batch.length)
+              throw new Error('Snapshot de participantes incompleto.');
+            for (const row of await presentParticipants(tx, batch, now))
+              yield row;
+            fetched += batch.length;
+            cursor = batch[batch.length - 1].id;
+          }
+        }
+        return createParticipantsWorkbook(event.title, rows());
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+        timeout: 120_000,
+      },
+    );
   }
 
   async suspend(id: string, suspended: boolean, actor: AuthenticatedUser) {
