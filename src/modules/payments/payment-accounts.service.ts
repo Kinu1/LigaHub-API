@@ -9,6 +9,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma.service.js';
 import type { AuthenticatedUser } from '../auth/auth.decorators.js';
 import { PaymentGateway } from './payment.gateway.js';
+import { platformPixAccountId } from './pix-payout.policy.js';
 import {
   decryptCredential,
   digest,
@@ -168,6 +169,14 @@ export class PaymentAccountsService {
       throw new ForbiddenException(
         'Você não pode consultar a conta de outro responsável.',
       );
+    const platformId = platformPixAccountId();
+    if (platformId) {
+      const platform = await this.prisma.paymentAccount.findFirst({
+        where: { id: platformId, active: true },
+        select: { id: true },
+      });
+      return { connected: !!platform, platformPix: true };
+    }
     const account = await this.prisma.paymentAccount.findFirst({
       where: { ownerId, active: true },
       orderBy: { createdAt: 'desc' },

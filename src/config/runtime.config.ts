@@ -16,6 +16,9 @@ const allowedKeys = new Set([
   'MERCADO_PAGO_TEST_ACCESS_TOKEN',
   'MERCADO_PAGO_TEST_PUBLIC_KEY',
   'MERCADO_PAGO_TEST_OWNER_EMAIL',
+  'MERCADO_PAGO_PIX_PLATFORM_ACCOUNT_ID',
+  'MERCADO_PAGO_PAYOUTS_ENABLED',
+  'MERCADO_PAGO_PAYOUTS_PRIVATE_KEY_BASE64',
 ]);
 
 export function parseRuntimeConfig(value: string): Record<string, string> {

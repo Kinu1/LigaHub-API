@@ -2,6 +2,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -12,6 +13,7 @@ import { renderConfirmation } from '../notifications/confirmation-email.js';
 import { encryptCredential } from '../payments/payment-security.js';
 import { PaymentsService } from '../payments/payments.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import { PixPayoutsService } from '../payments/pix-payouts.service.js';
 
 export type JobName = 'emails' | 'payments';
 export type JobSource = 'http' | 'timer' | 'scheduler';
@@ -37,6 +39,9 @@ export class JobsRunner {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(EmailOutboxService) private readonly emails: EmailOutboxService,
     @Inject(PaymentsService) private readonly payments: PaymentsService,
+    @Optional()
+    @Inject(PixPayoutsService)
+    private readonly payouts?: PixPayoutsService,
   ) {}
 
   private preflight(name: JobName, source: JobSource = 'http') {
@@ -118,10 +123,30 @@ export class JobsRunner {
     };
 
     try {
+      // Dá tempo aos repasses já enfileirados mesmo com um histórico grande
+      // de pagamentos para reconciliar. Novas confirmações entram no ciclo seguinte.
+      const transfers =
+        name === 'payments' &&
+        this.payouts &&
+        process.env.MERCADO_PAGO_PAYOUTS_ENABLED === 'true'
+          ? await this.payouts.process(
+              Math.min(options?.deadline ?? Infinity, Date.now() + 60_000),
+            )
+          : undefined;
       const raw =
         name === 'emails'
           ? await this.emails.processBatch(undefined, options?.deadline)
           : await this.payments.reconcile(options?.deadline);
+      if (transfers) {
+        raw.processed += transfers.processed;
+        raw.succeeded += transfers.succeeded;
+        raw.failed += transfers.failed;
+        raw.skipped += transfers.skipped;
+        if (transfers.failed > 0) {
+          raw.status = raw.succeeded > 0 ? 'partial' : 'failed';
+          raw.errorCode = 'PAYOUT_SYNC_FAILED';
+        }
+      }
       if (raw && typeof raw === 'object' && 'status' in raw) {
         outcome = {
           status: raw.status,

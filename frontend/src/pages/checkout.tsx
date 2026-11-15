@@ -39,6 +39,7 @@ export function Checkout({
         publicKey: string;
         amountInCents: number;
         maxInstallments: number;
+        allowedMethods?: ('pix' | 'card')[];
       }>(`/public/registrations/${registration.id}/checkout`),
   });
   const pay = async (body: PaymentBody) => {
@@ -150,16 +151,19 @@ export function Checkout({
             >
               Pix
             </Button>
-            <Button
-              variant={method === 'card' ? 'default' : 'outline'}
-              aria-pressed={method === 'card'}
-              onClick={() => {
-                setMethod('card');
-                setError('');
-              }}
-            >
-              Cartão
-            </Button>
+            {(!config.data.allowedMethods ||
+              config.data.allowedMethods.includes('card')) && (
+              <Button
+                variant={method === 'card' ? 'default' : 'outline'}
+                aria-pressed={method === 'card'}
+                onClick={() => {
+                  setMethod('card');
+                  setError('');
+                }}
+              >
+                Cartão
+              </Button>
+            )}
           </div>
           <Field
             label="Nome completo do pagador"

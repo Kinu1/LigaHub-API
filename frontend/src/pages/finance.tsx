@@ -27,9 +27,11 @@ import {
   type PaymentFilters,
 } from './finance-filters';
 import { QueryState } from './query-state';
+import { PixPayoutSection } from './pix-payouts';
 
 type ConnectedAccount = {
   connected: boolean;
+  platformPix?: boolean;
 };
 
 export function FinancePage() {
@@ -102,49 +104,54 @@ export function FinancePage() {
             className="muted my-2 text-sm"
             role={account.data?.connected ? 'status' : undefined}
           >
-            {account.data?.connected
-              ? 'Conta conectada ao Mercado Pago.'
-              : 'Conecte a conta do organizador para habilitar pagamentos.'}
-          </p>
-          <Button
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                let ownerId: string | undefined;
-                if (user?.role === 'admin') {
-                  const users = await api<User[]>('/users');
-                  ownerId =
-                    connectionReturn.ownerId ??
-                    users.find((u) => u.role === 'organizer' && u.active)?.id;
-                  if (!ownerId)
-                    throw new Error(
-                      'Cadastre e ative o organizador antes de conectar a conta.',
-                    );
-                }
-                const result = await send<{ authorizationUrl: string }>(
-                  '/payments/accounts/authorize',
-                  ownerId ? { ownerId } : {},
-                );
-                const url = new URL(result.authorizationUrl);
-                if (url.protocol !== 'https:')
-                  throw new Error('Endereço de autorização inválido.');
-                location.assign(url.href);
-              } catch (e) {
-                setError((e as Error).message);
-                setBusy(false);
-              }
-            }}
-          >
-            {busy
-              ? 'Aguarde…'
+            {account.data?.platformPix
+              ? 'Os pagamentos Pix são recebidos pela plataforma e repassados ao organizador.'
               : account.data?.connected
-                ? 'Reconectar conta'
-                : 'Conectar Mercado Pago'}
-          </Button>
+                ? 'Conta conectada ao Mercado Pago.'
+                : 'Conecte a conta do organizador para habilitar pagamentos.'}
+          </p>
+          {!account.data?.platformPix && (
+            <Button
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  let ownerId: string | undefined;
+                  if (user?.role === 'admin') {
+                    const users = await api<User[]>('/users');
+                    ownerId =
+                      connectionReturn.ownerId ??
+                      users.find((u) => u.role === 'organizer' && u.active)?.id;
+                    if (!ownerId)
+                      throw new Error(
+                        'Cadastre e ative o organizador antes de conectar a conta.',
+                      );
+                  }
+                  const result = await send<{ authorizationUrl: string }>(
+                    '/payments/accounts/authorize',
+                    ownerId ? { ownerId } : {},
+                  );
+                  const url = new URL(result.authorizationUrl);
+                  if (url.protocol !== 'https:')
+                    throw new Error('Endereço de autorização inválido.');
+                  location.assign(url.href);
+                } catch (e) {
+                  setError((e as Error).message);
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy
+                ? 'Aguarde…'
+                : account.data?.connected
+                  ? 'Reconectar conta'
+                  : 'Conectar Mercado Pago'}
+            </Button>
+          )}
         </QueryState>
         {error && <Notice>{error}</Notice>}
       </section>
+      <PixPayoutSection />
       <section className="data-section">
         <h2 className="mb-5">Histórico de pagamentos</h2>
         <p className="mb-4 text-sm text-muted-foreground">

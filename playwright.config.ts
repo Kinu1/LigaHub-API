@@ -41,6 +41,8 @@ export default defineConfig({
         DATABASE_TEST_URL: database.DATABASE_URL,
         LIGAHUB_BROWSER_TEST: 'true',
         NODE_ENV: 'test',
+        MERCADO_PAGO_PAYOUTS_ENABLED: 'false',
+        MERCADO_PAGO_PIX_PLATFORM_ACCOUNT_ID: '',
       },
       timeout: 60_000,
     },

@@ -15,6 +15,8 @@ Object.assign(process.env, {
   JWT_SECRET: 'segredo-exclusivo-do-navegador-nao-usar-em-producao',
   CREDENTIALS_ENCRYPTION_KEY: Buffer.alloc(32, 2).toString('base64'),
   PAYMENT_RECONCILIATION_ENABLED: 'false',
+  MERCADO_PAGO_PAYOUTS_ENABLED: 'false',
+  MERCADO_PAGO_PIX_PLATFORM_ACCOUNT_ID: '',
   EMAIL_DELIVERY_ENABLED: 'false',
   EMAIL_PROVIDER: 'resend',
   RESEND_API_KEY: 'chave-simulada-do-navegador',

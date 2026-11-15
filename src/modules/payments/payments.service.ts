@@ -35,6 +35,8 @@ import {
   type ProviderPayment,
 } from './payment-security.js';
 import type { ProviderApi } from './payment-orders.js';
+import { pixRouting } from './pix-routing.js';
+import { enqueuePixPayout } from './pix-payout.policy.js';
 
 const unresolved = [
   'created',
@@ -103,15 +105,22 @@ export class PaymentsService {
       where: { ownerId: registration.event.ownerId ?? '', active: true },
       orderBy: { createdAt: 'desc' },
     });
-    if (!account)
+    const routing = await pixRouting(
+      this.prisma,
+      registration.event.ownerId ?? '',
+    );
+    if (!account && !routing)
       throw new ServiceUnavailableException(
         'O organizador ainda não conectou uma conta de pagamento.',
       );
     return {
-      publicKey: account.publicKey,
+      publicKey: (account ?? routing!.account).publicKey,
       amountInCents: registration.priceInCents,
       currency: 'BRL',
       maxInstallments: 12,
+      ...(routing
+        ? { allowedMethods: account ? ['pix', 'card'] : ['pix'] }
+        : {}),
     };
   }
 
@@ -187,10 +196,16 @@ export class PaymentsService {
         throw new ConflictException(
           'Já existe um pagamento em processamento. Consulte seu resultado antes de tentar outro.',
         );
-      const account = await tx.paymentAccount.findFirst({
-        where: { ownerId: current.event.ownerId ?? '', active: true },
-        orderBy: { createdAt: 'desc' },
-      });
+      const routing =
+        input.method === 'pix'
+          ? await pixRouting(tx, current.event.ownerId ?? '')
+          : null;
+      const account =
+        routing?.account ??
+        (await tx.paymentAccount.findFirst({
+          where: { ownerId: current.event.ownerId ?? '', active: true },
+          orderBy: { createdAt: 'desc' },
+        }));
       if (!account)
         throw new ServiceUnavailableException(
           'O organizador ainda não conectou uma conta de pagamento.',
@@ -256,6 +271,12 @@ export class PaymentsService {
           method: input.method,
           installments: input.installments,
           amountInCents: current.priceInCents,
+          ...(routing
+            ? {
+                payoutOwnerId: current.event.ownerId,
+                payoutDestinationEncrypted: routing.snapshot,
+              }
+            : {}),
         },
       });
       await tx.auditLog.create({
@@ -770,6 +791,7 @@ export class PaymentsService {
           },
         },
       });
+      await enqueuePixPayout(tx, saved);
       return saved;
     });
   }
