@@ -59,11 +59,13 @@ Confirmação automática por e-mail e link somente de consulta: veja [docs/EMAI
 npm.cmd run lint
 npm.cmd run build
 npm.cmd test
+npm.cmd run test:scripts
+npm.cmd run db:migrate:test
 npm.cmd run test:e2e
 npm.cmd audit
 ```
 
-Os testes de integração exigem as migrations aplicadas. Criam dados identificados por UUID e removem somente esses dados; prefira um banco separado para testes. Pagamentos usam provedor simulado, sem cobrança real. O GitHub Actions usa um PostgreSQL exclusivo do job.
+Os testes de integração exigem um banco separado e `DATABASE_TEST_URL` configurada explicitamente no `.env` ou na sessão. O banco deve usar loopback e nome como `ligahub_test`; nomes sem a palavra delimitada `test`/`tests` são recusados, assim como a mesma conexão de `DATABASE_URL` ou `DIRECT_URL`. Aplique migrations nesse banco com `db:migrate:test`; o comando substitui também `DIRECT_URL` somente no processo de migrations. Não há fallback para o banco habitual. Os testes criam dados identificados por UUID e removem somente esses dados. Pagamentos usam provedor simulado, sem cobrança real. O GitHub Actions mantém seus bancos PostgreSQL exclusivos dos jobs e fornece `DATABASE_TEST_URL` explicitamente.
 
 O fluxo completo no Chromium, em desktop e celular, é verificado com `npm.cmd run test:browser`, após compilar a API e instalar o navegador. Consulte [o roteiro de testes de navegador](docs/TESTES_NAVEGADOR.md). A fila de e-mails tem consulta e retomada controlada em `/painel/emails`, exclusiva de administradores; critérios em [docs/EMAILS.md](docs/EMAILS.md). O diagnóstico seguro de rotinas de segundo plano e sincronização fica em `/painel/operacao` e `GET /admin/operations`; detalhes em [docs/ROTINAS.md](docs/ROTINAS.md).
 

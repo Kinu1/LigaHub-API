@@ -54,7 +54,7 @@ A retomada preserva o payload criptografado até aceite, a primeira tentativa e 
 
 Payload ilegível/inválido durante a preparação torna apenas aquele item `failed`, preserva o conteúdo para análise e permite continuar o lote. Chave ausente/malformada ou configuração de renderização inválida interrompem a rodada antes de reivindicar itens. Uma chave de tamanho válido, mas incorreta, não é distinguível de conteúdo corrompido: não restaure itens em massa; investigue a configuração antes de qualquer retomada. O endpoint não ativa entrega desativada nem contorna a seleção de provedor.
 
-Validação local: `npm.cmd run test:e2e -- test/outbox.integration.e2e-spec.ts`. O teste exige PostgreSQL, cria e remove somente suas fixtures e limita o processamento a elas. O gateway é simulado; nenhum e-mail real é enviado.
+Validação local: `npm.cmd run test:e2e -- test/outbox.integration.e2e-spec.ts`. O teste exige PostgreSQL exclusivo em `DATABASE_TEST_URL`, com migrations aplicadas por `npm.cmd run db:migrate:test`, cria e remove somente suas fixtures e limita o processamento a elas. O gateway é simulado; nenhum e-mail real é enviado.
 
 ## Fila durável de acesso e gestão — entrega 2 de 6
 
