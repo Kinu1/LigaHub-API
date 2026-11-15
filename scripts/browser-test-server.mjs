@@ -3,17 +3,14 @@ import 'reflect-metadata';
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { readFile, writeFile, unlink, mkdir } from 'node:fs/promises';
+import { testDatabaseEnvironment } from './test-database.mjs';
 
 if (
   process.env.LIGAHUB_BROWSER_TEST !== 'true' ||
   process.env.NODE_ENV !== 'test'
 )
   throw new Error('Servidor permitido somente no teste de navegador.');
-const database = new URL(process.env.DATABASE_URL ?? '');
-if (!['localhost', '127.0.0.1', '[::1]'].includes(database.hostname))
-  throw new Error(
-    'Os testes de navegador exigem PostgreSQL local ou do job de CI.',
-  );
+Object.assign(process.env, testDatabaseEnvironment());
 Object.assign(process.env, {
   JWT_SECRET: 'segredo-exclusivo-do-navegador-nao-usar-em-producao',
   CREDENTIALS_ENCRYPTION_KEY: Buffer.alloc(32, 2).toString('base64'),

@@ -27,6 +27,7 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://ligahub:senha-exclusiva-ci@127.0.0.1:5433/ligahub_browser_test?schema=public
+      DATABASE_TEST_URL: postgresql://ligahub:senha-exclusiva-ci@127.0.0.1:5433/ligahub_browser_test?schema=public
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -36,7 +37,7 @@ jobs:
       - run: npm ci
       - run: npm --prefix frontend ci
       - run: npm run db:generate
-      - run: npm run db:migrate
+      - run: npm run db:migrate:test
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
