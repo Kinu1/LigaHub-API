@@ -76,7 +76,7 @@ describe('Auditoria do administrador', () => {
         limit: 20,
       });
       show();
-      const article = await screen.findByRole('article', {
+      const article = await screen.findByRole('row', {
         name: 'Inscrição cancelada após devolução do pagamento',
       });
       expect(within(article).getByText(description)).toBeTruthy();
@@ -113,7 +113,7 @@ describe('Auditoria do administrador', () => {
       limit: 20,
     });
     show();
-    const access = await screen.findByRole('article', {
+    const access = await screen.findByRole('row', {
       name: 'Situação de acesso do usuário alterada',
     });
     expect(within(access).getByText('Ativo')).toBeTruthy();
@@ -159,7 +159,7 @@ describe('Auditoria do administrador', () => {
       limit: 20,
     });
     show();
-    const row = await screen.findByRole('article', {
+    const row = await screen.findByRole('row', {
       name: 'Tentativa de pagamento criada',
     });
     expect(within(row).getByText('Ana Administradora')).toBeTruthy();

@@ -3,7 +3,7 @@ import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { EventDetails, FinancePage } from './panel';
+import { EventDetails, EventsPage, FinancePage } from './panel';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { api } from '../api';
 
@@ -15,6 +15,233 @@ vi.mock('../auth', () => ({
   useAuth: () => ({ user: { id: 'owner', role: 'organizer' } }),
 }));
 beforeEach(() => vi.resetAllMocks());
+
+describe('Navegação das abas do evento', () => {
+  it('associa cada aba ao seu painel e preserva busca e estado ao navegar pelo teclado', async () => {
+    vi.mocked(api).mockImplementation(async (path) => {
+      if (path.includes('/registrations?'))
+        return { items: [], total: 100, page: 1, limit: 50 };
+      if (path.includes('/history?'))
+        return { items: [], total: 0, page: 1, limit: 50 };
+      return {
+        id: 'event',
+        publicId: 'public',
+        title: 'Encontro',
+        status: 'closed',
+        form: [],
+        priceInCents: 2500,
+        capacity: 10,
+      };
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MemoryRouter initialEntries={['/events/event?status=cancellation']}>
+          <Routes>
+            <Route path="/events/:id" element={<EventDetails />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const registrations = await screen.findByRole('tab', {
+      name: 'Inscrições',
+    });
+    const history = screen.getByRole('tab', { name: 'Histórico' });
+    const registrationPanelId = registrations.getAttribute('aria-controls');
+    expect(screen.getByRole('tabpanel', { name: 'Inscrições' }).id).toBe(
+      registrationPanelId,
+    );
+    await user.type(
+      screen.getByRole('textbox', { name: 'Buscar inscrição' }),
+      'Ana',
+    );
+    await waitFor(() =>
+      expect(api).toHaveBeenCalledWith(
+        '/events/event/registrations?page=1&search=Ana&status=cancellation',
+      ),
+    );
+    registrations.focus();
+    await user.keyboard('{End}');
+    await waitFor(() =>
+      expect(history.getAttribute('aria-selected')).toBe('true'),
+    );
+    expect(document.activeElement).toBe(history);
+    const historyPanel = screen.getByRole('tabpanel', { name: 'Histórico' });
+    expect(historyPanel.id).toBe(history.getAttribute('aria-controls'));
+    expect(historyPanel.id).not.toBe(registrationPanelId);
+    expect(
+      screen.queryByRole('textbox', { name: 'Buscar inscrição' }),
+    ).toBeNull();
+    await waitFor(() =>
+      expect(api).toHaveBeenCalledWith('/events/event/history?page=1'),
+    );
+    await user.keyboard('{Home}');
+    await waitFor(() =>
+      expect(registrations.getAttribute('aria-selected')).toBe('true'),
+    );
+    expect(document.activeElement).toBe(registrations);
+    expect(
+      (
+        screen.getByRole('textbox', {
+          name: 'Buscar inscrição',
+        }) as HTMLInputElement
+      ).value,
+    ).toBe('Ana');
+    expect(
+      (
+        screen.getByRole('combobox', {
+          name: 'Estado da inscrição',
+        }) as HTMLSelectElement
+      ).value,
+    ).toBe('cancellation');
+    const results = await axe.run(
+      screen.getByRole('tabpanel', { name: 'Inscrições' }),
+    );
+    expect(results.violations).toEqual([]);
+  });
+
+  it('retorna à primeira página ao trocar de aba e mantém os filtros das inscrições', async () => {
+    vi.mocked(api).mockImplementation(async (path) => {
+      if (path.includes('/registrations?'))
+        return {
+          items: [
+            {
+              id: 'r',
+              name: 'Ana',
+              email: 'ana@example.test',
+              status: 'confirmed',
+              answers: {},
+            },
+          ],
+          total: 100,
+          page: 1,
+          limit: 50,
+        };
+      if (path.includes('/history?'))
+        return { items: [], total: 0, page: 1, limit: 50 };
+      return {
+        id: 'event',
+        publicId: 'public',
+        title: 'Encontro',
+        status: 'closed',
+        form: [],
+        priceInCents: 2500,
+        capacity: 10,
+      };
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MemoryRouter initialEntries={['/events/event']}>
+          <Routes>
+            <Route path="/events/:id" element={<EventDetails />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await screen.findByText('Ana');
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Estado da inscrição' }),
+      'confirmed',
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Próxima página' }),
+    );
+    await waitFor(() =>
+      expect(api).toHaveBeenCalledWith(
+        '/events/event/registrations?page=2&search=&status=confirmed',
+      ),
+    );
+    await user.click(screen.getByRole('tab', { name: 'Histórico' }));
+    await waitFor(() =>
+      expect(api).toHaveBeenCalledWith('/events/event/history?page=1'),
+    );
+    await user.click(screen.getByRole('tab', { name: 'Inscrições' }));
+    expect(
+      (
+        screen.getByRole('combobox', {
+          name: 'Estado da inscrição',
+        }) as HTMLSelectElement
+      ).value,
+    ).toBe('confirmed');
+    expect(await screen.findByText(/Página 1 de 5/)).toBeTruthy();
+  });
+});
+
+describe('Tabela de eventos', () => {
+  it('compara os dados e mantém busca, estado e atenção a cancelamentos ao paginar', async () => {
+    vi.mocked(api).mockResolvedValue({
+      items: [
+        {
+          id: 'e',
+          title: 'Jornada',
+          location: 'Rio de Janeiro',
+          startsAt: '2026-11-20T18:00:00Z',
+          priceInCents: 2500,
+          capacity: 100,
+          status: 'published',
+        },
+      ],
+      total: 24,
+      page: 1,
+      limit: 12,
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MemoryRouter
+          initialEntries={[
+            '/painel/eventos?attention=cancellation&status=published',
+          ]}
+        >
+          <EventsPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const table = await screen.findByRole('table', { name: 'Eventos' });
+    expect(
+      within(table).getByRole('columnheader', { name: 'Preço' }),
+    ).toBeTruthy();
+    expect(
+      within(table)
+        .getByRole('cell', { name: '100 vagas' })
+        .getAttribute('data-label'),
+    ).toBe('Capacidade');
+    expect(
+      within(table)
+        .getByRole('link', { name: 'Analisar cancelamentos de Jornada' })
+        .getAttribute('href'),
+    ).toBe('/painel/eventos/e?status=cancellation');
+    expect(screen.getByText(/Esta lista inclui todos os eventos/)).toBeTruthy();
+    await user.type(
+      screen.getByRole('textbox', { name: 'Buscar evento' }),
+      'Jornada',
+    );
+    await waitFor(() =>
+      expect(api).toHaveBeenCalledWith(
+        '/events?page=1&limit=12&search=Jornada&status=published',
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: 'Próxima página' }));
+    await waitFor(() =>
+      expect(api).toHaveBeenCalledWith(
+        '/events?page=2&limit=12&search=Jornada&status=published',
+      ),
+    );
+  });
+});
 
 describe('Resolução de revisão de pagamento', () => {
   it.each(['capacity_full', null])(

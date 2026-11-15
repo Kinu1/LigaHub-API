@@ -213,7 +213,9 @@ test('administrador filtra o financeiro e a API recusa filtros inválidos', asyn
     page.getByRole('heading', { name: 'Operação e rotinas' }),
   ).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'Links de acesso e gestão' }),
+    page
+      .getByRole('table', { name: 'Filas de e-mails', exact: true })
+      .getByRole('cell', { name: /Links de acesso e gestão/ }),
   ).toBeVisible();
   await expect(
     page.getByText(

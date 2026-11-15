@@ -11,6 +11,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import type { FormField } from './forms.js';
@@ -18,6 +19,17 @@ import {
   MIN_EVENT_PRICE_IN_CENTS,
   MIN_EVENT_PRICE_MESSAGE,
 } from '../events/entities/academic-event.entity.js';
+
+export class RegistrationTypeDto {
+  @ApiProperty() @IsString() @MinLength(1) @MaxLength(80) id: string;
+  @ApiProperty() @IsString() @MinLength(1) @MaxLength(120) name: string;
+  @ApiProperty({ minimum: 0, description: 'Zero para inscrição gratuita; caso contrário, mínimo de R$ 0,50.' })
+  @IsInt() @Min(0) @Max(2147483647)
+  priceInCents: number;
+  @ApiPropertyOptional({ minimum: 1, nullable: true })
+  @IsOptional() @IsInt() @Min(1) @Max(2147483647)
+  capacity?: number | null;
+}
 
 export class CreateEventDto {
   @ApiProperty()
@@ -47,6 +59,10 @@ export class CreateEventDto {
   @Min(MIN_EVENT_PRICE_IN_CENTS, { message: MIN_EVENT_PRICE_MESSAGE })
   @Max(2147483647, { message: 'O preço excede o limite permitido.' })
   priceInCents: number;
+  @ApiPropertyOptional({ type: [RegistrationTypeDto] })
+  @IsOptional() @IsArray() @ValidateNested({ each: true })
+  @Type(() => RegistrationTypeDto)
+  registrationTypes?: RegistrationTypeDto[];
   @ApiProperty()
   @IsInt({ message: 'A capacidade deve ser inteira.' })
   @Min(1, { message: 'A capacidade deve ser positiva.' })

@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet, Navigate, Link, useLocation } from 'react-router-dom';
 import {
-  type LucideIcon,
   LayoutDashboard,
   CalendarDays,
   Wallet,
@@ -10,240 +9,290 @@ import {
   Mail,
   Activity,
   LogOut,
-  Menu,
-  X,
   ArrowUpRight,
+  X,
+  type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from './auth';
 import { Brand, Loading, Notice } from './ui';
 import { MotionSection, SoundToggle } from './experience';
-export function Layout() {
+import { ThemeToggle } from './theme';
+import { Button } from './components/ui/button';
+import {
+  SidebarProvider,
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarGroupContent,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarTrigger,
+  useSidebar,
+} from './components/ui/sidebar';
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from './components/ui/breadcrumb';
+
+type Item = [string, string, LucideIcon];
+const management: Item[] = [
+  ['/painel', 'Visão geral', LayoutDashboard],
+  ['/painel/eventos', 'Eventos', CalendarDays],
+  ['/painel/financeiro', 'Financeiro', Wallet],
+];
+const administration: Item[] = [
+  ['/painel/usuarios', 'Usuários', Users],
+  ['/painel/auditoria', 'Auditoria', History],
+  ['/painel/emails', 'Fila de e-mails', Mail],
+  ['/painel/operacao', 'Operação', Activity],
+];
+
+function NavigationGroup({ label, items }: { label: string; items: Item[] }) {
   const { pathname } = useLocation();
-  const { user, loading, logout } = useAuth();
-  const [open, setOpen] = useState(false);
-  const menuButton = useRef<HTMLButtonElement>(null);
-  const closeButton = useRef<HTMLButtonElement>(null);
-  const sidebar = useRef<HTMLElement>(null);
-  const wasOpen = useRef(false);
-  useEffect(() => {
-    if (wasOpen.current && !open) menuButton.current?.focus();
-    wasOpen.current = open;
-  }, [open]);
-  useEffect(() => {
-    if (!open) return;
-    closeButton.current?.focus();
-    const dismiss = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setOpen(false);
-      }
-      if (event.key === 'Tab') {
-        const targets = sidebar.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])');
-        if (!targets?.length) return;
-        const first = targets[0];
-        const last = targets[targets.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    window.addEventListener('keydown', dismiss);
-    return () => window.removeEventListener('keydown', dismiss);
-  }, [open]);
-  const [desktop, setDesktop] = useState(
-    () => window.matchMedia('(min-width:1024px)').matches,
-  );
-  useEffect(() => {
-    const media = window.matchMedia('(min-width:1024px)');
-    const change = () => setDesktop(media.matches);
-    media.addEventListener('change', change);
-    return () => media.removeEventListener('change', change);
-  }, []);
-  useEffect(() => {
-    if (desktop) setOpen(false);
-  }, [desktop]);
-  useEffect(() => {
-    if (!open || desktop) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = previous; };
-  }, [open, desktop]);
-  const [error, setError] = useState('');
-  if (loading) return <Loading />;
-  if (!user) return <Navigate to="/login" replace />;
-  const links: [string, string, LucideIcon][] = [
-    ['/painel', 'Visão geral', LayoutDashboard],
-    ['/painel/eventos', 'Eventos', CalendarDays],
-    ['/painel/financeiro', 'Financeiro', Wallet],
-    ...(user.role === 'admin'
-      ? ([
-          ['/painel/usuarios', 'Usuários', Users],
-          ['/painel/auditoria', 'Auditoria', History],
-          ['/painel/emails', 'Fila de e-mails', Mail],
-          ['/painel/operacao', 'Operação', Activity],
-        ] as [string, string, LucideIcon][])
-      : []),
-  ];
+  const { setOpenMobile } = useSidebar();
   return (
-    <div className="min-h-screen">
-      <a href="#conteudo" className="sr-only focus:not-sr-only">
+    <SidebarGroup>
+      <SidebarGroupLabel>{label}</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {items.map(([path, name, Icon]) => (
+            <SidebarMenuItem key={path}>
+              <SidebarMenuButton
+                asChild
+                tooltip={name}
+                isActive={
+                  path === '/painel'
+                    ? pathname === path
+                    : pathname.startsWith(path)
+                }
+              >
+                <NavLink
+                  to={path}
+                  end={path === '/painel'}
+                  aria-label={name}
+                  onClick={() => setOpenMobile(false)}
+                >
+                  <Icon aria-hidden="true" />
+                  <span>{name}</span>
+                </NavLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
+function ManagementShell() {
+  const { user, logout } = useAuth();
+  const { pathname } = useLocation();
+  const { state, isMobile, openMobile, open, setOpenMobile } = useSidebar();
+  const [error, setError] = useState('');
+  useEffect(() => {
+    if (!isMobile) setOpenMobile(false);
+  }, [isMobile, setOpenMobile]);
+  const parts = pathname.split('/').filter(Boolean);
+  const section = [...management, ...administration].find(
+    ([path]) => path !== '/painel' && pathname.startsWith(path),
+  );
+  const nested = parts.length > 2;
+  const current =
+    parts.at(-1) === 'novo'
+      ? 'Criar evento'
+      : parts.at(-1) === 'editar'
+        ? 'Editar evento'
+        : 'Detalhes do evento';
+  return (
+    <>
+      <a href="#conteudo" className="skip-link">
         Ir para o conteúdo
       </a>
-      {open && (
-        <button
-          aria-label="Fechar menu"
-          className="fixed inset-0 z-30 bg-black/30 lg:hidden"
-          onClick={() => setOpen(false)}
-        />
-      )}
-      <aside
-        ref={sidebar}
-        id="menu-gestao"
-        inert={!open && !desktop}
-        className={`app-sidebar fixed inset-y-0 left-0 z-40 flex w-64 flex-col overflow-y-auto border-r border-zinc-200 px-5 py-6 transition-transform lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}
+      <Sidebar
+        collapsible="icon"
+        className="management-sidebar"
+        role="complementary"
+        aria-label="Navegação da gestão"
       >
-        <div className="mb-10 flex items-center justify-between">
+        <SidebarHeader className="sidebar-brand">
           <Link to="/painel">
             <Brand />
           </Link>
-          <button
-            ref={closeButton}
-            className="icon-btn lg:hidden"
-            aria-label="Fechar menu"
-            onClick={() => setOpen(false)}
-          >
-            <X />
-          </button>
-        </div>
-        <p className="mb-3 px-4 text-[10px] font-semibold tracking-widest text-zinc-500">
-          GESTÃO
-        </p>
-        <nav className="space-y-1" aria-label="Menu de gestão">
-          {links.map(([path, label, Icon], index) => (
-            <div key={path}>
-            {index === 3 && <p className="mb-2 mt-6 px-4 text-[10px] font-semibold tracking-widest text-zinc-500">ADMINISTRAÇÃO</p>}
-            <NavLink
-              key={path}
-              to={path}
-              end={path === '/painel'}
-              className="nav-link"
-              onClick={() => setOpen(false)}
+          {isMobile && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Fechar menu"
+              onClick={() => setOpenMobile(false)}
             >
-              <Icon size={19} aria-hidden="true" />
-              {label}
-            </NavLink>
-            </div>
-          ))}
-        </nav>
-        <div className="mt-auto border-t border-zinc-100 pt-5">
-          <div className="flex gap-3 px-2">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-red-50 font-bold text-red-800">
-              {user.name.slice(0, 1)}
-            </span>
+              <X aria-hidden="true" />
+            </Button>
+          )}
+        </SidebarHeader>
+        <SidebarContent>
+          <nav aria-label="Menu de gestão">
+            <NavigationGroup label="Gestão" items={management} />
+            {user?.role === 'admin' && (
+              <NavigationGroup label="Administração" items={administration} />
+            )}
+          </nav>
+        </SidebarContent>
+        <SidebarFooter className="border-t border-border p-3">
+          <div className="sidebar-profile flex items-center gap-3 px-1 py-3">
+            <span className="avatar">{user?.name.slice(0, 1)}</span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{user.name}</p>
-              <p className="text-xs text-zinc-500">
-                {user.role === 'admin' ? 'Administrador' : 'Organizador'}
+              <p className="truncate text-sm font-medium">{user?.name}</p>
+              <p className="muted text-xs">
+                {user?.role === 'admin' ? 'Administrador' : 'Organizador'}
               </p>
             </div>
           </div>
-          <button
-            className="nav-link mt-3 w-full"
-            onClick={async () => {
-              try {
-                await logout();
-              } catch (e) {
-                setError((e as Error).message);
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                aria-label="Sair da conta"
+                tooltip="Sair da conta"
+                onClick={async () => {
+                  try {
+                    await logout();
+                  } catch (e) {
+                    setError((e as Error).message);
+                  }
+                }}
+              >
+                <LogOut aria-hidden="true" />
+                <span>Sair da conta</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+      </Sidebar>
+      <div className="management flex min-w-0 flex-1 flex-col">
+        <header className="app-topbar">
+          <div className="flex min-w-0 items-center gap-3">
+            <SidebarTrigger
+              aria-label={
+                isMobile
+                  ? 'Abrir menu'
+                  : state === 'expanded'
+                    ? 'Recolher menu'
+                    : 'Expandir menu'
               }
-            }}
-          >
-            <LogOut size={18} />
-            Sair da conta
-          </button>
-        </div>
-      </aside>
-      <div className="min-w-0 lg:ml-64" inert={open && !desktop}>
-        <header className="app-topbar flex h-20 items-center justify-between border-b border-zinc-200 px-5 sm:px-9">
-          <div className="flex items-center gap-3">
-            <button
-              ref={menuButton}
-              aria-expanded={open}
-              aria-controls="menu-gestao"
-              className="icon-btn lg:hidden"
-              aria-label="Abrir menu"
-              onClick={() => setOpen(true)}
-            >
-              <Menu />
-            </button>
-            <span className="text-sm text-zinc-500">
-              <span className="sm:hidden">
-                <Brand />
-              </span>
-              <span className="hidden sm:inline">
-                {user.role === 'admin' ? 'Administração' : 'Minha liga'} <span className="mx-2 text-zinc-300">/</span> {links.find(([path]) => path === pathname)?.[1] || 'Eventos'}
-              </span>
+              aria-expanded={isMobile ? openMobile : open}
+            />
+            <Breadcrumb className="hidden sm:block">
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  {section ? (
+                    <BreadcrumbLink asChild>
+                      <Link to="/painel">Visão geral</Link>
+                    </BreadcrumbLink>
+                  ) : (
+                    <BreadcrumbPage>Visão geral</BreadcrumbPage>
+                  )}
+                </BreadcrumbItem>
+                {section && (
+                  <>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>
+                      {nested ? (
+                        <BreadcrumbLink asChild>
+                          <Link to={section[0]}>{section[1]}</Link>
+                        </BreadcrumbLink>
+                      ) : (
+                        <BreadcrumbPage>{section[1]}</BreadcrumbPage>
+                      )}
+                    </BreadcrumbItem>
+                  </>
+                )}
+                {nested && (
+                  <>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>
+                      <BreadcrumbPage>{current}</BreadcrumbPage>
+                    </BreadcrumbItem>
+                  </>
+                )}
+              </BreadcrumbList>
+            </Breadcrumb>
+            <span className="text-sm font-medium sm:hidden">
+              {section?.[1] || 'Visão geral'}
             </span>
           </div>
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-2">
             <SoundToggle />
-            <Link
-              to="/"
-              className="flex items-center gap-1 text-xs text-zinc-500"
-            >
-              <span className="hidden sm:inline">Página inicial</span>
-              <ArrowUpRight size={17} aria-hidden="true" />
-              <span className="sr-only sm:hidden">Página inicial</span>
-            </Link>
+            <ThemeToggle />
+            <Button asChild variant="ghost" size="icon">
+              <Link to="/" aria-label="Página inicial">
+                <ArrowUpRight aria-hidden="true" />
+              </Link>
+            </Button>
           </div>
         </header>
-        <main
-          id="conteudo"
-          tabIndex={-1}
-          className="mx-auto max-w-7xl p-5 sm:p-9"
-        >
+        <main id="conteudo" tabIndex={-1} className="management-content">
           {error && <Notice>{error}</Notice>}
           <MotionSection change={pathname}>
             <Outlet />
           </MotionSection>
         </main>
       </div>
-    </div>
+    </>
   );
 }
+
+export function Layout() {
+  const { user, loading } = useAuth();
+  if (loading) return <Loading />;
+  if (!user) return <Navigate to="/login" replace />;
+  return (
+    <SidebarProvider>
+      <ManagementShell />
+    </SidebarProvider>
+  );
+}
+
 export function PublicLayout() {
   const { pathname } = useLocation();
   return (
     <>
-      <a href="#conteudo-publico" className="sr-only focus:not-sr-only">
+      <a href="#conteudo-publico" className="skip-link">
         Ir para o conteúdo
       </a>
-      <header className="public-topbar border-b border-zinc-200">
-        <div className="mx-auto flex max-w-6xl items-center justify-between p-5">
+      <header className="public-topbar">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-4 sm:px-9">
           <Link to="/">
             <Brand />
           </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <SoundToggle />
-            <Link className="text-sm font-medium text-zinc-600" to="/login">
-              <span className="hidden sm:inline">Acesso à gestão</span>
-              <span className="sm:hidden">Entrar</span>
-            </Link>
+            <ThemeToggle />
+            <Button variant="ghost" asChild>
+              <Link to="/login">
+                <span className="hidden sm:inline">Acesso à gestão</span>
+                <span className="sm:hidden">Entrar</span>
+              </Link>
+            </Button>
           </div>
         </div>
       </header>
       <main
         id="conteudo-publico"
         tabIndex={-1}
-        className="mx-auto max-w-6xl p-5 py-10 sm:p-9"
+        className="mx-auto max-w-6xl px-5 py-9 sm:px-9 sm:py-12"
       >
         <MotionSection change={pathname}>
           <Outlet />
         </MotionSection>
       </main>
-      <footer className="mx-auto max-w-6xl border-t border-zinc-200 p-6 text-sm text-zinc-500">
+      <footer className="mx-auto max-w-6xl border-t border-border px-5 py-6 text-sm text-muted-foreground">
         LigaHub · Encontros que aproximam.
       </footer>
     </>

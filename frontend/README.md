@@ -1,6 +1,6 @@
 # LigaHub Web
 
-React, TypeScript e Tailwind CSS. Interface branca e vermelha, com painel de gestão e inscrição pública. As regras de negócio continuam na API NestJS.
+React, TypeScript e Tailwind CSS. Interface branca e vermelha, com painel de gestão e inscrição pública. Temas Claro e Escuro detectam automaticamente a preferência do sistema quando não há escolha salva. As regras de negócio continuam na API NestJS.
 
 ## Iniciar
 
@@ -66,6 +66,6 @@ Não há publicação automática. Pix e cartão precisam de verificação no sa
 
 Com a API compilada, as migrations aplicadas e o Mailpit iniciado, `node scripts/frontend-qa.mjs` cria dados temporários e um e-mail na caixa local. Execute apenas em banco de desenvolvimento: as credenciais de pagamento são falsas e não permitem testar cobranças. Ao terminar, `node scripts/frontend-qa.mjs clean` remove os registros dessa execução. As credenciais temporárias ficam em `.test-temp`, que não é versionado.
 
-A verificação desta implementação passou em 166 testes unitários da API, 54 testes de integração e 5 testes do frontend. Os builds e o lint da API passaram; a interface foi conferida em celular, tablet e desktop. E-mail e acesso por cookie foram verificados com Mailpit. Cobranças Pix/cartão e publicação ainda precisam de validação no ambiente do proprietário. O workflow `frontend.yml` executa build, testes e auditoria nas próximas execuções do CI.
+A verificação do redesign está documentada em [docs/visual-direction.md](docs/visual-direction.md), com evidências locais em `qa/artifacts`. O harness visual usa dados sintéticos e o SDK de cartão simulado, sem cobranças reais. Os resultados anteriores do backend não substituem a validação da integração no ambiente do proprietário. O workflow `frontend.yml` executa build, testes e auditoria no CI.
 
 Referências: [Tailwind com Vite](https://tailwindcss.com/docs/installation/using-vite), [SDK Mercado Pago](https://github.com/mercadopago/sdk-js), [Mailpit em Docker](https://mailpit.axllent.org/docs/install/docker/).

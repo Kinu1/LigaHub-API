@@ -1,7 +1,17 @@
+import { ThemeToggle } from './theme';
+import { Button } from './components/ui/button';
+import { Input } from './components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from './components/ui/dialog';
 import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -24,6 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User>();
   const [loading, setLoading] = useState(true);
   const [expired, setExpired] = useState(false);
+  const sessionFocus = useRef<HTMLElement | null>(null);
   const client = useQueryClient();
   useEffect(() => {
     if (
@@ -41,11 +52,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const listener = () => {
       if (!user) return;
+      if (!expired)
+        sessionFocus.current =
+          document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
       setExpired(true);
     };
     window.addEventListener('session-expired', listener);
     return () => window.removeEventListener('session-expired', listener);
-  }, [client, user]);
+  }, [client, user, expired]);
   const value = {
     user,
     loading,
@@ -70,22 +86,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <Auth.Provider value={value}>
       <div inert={expired}>{children}</div>
-      {expired && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-zinc-950/40 p-4">
-          <div
-            className="card w-full max-w-md"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Sessão expirada"
-          >
-            <LoginForm inline />
-            <p className="muted mt-4 text-sm">
-              O formulário permanece nesta página. Entre novamente para
-              continuar.
-            </p>
-          </div>
-        </div>
-      )}
+      <Dialog open={expired}>
+        <DialogContent
+          showCloseButton={false}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            const target = sessionFocus.current?.isConnected
+              ? sessionFocus.current
+              : document.querySelector<HTMLElement>('main');
+            if (target) {
+              if (!target.matches('input,button,a,[tabindex]'))
+                target.tabIndex = -1;
+              target.focus();
+            }
+          }}
+        >
+          <DialogTitle className="sr-only">Sessão expirada</DialogTitle>
+          <DialogDescription>
+            Entre novamente para continuar. Seu formulário permanece nesta
+            página.
+          </DialogDescription>
+          <LoginForm inline />
+        </DialogContent>
+      </Dialog>
     </Auth.Provider>
   );
 }
@@ -125,7 +150,7 @@ export function LoginForm({ inline = false }: { inline?: boolean }) {
       </div>
       {error && <Notice>{error}</Notice>}
       <Field label="E-mail" error={form.formState.errors.email?.message}>
-        <input
+        <Input
           type="email"
           autoComplete="username"
           autoFocus={inline}
@@ -133,15 +158,15 @@ export function LoginForm({ inline = false }: { inline?: boolean }) {
         />
       </Field>
       <Field label="Senha" error={form.formState.errors.password?.message}>
-        <input
+        <Input
           type="password"
           autoComplete="current-password"
           {...form.register('password')}
         />
       </Field>
-      <button className="btn w-full" disabled={form.formState.isSubmitting}>
+      <Button className="w-full" disabled={form.formState.isSubmitting}>
         {form.formState.isSubmitting ? 'Entrando…' : 'Entrar no painel →'}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -151,7 +176,7 @@ export function LoginPage() {
       <section className="login-art hidden flex-col justify-between p-12 text-white lg:flex">
         <Brand inverse />
         <div className="max-w-lg">
-          <p className="mb-5 text-sm uppercase tracking-widest text-red-100">
+          <p className="mb-5 text-sm uppercase tracking-widest text-white/85">
             Sua liga, mais perto
           </p>
           <h2 className="text-5xl font-bold leading-tight tracking-tight">
@@ -170,14 +195,15 @@ export function LoginPage() {
           <Brand />
         </div>
         <div className="login-form-panel mx-auto w-full max-w-md">
-          <div className="mb-5 flex justify-end">
+          <div className="mb-5 flex justify-end gap-2">
             <SoundToggle />
+            <ThemeToggle />
           </div>
           <LoginForm />
           <p className="muted mt-8 text-sm">
             Acesso exclusivo para administradores e organizador da liga.
           </p>
-          <a href="/" className="mt-5 inline-block text-sm text-red-800">
+          <a href="/" className="mt-5 inline-block text-sm text-primary">
             Voltar ao início
           </a>
         </div>

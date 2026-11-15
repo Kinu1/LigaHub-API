@@ -1,7 +1,16 @@
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '../components/ui/table';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   FinanceFilters,
-  emptyPaymentFilters,
   paymentHistoryUrl,
   paymentFiltersFromSearch,
   type PaymentFilters,
@@ -20,9 +29,14 @@ import QRCode from 'qrcode';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { api, send, ApiError } from '../api';
+import { api, send } from '../api';
 import { useAuth } from '../auth';
-import { MotionSection } from '../experience';
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from '../components/ui/tabs';
 import {
   Heading,
   Loading,
@@ -61,9 +75,9 @@ function QueryState({
     return (
       <>
         <Notice>{query.error.message}</Notice>
-        <button className="btn secondary" onClick={() => query.refetch()}>
+        <Button variant="outline" onClick={() => query.refetch()}>
           Tentar novamente
-        </button>
+        </Button>
       </>
     );
   return (
@@ -72,9 +86,13 @@ function QueryState({
         <Notice>
           Não foi possível atualizar os registros. Os dados anteriores continuam
           disponíveis.{' '}
-          <button className="underline" onClick={() => query.refetch()}>
+          <Button
+            variant="link"
+            className="h-auto p-0"
+            onClick={() => query.refetch()}
+          >
             Tentar novamente
-          </button>
+          </Button>
         </Notice>
       )}
       {children}
@@ -87,7 +105,11 @@ export function EventsPage() {
   const [search, setSearch] = useState('');
   const querySearch = useDebounced(search);
   const [params, setParams] = useSearchParams();
-  const status = ['draft', 'published', 'suspended', 'closed'].includes(params.get('status') || '') ? params.get('status')! : '';
+  const status = ['draft', 'published', 'suspended', 'closed'].includes(
+    params.get('status') || '',
+  )
+    ? params.get('status')!
+    : '';
   const cancellations = params.get('attention') === 'cancellation';
   const query = useQuery({
     queryKey: ['events', page, querySearch, status],
@@ -101,18 +123,23 @@ export function EventsPage() {
       <Heading
         title="Eventos"
         action={
-          <Link className="btn" to="/painel/eventos/novo">
-            <Plus size={18} />
-            Criar evento
-          </Link>
+          <Button asChild>
+            <Link to="/painel/eventos/novo">
+              <Plus size={18} />
+              Criar evento
+            </Link>
+          </Button>
         }
       >
         Organize cada detalhe do próximo encontro.
       </Heading>
       <div className="filter-bar mb-6 flex flex-wrap gap-3">
         <label className="relative min-w-0 flex-1">
-          <Search className="absolute left-3 top-3.5 text-zinc-400" size={18} />
-          <input
+          <Search
+            className="absolute left-3 top-3.5 text-muted-foreground"
+            size={18}
+          />
+          <Input
             aria-label="Buscar evento"
             placeholder="Buscar pelo nome do evento"
             style={{ paddingLeft: 40 }}
@@ -151,28 +178,85 @@ export function EventsPage() {
             </option>
           ))}
         </select>
+        {query.data && (
+          <p
+            className="text-muted-foreground self-center text-sm"
+            role="status"
+          >
+            {query.data.total} evento(s) encontrado(s)
+            {status
+              ? ` · ${{ draft: 'Rascunho', published: 'Publicado', suspended: 'Suspenso', closed: 'Encerrado' }[status]}`
+              : ' · Todos os estados'}
+          </p>
+        )}
       </div>
-      {cancellations && <Notice success>Selecione um evento para consultar suas solicitações abertas de cancelamento. Esta lista inclui todos os eventos; não indica quais têm solicitações.</Notice>}
+      {cancellations && (
+        <Notice success>
+          Selecione um evento para consultar suas solicitações abertas de
+          cancelamento. Esta lista inclui todos os eventos; não indica quais têm
+          solicitações.
+        </Notice>
+      )}
       <QueryState query={query} hasData={!!query.data}>
-        {query.data && <p className="muted mb-4 text-sm" role="status">{query.data.total} evento(s) encontrado(s){status ? ` · ${ {draft: 'Rascunho', published: 'Publicado', suspended: 'Suspenso', closed: 'Encerrado'}[status]}` : ' · Todos os estados'}</p>}
         {query.data?.items.length ? (
           <>
-            <div className="event-list divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white">
-              {query.data.items.map((event) => (
-                <article key={event.id} className="event-list-row grid min-w-0 gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                  <div className="min-w-0">
-                    <h2 className="break-words text-base">
-                      <Link className="hover:underline" to={`/painel/eventos/${event.id}${cancellations ? '?status=cancellation' : ''}`} aria-label={`${cancellations ? 'Analisar cancelamentos de' : 'Gerenciar evento'} ${event.title}`}>
-                        {event.title}
-                      </Link>
-                    </h2>
-                    <p className="muted mt-1 text-sm">{date(event.startsAt)} · {event.location || 'Local a confirmar'}</p>
-                    <p className="muted mt-1 text-sm">{money(event.priceInCents)} · Capacidade: {event.capacity} vagas</p>
-                  </div>
-                  <div><Status value={event.status} /></div>
-                </article>
-              ))}
-            </div>
+            <section className="data-section" aria-label="Lista de eventos">
+              <Table className="data-table" aria-label="Eventos">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Evento / local</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead className="md:text-right">Preço</TableHead>
+                    <TableHead className="md:text-right">Capacidade</TableHead>
+                    <TableHead>Estado</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {query.data.items.map((event) => (
+                    <TableRow key={event.id}>
+                      <TableCell
+                        data-label="Evento / local"
+                        className="whitespace-normal break-words"
+                      >
+                        <div className="min-w-0">
+                          <Link
+                            className="font-medium hover:underline"
+                            to={`/painel/eventos/${event.id}${cancellations ? '?status=cancellation' : ''}`}
+                            aria-label={`${cancellations ? 'Analisar cancelamentos de' : 'Gerenciar evento'} ${event.title}`}
+                          >
+                            {event.title}
+                          </Link>
+                          <p className="text-muted-foreground mt-1 text-sm">
+                            {event.location || 'Local a confirmar'}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell
+                        data-label="Data"
+                        className="whitespace-normal"
+                      >
+                        {date(event.startsAt)}
+                      </TableCell>
+                      <TableCell
+                        data-label="Preço"
+                        className="whitespace-normal break-words tabular-nums md:text-right"
+                      >
+                        {money(event.priceInCents)}
+                      </TableCell>
+                      <TableCell
+                        data-label="Capacidade"
+                        className="whitespace-normal tabular-nums md:text-right"
+                      >
+                        {event.capacity} vagas
+                      </TableCell>
+                      <TableCell data-label="Estado">
+                        <Status value={event.status} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </section>
             <Pager
               page={page}
               total={query.data.total}
@@ -204,14 +288,14 @@ export function Share({ publicId }: { publicId: string }) {
       .catch(() => setError('Não foi possível gerar o QR Code.'));
   }, [url]);
   return (
-    <div className="card">
+    <div className="data-section">
       <h2>Convide os participantes</h2>
       <p className="muted mt-2 text-sm">
         Compartilhe o link público quando o evento estiver publicado.
       </p>
       <div className="mt-4 flex flex-wrap gap-3">
-        <button
-          className="btn secondary"
+        <Button
+          variant="outline"
           onClick={async () => {
             try {
               await navigator.clipboard.writeText(url);
@@ -224,17 +308,14 @@ export function Share({ publicId }: { publicId: string }) {
         >
           {copied ? <Check size={16} /> : <Copy size={16} />}{' '}
           {copied ? 'Link copiado' : 'Copiar link'}
-        </button>
-        <a
-          className="btn secondary"
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Abrir página <ArrowUpRight size={16} />
-        </a>
+        </Button>
+        <Button variant="outline" asChild>
+          <a href={url} target="_blank" rel="noreferrer">
+            Abrir página <ArrowUpRight size={16} />
+          </a>
+        </Button>
       </div>
-      <p className="mt-3 break-all text-xs text-zinc-500">{url}</p>
+      <p className="mt-3 break-all text-xs text-muted-foreground">{url}</p>
       {qr && (
         <details className="mt-4">
           <summary className="cursor-pointer text-sm font-medium">
@@ -246,10 +327,12 @@ export function Share({ publicId }: { publicId: string }) {
             height={220}
             alt="QR Code do link público do evento"
           />
-          <a className="btn secondary" href={qr} download="evento-ligahub.png">
-            <Download size={16} />
-            Baixar QR Code
-          </a>
+          <Button variant="outline" asChild>
+            <a href={qr} download="evento-ligahub.png">
+              <Download size={16} />
+              Baixar QR Code
+            </a>
+          </Button>
         </details>
       )}
       {error && <Notice>{error}</Notice>}
@@ -264,7 +347,17 @@ export function EventDetails() {
   const [search, setSearch] = useState('');
   const querySearch = useDebounced(search);
   const [params] = useSearchParams();
-  const [status, setStatus] = useState(['confirmed', 'reserved', 'expired', 'payment_review', 'cancellation'].includes(params.get('status') || '') ? params.get('status')! : '');
+  const [status, setStatus] = useState(
+    [
+      'confirmed',
+      'reserved',
+      'expired',
+      'payment_review',
+      'cancellation',
+    ].includes(params.get('status') || '')
+      ? params.get('status')!
+      : '',
+  );
   const query = useQuery({
     queryKey: ['event', id],
     queryFn: () => api<Event>(`/events/${id}`),
@@ -289,7 +382,7 @@ export function EventDetails() {
       {event && (
         <>
           <Link
-            className="mb-5 inline-block text-sm text-zinc-500"
+            className="mb-5 inline-block text-sm text-muted-foreground"
             to="/painel/eventos"
           >
             ← Todos os eventos
@@ -297,15 +390,16 @@ export function EventDetails() {
           <Heading
             title={event.title}
             action={
-              <Link
-                className="btn secondary"
-                to={`/painel/eventos/${id}/editar`}
-              >
-                Editar evento
-              </Link>
+              <Button variant="outline" asChild>
+                <Link to={`/painel/eventos/${id}/editar`}>Editar evento</Link>
+              </Button>
             }
           >
-            <Status value={event.status} /> <span className="ml-2">{date(event.startsAt)}{event.endsAt ? ` até ${date(event.endsAt)}` : ''}</span>
+            <Status value={event.status} />{' '}
+            <span className="ml-2">
+              {date(event.startsAt)}
+              {event.endsAt ? ` até ${date(event.endsAt)}` : ''}
+            </span>
           </Heading>
           <div className="mb-6 flex flex-wrap gap-3">
             {event.status !== 'closed' && (
@@ -346,7 +440,7 @@ export function EventDetails() {
             )}
           </div>
           <div className="grid gap-5 lg:grid-cols-2">
-            <section className="card">
+            <section className="data-section">
               <h2>Informações do encontro</h2>
               <dl className="mt-5 space-y-3 text-sm">
                 {[
@@ -365,7 +459,7 @@ export function EventDetails() {
                 ].map(([k, v]) => (
                   <div className="flex justify-between gap-4" key={k}>
                     <dt className="muted">{k}</dt>
-                    <dd className="text-right">{v}</dd>
+                    <dd className="min-w-0 break-words text-right">{v}</dd>
                   </div>
                 ))}
               </dl>
@@ -375,220 +469,193 @@ export function EventDetails() {
             </section>
             <Share publicId={event.publicId} />
           </div>
-          <div
-            className="section-tabs"
-            role="tablist"
-            aria-label="Dados do evento"
+          <Tabs
+            value={tab}
+            onValueChange={(value) => {
+              setTab(value);
+              setPage(1);
+            }}
+            className="mt-6"
           >
-            {[
-              ['inscricoes', 'Inscrições'],
-              ['historico', 'Histórico'],
-            ].map(([key, label]) => (
-              <button
-                role="tab"
-                aria-selected={tab === key}
-                className="section-tab"
-                id={`event-tab-${key}-${id}`}
-                aria-controls={`event-panel-${id}`}
-                tabIndex={tab === key ? 0 : -1}
-                onKeyDown={(event) => {
-                  if (
-                    !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(
-                      event.key,
-                    )
-                  )
-                    return;
-                  event.preventDefault();
-                  const next =
-                    event.key === 'Home'
-                      ? 'inscricoes'
-                      : event.key === 'End'
-                        ? 'historico'
-                        : tab === 'inscricoes'
-                          ? 'historico'
-                          : 'inscricoes';
-                  setTab(next);
-                  setPage(1);
-                  document.getElementById(`event-tab-${next}-${id}`)?.focus();
-                }}
-                key={key}
-                onClick={() => {
-                  setTab(key);
-                  setPage(1);
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <MotionSection change={tab}>
-            <div
-              role="tabpanel"
-              id={`event-panel-${id}`}
-              aria-labelledby={`event-tab-${tab}-${id}`}
-              tabIndex={0}
-            >
-              {tab === 'inscricoes' ? (
-                <section className="card">
-                  <div className="mb-5 grid gap-3 sm:grid-cols-[1fr_200px]">
-                    <input
-                      aria-label="Buscar inscrição"
-                      placeholder="Buscar por nome ou e-mail"
-                      value={search}
-                      onChange={(e) => {
-                        setSearch(e.target.value);
-                        setPage(1);
-                      }}
-                    />
-                    <select
-                      aria-label="Estado da inscrição"
-                      value={status}
-                      onChange={(e) => {
-                        setStatus(e.target.value);
-                        setPage(1);
-                      }}
-                    >
-                      <option value="">Todas as inscrições</option>
-                      <option value="confirmed">Confirmadas</option>
-                      <option value="reserved">Reservadas</option>
-                      <option value="expired">Expiradas</option>
-                      <option value="payment_review">Revisão necessária</option>
-                      <option value="cancellation">
-                        Cancelamento solicitado
-                      </option>
-                    </select>
-                  </div>
-                  <QueryState query={registrations} hasData={!!registrations.data}>
-                    {registrations.data && <p className="muted mb-3 text-sm" role="status">{registrations.data.total} inscrição(ões) encontrada(s)</p>}
-                    {registrations.data?.items.length ? (
-                      <>
-                        <table className="data-table">
-                          <thead>
-                            <tr>
-                              <th>Participante</th>
-                              <th>Estado</th>
-                              <th>Reserva até</th>
-                              <th>Ação</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {registrations.data.items.map((r) => (
-                              <tr key={r.id}>
-                                <td data-label="Participante">
-                                  <div>
-                                    <p className="font-medium">{r.name}</p>
-                                    <p className="muted mt-1">{r.email}</p>
-                                    <details className="mt-2">
-                                      <summary className="cursor-pointer text-xs">
-                                        Respostas do formulário
-                                      </summary>
-                                      {Object.entries(r.answers).map(
-                                        ([key, value]) => (
-                                          <p key={key} className="mt-1 text-xs">
-                                            {event.form.find(
-                                              (f) => f.id === key,
-                                            )?.label || key}
-                                            : {String(value)}
-                                          </p>
-                                        ),
-                                      )}
-                                    </details>
-                                  </div>
-                                </td>
-                                <td data-label="Estado">
-                                  <div>
-                                    <Status value={r.status} />
-                                    {r.status === 'payment_review' && (
-                                      <p className="mt-2 text-xs">
-                                        {reviewReasonText(r.reviewReason)}
+            <TabsList variant="line" aria-label="Dados do evento">
+              <TabsTrigger value="inscricoes">Inscrições</TabsTrigger>
+              <TabsTrigger value="historico">Histórico</TabsTrigger>
+            </TabsList>
+            <TabsContent value="inscricoes" className="data-section">
+              <div className="filter-bar mb-5 grid gap-3 sm:grid-cols-[1fr_200px]">
+                <Input
+                  aria-label="Buscar inscrição"
+                  placeholder="Buscar por nome ou e-mail"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPage(1);
+                  }}
+                />
+                <select
+                  aria-label="Estado da inscrição"
+                  value={status}
+                  onChange={(e) => {
+                    setStatus(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="">Todas as inscrições</option>
+                  <option value="confirmed">Confirmadas</option>
+                  <option value="reserved">Reservadas</option>
+                  <option value="expired">Expiradas</option>
+                  <option value="payment_review">Revisão necessária</option>
+                  <option value="cancellation">Cancelamento solicitado</option>
+                </select>
+              </div>
+              <QueryState query={registrations} hasData={!!registrations.data}>
+                {registrations.data && (
+                  <p className="muted mb-3 text-sm" role="status">
+                    {registrations.data.total} inscrição(ões) encontrada(s)
+                  </p>
+                )}
+                {registrations.data?.items.length ? (
+                  <>
+                    <Table className="data-table">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Participante</TableHead>
+                          <TableHead>Estado</TableHead>
+                          <TableHead>Reserva até</TableHead>
+                          <TableHead>Ação</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {registrations.data.items.map((r) => (
+                          <TableRow key={r.id}>
+                            <TableCell
+                              className="whitespace-normal break-words"
+                              data-label="Participante"
+                            >
+                              <div>
+                                <p className="font-medium">{r.name}</p>
+                                <p className="muted mt-1">{r.email}</p>
+                                {r.registrationTypeName && (
+                                  <p className="muted mt-1 text-xs">
+                                    {r.registrationTypeName} · {money(r.priceInCents)}
+                                  </p>
+                                )}
+                                <details className="mt-2">
+                                  <summary className="cursor-pointer text-xs">
+                                    Respostas do formulário
+                                  </summary>
+                                  {Object.entries(r.answers).map(
+                                    ([key, value]) => (
+                                      <p key={key} className="mt-1 text-xs">
+                                        {event.form.find((f) => f.id === key)
+                                          ?.label || key}
+                                        : {String(value)}
                                       </p>
-                                    )}
-                                    {r.cancellationRequestedAt && (
-                                      <p
-                                        className={`mt-2 text-xs ${r.status === 'canceled' ? 'text-zinc-500' : 'text-amber-800'}`}
-                                      >
-                                        {r.status === 'canceled'
-                                          ? 'Solicitação de cancelamento concluída'
-                                          : 'Cancelamento solicitado'}
-                                      </p>
-                                    )}
-                                    {r.suspendedAt && (
-                                      <p className="mt-2 text-xs">
-                                        Inscrição suspensa
-                                      </p>
-                                    )}
-                                  </div>
-                                </td>
-                                <td data-label="Reserva até">
-                                  {date(r.reservationExpiresAt)}
-                                </td>
-                                <td data-label="Ação">
-                                  {r.status === 'payment_review' && (
-                                    <Confirm
-                                      title="Reavaliar confirmação?"
-                                      description="Consulta o pagamento e confirma apenas se todas as regras permitirem. Não estorna. Ajustes financeiros devem ser feitos na conta do provedor e depois sincronizados."
-                                      onConfirm={async () => {
-                                        await api(
-                                          `/registrations/${r.id}/payment-review/confirmation`,
-                                          { method: 'POST' },
-                                          false,
-                                        );
-                                        await invalidate();
-                                      }}
-                                    >
-                                      Reavaliar confirmação
-                                    </Confirm>
+                                    ),
                                   )}
-                                  <Confirm
-                                    title={
-                                      r.suspendedAt
-                                        ? 'Reativar inscrição?'
-                                        : 'Suspender inscrição?'
-                                    }
-                                    description="A alteração será registrada no histórico do evento."
-                                    onConfirm={async () => {
-                                      await send(
-                                        `/registrations/${r.id}/suspension`,
-                                        { suspended: !r.suspendedAt },
-                                        'PATCH',
-                                      );
-                                      await invalidate();
-                                    }}
+                                </details>
+                              </div>
+                            </TableCell>
+                            <TableCell
+                              className="whitespace-normal break-words"
+                              data-label="Estado"
+                            >
+                              <div>
+                                <Status value={r.status} />
+                                {r.status === 'payment_review' && (
+                                  <p className="mt-2 text-xs">
+                                    {reviewReasonText(r.reviewReason)}
+                                  </p>
+                                )}
+                                {r.cancellationRequestedAt && (
+                                  <p
+                                    className={`mt-2 text-xs ${r.status === 'canceled' ? 'text-muted-foreground' : 'text-warning'}`}
                                   >
-                                    {r.suspendedAt ? 'Reativar' : 'Suspender'}
-                                  </Confirm>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        <Pager
-                          page={page}
-                          total={registrations.data.total}
-                          setPage={setPage}
-                        />
-                      </>
-                    ) : (
-                      <Empty title="Nenhuma inscrição encontrada" />
-                    )}
-                  </QueryState>
-                </section>
-              ) : (
-                <section className="card">
-                  <QueryState query={history} hasData={!!history.data}>
-                    <AuditList data={history.data} />
-                    {history.data && (
-                      <Pager
-                        page={page}
-                        total={history.data.total}
-                        setPage={setPage}
-                      />
-                    )}
-                  </QueryState>
-                </section>
-              )}
-            </div>
-          </MotionSection>
+                                    {r.status === 'canceled'
+                                      ? 'Solicitação de cancelamento concluída'
+                                      : 'Cancelamento solicitado'}
+                                  </p>
+                                )}
+                                {r.suspendedAt && (
+                                  <p className="mt-2 text-xs">
+                                    Inscrição suspensa
+                                  </p>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell
+                              className="whitespace-normal break-words"
+                              data-label="Reserva até"
+                            >
+                              {date(r.reservationExpiresAt)}
+                            </TableCell>
+                            <TableCell
+                              className="whitespace-normal break-words"
+                              data-label="Ação"
+                            >
+                              {r.status === 'payment_review' && (
+                                <Confirm
+                                  title="Reavaliar confirmação?"
+                                  description="Consulta o pagamento e confirma apenas se todas as regras permitirem. Não estorna. Ajustes financeiros devem ser feitos na conta do provedor e depois sincronizados."
+                                  onConfirm={async () => {
+                                    await api(
+                                      `/registrations/${r.id}/payment-review/confirmation`,
+                                      { method: 'POST' },
+                                      false,
+                                    );
+                                    await invalidate();
+                                  }}
+                                >
+                                  Reavaliar confirmação
+                                </Confirm>
+                              )}
+                              <Confirm
+                                title={
+                                  r.suspendedAt
+                                    ? 'Reativar inscrição?'
+                                    : 'Suspender inscrição?'
+                                }
+                                description="A alteração será registrada no histórico do evento."
+                                onConfirm={async () => {
+                                  await send(
+                                    `/registrations/${r.id}/suspension`,
+                                    { suspended: !r.suspendedAt },
+                                    'PATCH',
+                                  );
+                                  await invalidate();
+                                }}
+                              >
+                                {r.suspendedAt ? 'Reativar' : 'Suspender'}
+                              </Confirm>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    <Pager
+                      page={page}
+                      total={registrations.data.total}
+                      setPage={setPage}
+                    />
+                  </>
+                ) : (
+                  <Empty title="Nenhuma inscrição encontrada" />
+                )}
+              </QueryState>
+            </TabsContent>
+            <TabsContent value="historico" className="data-section">
+              <QueryState query={history} hasData={!!history.data}>
+                <AuditList data={history.data} />
+                {history.data && (
+                  <Pager
+                    page={page}
+                    total={history.data.total}
+                    setPage={setPage}
+                  />
+                )}
+              </QueryState>
+            </TabsContent>
+          </Tabs>
         </>
       )}
     </QueryState>
@@ -620,7 +687,7 @@ export function FinancePage() {
       <Heading title="Financeiro">
         Recebimentos e conexão com Mercado Pago.
       </Heading>
-      <section className="card account-strip mb-6">
+      <section className="account-strip mb-6">
         <h2 className="text-base">Conta de recebimento</h2>
         <QueryState query={account} hasData={!!account.data}>
           <p className="muted my-2 text-sm">
@@ -629,8 +696,7 @@ export function FinancePage() {
               : 'Conecte a conta do organizador para habilitar pagamentos.'}{' '}
             {account.data?.isTest ? 'Ambiente de teste.' : ''}
           </p>
-          <button
-            className="btn"
+          <Button
             disabled={busy}
             onClick={async () => {
               setBusy(true);
@@ -665,12 +731,16 @@ export function FinancePage() {
               : account.data?.connected
                 ? 'Reconectar conta'
                 : 'Conectar Mercado Pago'}
-          </button>
+          </Button>
         </QueryState>
         {error && <Notice>{error}</Notice>}
       </section>
-      <section className="card">
+      <section className="data-section">
         <h2 className="mb-5">Histórico de pagamentos</h2>
+        <p className="mb-4 text-sm text-muted-foreground">
+          O valor base é o valor da tentativa de pagamento; não representa saldo
+          nem receita líquida.
+        </p>
         <FinanceFilters
           initialFilters={initialFilters}
           onApply={(next) => {
@@ -679,53 +749,76 @@ export function FinancePage() {
           }}
         />
         <QueryState query={payments} hasData={!!payments.data}>
-          {payments.data && <p className="muted mb-3 text-sm" role="status">{payments.data.total} pagamento(s) encontrado(s)</p>}
+          {payments.data && (
+            <p className="muted mb-3 text-sm" role="status">
+              {payments.data.total} pagamento(s) encontrado(s)
+            </p>
+          )}
           {payments.data?.items.length ? (
             <>
-              <table className="data-table payment-history-table">
-                <thead>
-                  <tr>
-                    <th>Data</th>
-                    <th>Evento</th>
-                    <th>Nome completo do pagador</th>
-                    <th>CPF do pagador</th>
-                    <th>Forma</th>
-                    <th>Valor base</th>
-                    <th>Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table className="data-table payment-history-table">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Evento</TableHead>
+                    <TableHead>Nome completo do pagador</TableHead>
+                    <TableHead>CPF do pagador</TableHead>
+                    <TableHead>Forma</TableHead>
+                    <TableHead className="xl:text-right">Valor base</TableHead>
+                    <TableHead>Estado</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {payments.data.items.map((p) => (
-                    <tr key={p.id}>
-                      <td data-label="Data">{date(p.createdAt)}</td>
-                      <td data-label="Evento">
+                    <TableRow key={p.id}>
+                      <TableCell
+                        className="whitespace-normal break-words"
+                        data-label="Data"
+                      >
+                        {date(p.createdAt)}
+                      </TableCell>
+                      <TableCell
+                        className="whitespace-normal break-words"
+                        data-label="Evento"
+                      >
                         {p.event?.title ?? 'Não informado'}
-                      </td>
-                      <td
+                      </TableCell>
+                      <TableCell
                         data-label="Nome completo do pagador"
-                        className="break-words"
+                        className="whitespace-normal break-words"
                       >
                         {p.payer?.name || 'Não informado'}
-                      </td>
-                      <td
+                      </TableCell>
+                      <TableCell
                         data-label="CPF do pagador"
                         className="whitespace-nowrap tabular-nums"
                       >
                         {formatCpf(p.payer?.cpf)}
-                      </td>
-                      <td data-label="Forma">
+                      </TableCell>
+                      <TableCell
+                        className="whitespace-normal break-words"
+                        data-label="Forma"
+                      >
                         {p.method === 'pix'
                           ? 'Pix'
                           : `Cartão · ${p.installments}x`}
-                      </td>
-                      <td data-label="Valor base">{money(p.amountInCents)}</td>
-                      <td data-label="Estado">
+                      </TableCell>
+                      <TableCell
+                        className="whitespace-normal break-words tabular-nums xl:text-right"
+                        data-label="Valor base"
+                      >
+                        {money(p.amountInCents)}
+                      </TableCell>
+                      <TableCell
+                        className="whitespace-normal break-words"
+                        data-label="Estado"
+                      >
                         <Status value={p.status} />
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
               <Pager
                 page={page}
                 total={payments.data.total}
@@ -776,37 +869,65 @@ export function UsersPage() {
     <>
       <Heading title="Usuários">Acesso à gestão da liga.</Heading>
       <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-        <section className="card">
+        <section className="data-section">
           <QueryState query={query}>
-            {query.data?.map((u) => (
-              <div
-                className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-100 py-5"
-                key={u.id}
-              >
-                <div>
-                  <p className="font-semibold">{u.name}</p>
-                  <p className="muted text-sm">{u.email}</p>
-                  <p className="mt-1 text-xs">
-                    {u.role === 'admin' ? 'Administrador' : 'Organizador'} ·{' '}
-                    <span className={`badge ${u.active ? 'badge-good' : 'badge-danger'}`}>{u.active ? 'Ativo' : 'Suspenso'}</span>
-                  </p>
-                </div>
-                <Confirm
-                  title={u.active ? 'Suspender usuário?' : 'Reativar usuário?'}
-                  description="A API verifica as permissões e protege o último administrador ativo."
-                  onConfirm={async () => {
-                    await send(
-                      `/users/${u.id}/status`,
-                      { active: !u.active },
-                      'PATCH',
-                    );
-                    await client.invalidateQueries({ queryKey: ['users'] });
-                  }}
-                >
-                  {u.active ? 'Suspender' : 'Reativar'}
-                </Confirm>
-              </div>
-            ))}
+            <Table className="data-table" aria-label="Usuários">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Usuário</TableHead>
+                  <TableHead>Perfil / estado</TableHead>
+                  <TableHead>Ação</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {query.data?.map((u) => (
+                  <TableRow key={u.id}>
+                    <TableCell
+                      data-label="Usuário"
+                      className="whitespace-normal break-words"
+                    >
+                      <div>
+                        <p className="font-semibold">{u.name}</p>
+                        <p className="muted text-sm">{u.email}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell
+                      data-label="Perfil / estado"
+                      className="whitespace-normal"
+                    >
+                      <p className="mt-1 text-xs">
+                        {u.role === 'admin' ? 'Administrador' : 'Organizador'} ·{' '}
+                        <span
+                          className={`badge ${u.active ? 'badge-good' : 'badge-danger'}`}
+                        >
+                          {u.active ? 'Ativo' : 'Suspenso'}
+                        </span>
+                      </p>
+                    </TableCell>
+                    <TableCell data-label="Ação">
+                      <Confirm
+                        title={
+                          u.active ? 'Suspender usuário?' : 'Reativar usuário?'
+                        }
+                        description="A API verifica as permissões e protege o último administrador ativo."
+                        onConfirm={async () => {
+                          await send(
+                            `/users/${u.id}/status`,
+                            { active: !u.active },
+                            'PATCH',
+                          );
+                          await client.invalidateQueries({
+                            queryKey: ['users'],
+                          });
+                        }}
+                      >
+                        {u.active ? 'Suspender' : 'Reativar'}
+                      </Confirm>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </QueryState>
         </section>
         <form
@@ -833,10 +954,10 @@ export function UsersPage() {
           {success && <Notice success>Usuário criado.</Notice>}
           {error && <Notice>{error}</Notice>}
           <Field label="Nome" error={form.formState.errors.name?.message}>
-            <input {...form.register('name')} autoComplete="off" />
+            <Input {...form.register('name')} autoComplete="off" />
           </Field>
           <Field label="E-mail" error={form.formState.errors.email?.message}>
-            <input
+            <Input
               {...form.register('email')}
               type="email"
               autoComplete="off"
@@ -846,7 +967,7 @@ export function UsersPage() {
             label="Senha inicial"
             error={form.formState.errors.password?.message}
           >
-            <input
+            <Input
               {...form.register('password')}
               type="password"
               autoComplete="new-password"
@@ -861,9 +982,7 @@ export function UsersPage() {
           <p className="muted text-xs">
             A liga possui somente um organizador cadastrado.
           </p>
-          <button className="btn" disabled={form.formState.isSubmitting}>
-            Criar acesso
-          </button>
+          <Button disabled={form.formState.isSubmitting}>Criar acesso</Button>
         </form>
       </div>
     </>
@@ -888,8 +1007,8 @@ export function AuditPage() {
       <Heading title="Auditoria">
         Ações, responsáveis e registros afetados na plataforma.
       </Heading>
-      <section className="card">
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-zinc-100 pb-5">
+      <section className="data-section">
+        <div className="filter-bar mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-border pb-5">
           <label className="block w-full text-sm font-medium sm:w-64">
             Tipo de registro
             <select
