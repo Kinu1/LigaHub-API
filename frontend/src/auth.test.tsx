@@ -44,9 +44,9 @@ it('preserva preenchimento e restaura foco após renovar sessão na mesma conta'
   const user = userEvent.setup();
   const input = screen.getByLabelText('Rascunho');
   await user.type(input, ' de emergência');
-  act(() => window.dispatchEvent(new Event('session-expired')));
+  await act(async () => window.dispatchEvent(new Event('session-expired')));
   await screen.findByRole('dialog', { name: 'Sessão expirada' });
-  await user.type(screen.getByLabelText('E-mail'), account.email);
+  await user.type(await screen.findByLabelText('E-mail'), account.email);
   await user.type(screen.getByLabelText('Senha'), 'senha-segura');
   await user.click(screen.getByRole('button', { name: /Entrar no painel/ }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

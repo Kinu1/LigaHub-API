@@ -1,0 +1,33 @@
+{
+  "method": "Chromium CDP encodedDataLength, gzip HTTP, cold context per screen, API fixture, external SDK blocked",
+  "results": [
+    {
+      "screen": "evento",
+      "jsRequests": 9,
+      "jsTransferBytes": 212675,
+      "externalSdkRequests": 0,
+      "cardSdkChunks": 0
+    },
+    {
+      "screen": "recuperacao",
+      "jsRequests": 4,
+      "jsTransferBytes": 201965,
+      "externalSdkRequests": 0,
+      "cardSdkChunks": 0
+    },
+    {
+      "screen": "pagamento-pix",
+      "jsRequests": 8,
+      "jsTransferBytes": 174436,
+      "externalSdkRequests": 0,
+      "cardSdkChunks": 0
+    },
+    {
+      "screen": "pagamento-cartao",
+      "jsRequests": 9,
+      "jsTransferBytes": 176314,
+      "externalSdkRequests": 1,
+      "cardSdkChunks": 1
+    }
+  ]
+}

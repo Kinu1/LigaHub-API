@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider, ThemeToggle } from '../theme';
 import { PublicEvent, ParticipantPage } from './public';
 import { api, send, ApiError } from '../api';
+import { initMercadoPago } from '@mercadopago/sdk-react';
 vi.mock('../api', async (importOriginal) => {
   const original = await importOriginal<typeof import('../api')>();
   return { ...original, api: vi.fn(), send: vi.fn() };
@@ -373,6 +374,42 @@ describe('Inscrição e pagamento', () => {
 });
 
 describe('Preservação de preenchimento e tema', () => {
+  it('inicia o SDK somente ao abrir cartão e mantém pagador e CPF ao voltar ao Pix', async () => {
+    vi.mocked(api).mockImplementation(async (path) =>
+      path.endsWith('/checkout')
+        ? { publicKey: 'TEST', amountInCents: 2500, maxInstallments: 3 }
+        : {
+            id: 'r',
+            name: 'Ana Silva',
+            email: 'ana@example.com',
+            status: 'reserved',
+            priceInCents: 2500,
+            reservationExpiresAt: '2030-10-08T15:00:00Z',
+            event: { title: 'Jornada', publicId: event.publicId },
+            payments: [],
+          },
+    );
+    show(<ParticipantPage />, '/acompanhar/:id', '/acompanhar/r');
+    const user = userEvent.setup();
+    const name = await screen.findByLabelText('Nome completo do pagador');
+    expect(initMercadoPago).not.toHaveBeenCalled();
+    await user.clear(name);
+    await user.type(name, 'Bruno Souza');
+    await user.type(screen.getByLabelText(/CPF do pagador/), '52998224725');
+    await user.click(screen.getByRole('button', { name: /^Cartão$/ }));
+    await screen.findByRole('button', { name: 'Revisar cartão simulado' });
+    expect(initMercadoPago).toHaveBeenCalledWith('TEST', { locale: 'pt-BR' });
+    await user.click(screen.getByRole('button', { name: /^Pix$/ }));
+    expect(screen.getByLabelText('Nome completo do pagador')).toHaveProperty(
+      'value',
+      'Bruno Souza',
+    );
+    expect(screen.getByLabelText(/CPF do pagador/)).toHaveProperty(
+      'value',
+      '52998224725',
+    );
+    expect(send).not.toHaveBeenCalled();
+  });
   it('restaura o foco e mantém dados e respostas ao cancelar a saída da inscrição', async () => {
     vi.mocked(api).mockResolvedValue(event);
     const router = show(<PublicEvent />);
