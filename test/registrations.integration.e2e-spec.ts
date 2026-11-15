@@ -34,13 +34,26 @@ describe('Reservas de vagas e controle de inscrições no PostgreSQL', () => {
       select: { id: true },
     });
     const ids = registrations.map(({ id }) => id);
+    const payments = await prisma.paymentAttempt.findMany({
+      where: { registrationId: { in: ids } },
+      select: { id: true },
+    });
     await prisma.paymentAttempt.deleteMany({
       where: { registrationId: { in: ids } },
     });
     await prisma.auditLog.deleteMany({
       where: {
         OR: [
-          { entityId: { in: [...events, ...ids, ...owners] } },
+          {
+            entityId: {
+              in: [
+                ...events,
+                ...ids,
+                ...owners,
+                ...payments.map((payment) => payment.id),
+              ],
+            },
+          },
           { actorId: { in: owners } },
         ],
       },
@@ -121,8 +134,8 @@ describe('Reservas de vagas e controle de inscrições no PostgreSQL', () => {
       manageTokenHash: 'teste',
       participantCpfEncrypted: null,
       reservationExpiresAt: new Date(Date.now() + 60000),
-      createdAt: new Date(baseTime + index),
-    }));
+      createdAt: new Date(baseTime),
+    })).sort((a, b) => (a.id < b.id ? -1 : 1));
     await prisma.registration.createMany({ data: original });
     const account = await prisma.paymentAccount.findFirstOrThrow({
       where: { ownerId },
@@ -138,6 +151,14 @@ describe('Reservas de vagas e controle de inscrições no PostgreSQL', () => {
         amountInCents: 2500,
         status: 'approved',
         createdAt: new Date(baseTime),
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        entityType: 'payment',
+        entityId: approved.id,
+        action: 'payment.updated',
+        metadata: { status: 'in_mediation' },
       },
     });
     await prisma.paymentAttempt.create({
@@ -242,6 +263,7 @@ describe('Reservas de vagas e controle de inscrições no PostgreSQL', () => {
     expect(sheet.getCell('F502').value).toBe('Confirmada');
     expect(sheet.getCell('G502').value).toBe('Aprovado');
     expect(sheet.getCell('I502').value).toBe('Recusado');
+    expect(sheet.getCell('J502').value).toBe('Histórico de contestação');
   }, 30_000);
 
   it('conta e lista somente solicitações abertas, preservando histórico e propriedade', async () => {
