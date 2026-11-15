@@ -1,3 +1,5 @@
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import { useRef } from 'react';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { Field } from '../ui';
@@ -37,14 +39,14 @@ export function QuestionsPreview({ fields }: { fields: Question[] }) {
   return (
     <div className="space-y-5">
       <Field label="Nome completo">
-        <input
+        <Input
           form="event-preview"
           placeholder="Nome do participante"
           autoComplete="off"
         />
       </Field>
       <Field label="E-mail">
-        <input
+        <Input
           form="event-preview"
           type="email"
           placeholder="participante@exemplo.com"
@@ -68,7 +70,7 @@ export function QuestionsPreview({ fields }: { fields: Question[] }) {
           ) : question.type === 'checkbox' ? (
             <input form="event-preview" type="checkbox" />
           ) : (
-            <input
+            <Input
               form="event-preview"
               type={question.type === 'number' ? 'number' : 'text'}
               placeholder={
@@ -124,7 +126,7 @@ export function EventQuestions({
             {fields.length} de 25 perguntas extras
           </p>
           {!fields.length && (
-            <div className="mb-5 border-l-4 border-red-200 bg-red-50 p-5">
+            <div className="mb-5 border-l-4 border-primary/20 bg-muted p-5">
               <h3 className="font-semibold">Só nome e e-mail? Tudo pronto.</h3>
               <p className="muted mt-2 text-sm">
                 Se precisar de mais informações, adicione uma pergunta. Por
@@ -133,7 +135,7 @@ export function EventQuestions({
               </p>
             </div>
           )}
-          <div className="divide-y divide-zinc-200">
+          <div className="divide-y divide-border">
             {fields.map((question, index) => (
               <fieldset
                 key={question.id}
@@ -141,27 +143,30 @@ export function EventQuestions({
               >
                 <legend className="font-semibold">Pergunta {index + 1}</legend>
                 <div className="flex flex-wrap gap-2">
-                  <button
+                  <Button
                     type="button"
-                    className="icon-btn"
+                    variant="outline"
+                    size="icon"
                     disabled={index === 0}
                     aria-label={`Mover pergunta ${index + 1} para cima`}
                     onClick={() => move(index, -1)}
                   >
                     <ArrowUp size={17} />
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
-                    className="icon-btn"
+                    variant="outline"
+                    size="icon"
                     disabled={index === fields.length - 1}
                     aria-label={`Mover pergunta ${index + 1} para baixo`}
                     onClick={() => move(index, 1)}
                   >
                     <ArrowDown size={17} />
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
-                    className="btn secondary ml-auto"
+                    variant="outline"
+                    className="ml-auto"
                     onClick={() =>
                       onChange(fields.filter((_, i) => i !== index))
                     }
@@ -169,7 +174,7 @@ export function EventQuestions({
                   >
                     <Trash2 size={16} />
                     Remover
-                  </button>
+                  </Button>
                 </div>
                 <Field
                   label="O que você quer perguntar?"
@@ -179,7 +184,7 @@ export function EventQuestions({
                       : undefined
                   }
                 >
-                  <input
+                  <Input
                     ref={(element) => {
                       if (element && pendingFocus.current === question.id) {
                         element.focus();
@@ -240,7 +245,7 @@ export function EventQuestions({
                                 : undefined
                             }
                           >
-                            <input
+                            <Input
                               value={option}
                               maxLength={150}
                               placeholder={
@@ -260,9 +265,11 @@ export function EventQuestions({
                             />
                           </Field>
                         </div>
-                        <button
+                        <Button
                           type="button"
-                          className="icon-btn mb-1"
+                          variant="outline"
+                          size="icon"
+                          className="mb-1"
                           aria-label={`Remover opção ${optionIndex + 1} da pergunta ${index + 1}`}
                           onClick={() =>
                             update(index, {
@@ -273,12 +280,12 @@ export function EventQuestions({
                           }
                         >
                           <Trash2 size={17} />
-                        </button>
+                        </Button>
                       </div>
                     ))}
-                    <button
+                    <Button
                       type="button"
-                      className="btn secondary"
+                      variant="outline"
                       disabled={(question.options?.length ?? 0) >= 50}
                       onClick={() =>
                         update(index, {
@@ -288,9 +295,9 @@ export function EventQuestions({
                     >
                       <Plus size={16} />
                       Adicionar opção
-                    </button>
+                    </Button>
                     {showErrors && !question.options?.length && (
-                      <p role="alert" className="text-sm text-red-700">
+                      <p role="alert" className="text-sm text-destructive">
                         Adicione pelo menos uma opção.
                       </p>
                     )}
@@ -311,18 +318,19 @@ export function EventQuestions({
               </fieldset>
             ))}
           </div>
-          <button
+          <Button
             type="button"
-            className="btn secondary w-full"
+            variant="outline"
+            className="w-full"
             disabled={fields.length >= 25}
             onClick={add}
           >
             <Plus size={17} />
             Adicionar pergunta
-          </button>
+          </Button>
         </div>
         <aside
-          className="min-w-0 border-t border-zinc-200 pt-6 xl:border-l xl:border-t-0 xl:pl-7 xl:pt-0"
+          className="min-w-0 border-t border-border pt-6 xl:border-l xl:border-t-0 xl:pl-7 xl:pt-0"
           aria-label="Prévia do formulário de inscrição"
         >
           <p className="eyebrow">VISÃO DO PARTICIPANTE</p>

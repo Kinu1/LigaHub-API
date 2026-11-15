@@ -1,3 +1,4 @@
+import { Button, buttonVariants } from '../components/ui/button';
 import { useId, useState, type ReactNode } from 'react';
 import { ImagePlus, Upload } from 'lucide-react';
 import type { Event } from '../types';
@@ -96,9 +97,12 @@ export function EventImageInput({
         )}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <div className="relative">
+        <div className="relative rounded-md focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring">
           <span
-            className="btn secondary pointer-events-none"
+            className={buttonVariants({
+              variant: 'outline',
+              className: 'pointer-events-none',
+            })}
             aria-hidden="true"
           >
             <Upload size={16} />
@@ -135,9 +139,10 @@ export function EventImageInput({
           />
         </div>
         {value && (
-          <button
+          <Button
             type="button"
-            className="text-sm text-red-800 underline underline-offset-4"
+            variant="link"
+            className="px-0"
             disabled={busy}
             onClick={() => {
               onChange('');
@@ -145,7 +150,7 @@ export function EventImageInput({
             }}
           >
             Remover {kind}
-          </button>
+          </Button>
         )}
         {busy && (
           <span role="status" className="muted text-sm">

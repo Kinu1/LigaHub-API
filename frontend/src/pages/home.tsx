@@ -1,3 +1,4 @@
+import { Button } from '../components/ui/button';
 import { Link } from 'react-router-dom';
 import {
   ArrowUpRight,
@@ -19,22 +20,26 @@ export function HomePage() {
           <h1>
             Conhecimento que conecta.
             <br />
-            <span className="text-red-700">Encontros que ficam.</span>
+            <span className="text-primary">Encontros que ficam.</span>
           </h1>
           <p className="muted mt-5 max-w-lg text-base sm:text-lg">
             Sua liga, suas ideias e o próximo encontro. Um caminho simples do
             convite à participação.
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
-            <Link className="btn" to="/recuperar">
-              <Ticket size={18} aria-hidden="true" /> Minha inscrição{' '}
-              <ArrowRight size={16} aria-hidden="true" />
-            </Link>
-            <Link className="btn secondary" to="/login">
-              Sou organizador <ArrowUpRight size={16} aria-hidden="true" />
-            </Link>
+            <Button asChild>
+              <Link to="/recuperar">
+                <Ticket size={18} aria-hidden="true" /> Minha inscrição{' '}
+                <ArrowRight size={16} aria-hidden="true" />
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link to="/login">
+                Sou organizador <ArrowUpRight size={16} aria-hidden="true" />
+              </Link>
+            </Button>
           </div>
-          <p className="mt-6 flex items-center gap-2 text-sm text-zinc-600">
+          <p className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
             <Mail size={16} aria-hidden="true" /> Recebeu um convite? Abra o
             link do evento.
           </p>

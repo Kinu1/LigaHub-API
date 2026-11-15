@@ -1,3 +1,21 @@
+import { Button } from './components/ui/button';
+import { Badge } from './components/ui/badge';
+import { Label } from './components/ui/label';
+import { Skeleton } from './components/ui/skeleton';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+} from './components/ui/pagination';
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from './components/ui/dialog';
 import {
   cloneElement,
   useEffect,
@@ -8,7 +26,7 @@ import {
   type ReactElement,
   type InputHTMLAttributes,
 } from 'react';
-import { AlertCircle, ArrowLeft, ArrowRight, Check, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ArrowRight, Check } from 'lucide-react';
 import { labels } from './types';
 export function Brand({ inverse = false }: { inverse?: boolean }) {
   return (
@@ -45,7 +63,7 @@ export function Heading({
       <div className="min-w-0">
         {eyebrow && <p className="eyebrow">{eyebrow}</p>}
         <h1>{title}</h1>
-        {children && <p className="muted mt-2">{children}</p>}
+        {children && <div className="muted mt-2">{children}</div>}
       </div>
       {action}
     </header>
@@ -71,17 +89,30 @@ export function Notice({
 export function Status({ value }: { value: string }) {
   const tone = ['published', 'confirmed', 'approved'].includes(value)
     ? 'badge-good'
-    : ['pending', 'reserved', 'created', 'in_process', 'authorized', 'payment_review', 'in_mediation'].includes(value)
+    : [
+          'pending',
+          'reserved',
+          'created',
+          'in_process',
+          'authorized',
+          'payment_review',
+          'in_mediation',
+        ].includes(value)
       ? 'badge-warning'
-      : ['canceled', 'cancelled', 'rejected', 'charged_back', 'suspended', 'failed'].includes(value)
+      : [
+            'canceled',
+            'cancelled',
+            'rejected',
+            'charged_back',
+            'suspended',
+            'failed',
+          ].includes(value)
         ? 'badge-danger'
         : '';
   return (
-    <span
-      className={`badge ${tone}`}
-    >
+    <Badge variant="ghost" className={`badge ${tone}`}>
       {labels[value] || value}
-    </span>
+    </Badge>
   );
 }
 export function Empty({
@@ -103,9 +134,16 @@ export function Empty({
 }
 export function Loading() {
   return (
-    <div role="status" className="loading">
-      <span className="spinner" />
-      Carregando…
+    <div role="status" className="loading" aria-label="Carregando">
+      <span className="flex items-center gap-3">
+        <span className="spinner" aria-hidden="true" />
+        Carregando…
+      </span>
+      <div aria-hidden="true" className="space-y-3">
+        <Skeleton className="h-4 w-1/3" />
+        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-12 w-full" />
+      </div>
     </div>
   );
 }
@@ -132,7 +170,7 @@ export function Field({
       .join(' ') || undefined;
   return (
     <div className="field">
-      <label htmlFor={id}>{label}</label>
+      <Label htmlFor={id}>{label}</Label>
       {cloneElement(children, {
         id,
         'aria-describedby': description,
@@ -168,24 +206,32 @@ export function Pager({
         {total} registro(s) · Página {page} de{' '}
         {Math.max(1, Math.ceil(total / limit))}
       </span>
-      <div className="flex gap-2">
-        <button
-          className="btn secondary"
-          disabled={page <= 1}
-          onClick={() => setPage(page - 1)}
-          aria-label="Página anterior"
-        >
-          <ArrowLeft size={16} />
-        </button>
-        <button
-          className="btn secondary"
-          disabled={page * limit >= total}
-          onClick={() => setPage(page + 1)}
-          aria-label="Próxima página"
-        >
-          <ArrowRight size={16} />
-        </button>
-      </div>
+      <Pagination aria-label="Paginação" className="mx-0 w-auto">
+        <PaginationContent>
+          <PaginationItem>
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+              aria-label="Página anterior"
+            >
+              <ArrowLeft aria-hidden="true" />
+            </Button>
+          </PaginationItem>
+          <PaginationItem>
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={page * limit >= total}
+              onClick={() => setPage(page + 1)}
+              aria-label="Próxima página"
+            >
+              <ArrowRight aria-hidden="true" />
+            </Button>
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
     </div>
   );
 }
@@ -200,76 +246,74 @@ export function Confirm({
   onConfirm: () => Promise<unknown>;
   children: ReactNode;
 }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  const id = useId();
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const pending = useRef(false);
+  const cancel = useRef<HTMLButtonElement>(null);
   return (
-    <>
-      <button
-        className="btn secondary"
-        onClick={() => {
-          setError('');
-          ref.current?.showModal();
-          cancelRef.current?.focus();
+    <Dialog
+      open={open}
+      onOpenChange={(value) => {
+        if (!pending.current) {
+          setOpen(value);
+          if (value) setError('');
+        }
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button variant="outline">{children}</Button>
+      </DialogTrigger>
+      <DialogContent
+        showCloseButton={!busy}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          cancel.current?.focus();
+        }}
+        onEscapeKeyDown={(event) => {
+          if (pending.current) event.preventDefault();
+        }}
+        onInteractOutside={(event) => {
+          if (pending.current) event.preventDefault();
         }}
       >
-        {children}
-      </button>
-      <dialog
-        ref={ref}
-        className="dialog"
-        aria-labelledby={`${id}-title`}
-        aria-describedby={`${id}-description`}
-        onCancel={(event) => {
-          if (busy) event.preventDefault();
-        }}
-      >
-        <div className="flex justify-between gap-4">
-          <h2 id={`${id}-title`}>{title}</h2>
-          <button
-            className="icon-btn"
-            aria-label="Fechar"
-            disabled={busy}
-            onClick={() => ref.current?.close()}
-          >
-            <X />
-          </button>
-        </div>
-        <p id={`${id}-description`} className="muted my-5">
-          {description}
-        </p>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
         {error && <Notice>{error}</Notice>}
-        <div className="flex justify-end gap-3 mt-5">
-          <button
-            className="btn secondary"
-            ref={cancelRef}
+        <DialogFooter>
+          <Button
+            ref={cancel}
+            variant="outline"
             disabled={busy}
-            onClick={() => ref.current?.close()}
+            onClick={() => setOpen(false)}
           >
             Voltar
-          </button>
-          <button
-            className="btn"
+          </Button>
+          <Button
             disabled={busy}
             onClick={async () => {
+              if (pending.current) return;
+              pending.current = true;
               setBusy(true);
+              setError('');
               try {
                 await onConfirm();
-                ref.current?.close();
+                setOpen(false);
               } catch (e) {
                 setError((e as Error).message);
               } finally {
+                pending.current = false;
                 setBusy(false);
               }
             }}
           >
             {busy ? 'Aguarde…' : 'Confirmar'}
-          </button>
-        </div>
-      </dialog>
-    </>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 export function useUnsaved(dirty: boolean) {
