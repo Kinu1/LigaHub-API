@@ -38,6 +38,11 @@ export class CreateRegistrationDto {
   @IsOptional()
   @IsObject()
   answers: Record<string, unknown> = {};
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  registrationTypeId?: string;
 }
 
 export class RegistrationSuspensionDto {

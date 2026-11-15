@@ -1,10 +1,11 @@
 import React from 'react';
+import '@fontsource-variable/inter';
+import { ThemeProvider } from './theme';
 import './access-fragment';
 import ReactDOM from 'react-dom/client';
 import {
   createBrowserRouter,
   RouterProvider,
-  Navigate,
   Link,
   useRouteError,
 } from 'react-router-dom';
@@ -121,13 +122,15 @@ const client = new QueryClient({
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={client}>
-      <ExperienceProvider>
-        <AuthProvider>
-          <React.Suspense fallback={<Loading />}>
-            <RouterProvider router={router} />
-          </React.Suspense>
-        </AuthProvider>
-      </ExperienceProvider>
+      <ThemeProvider>
+        <ExperienceProvider>
+          <AuthProvider>
+            <React.Suspense fallback={<Loading />}>
+              <RouterProvider router={router} />
+            </React.Suspense>
+          </AuthProvider>
+        </ExperienceProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   </React.StrictMode>,
 );

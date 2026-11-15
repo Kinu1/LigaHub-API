@@ -59,7 +59,7 @@ beforeEach(() => {
 it('filtra os cinco status e reinicia a paginação', async () => {
   show();
   const user = userEvent.setup();
-  await screen.findByText('Tentativas: 2');
+  await screen.findByRole('cell', { name: '2' });
   expect(api).toHaveBeenLastCalledWith(
     '/admin/email-outbox?status=failed&page=1&limit=20',
   );
@@ -126,7 +126,7 @@ it.each([
     result([{ ...entry, firstAttemptAt } as typeof entry]),
   );
   show();
-  await screen.findByText('Tentativas: 2');
+  await screen.findByRole('cell', { name: '2' });
   expect(screen.queryByRole('button', { name: 'Retomar e-mail' })).toBeNull();
 });
 it('confirma reutilização, impede envio duplo, envia POST sem corpo e recarrega', async () => {
@@ -207,7 +207,7 @@ it('não apresenta nova tentativa agendada ou classificação de falha após ace
 });
 it('preserva dados após falha de atualização e não afirma vazio', async () => {
   const client = show();
-  await screen.findByText('Tentativas: 2');
+  await screen.findByRole('cell', { name: '2' });
   vi.mocked(api).mockRejectedValueOnce(new Error('segredo-erro'));
   await act(async () => {
     await client.refetchQueries({ queryKey: ['email-outbox'] });
@@ -215,7 +215,7 @@ it('preserva dados após falha de atualização e não afirma vazio', async () =
   expect((await screen.findByRole('alert')).textContent).toContain(
     'dados anteriores foram mantidos',
   );
-  expect(screen.getByText('Tentativas: 2')).toBeTruthy();
+  expect(screen.getByRole('cell', { name: '2' })).toBeTruthy();
   expect(screen.queryByText('Nenhum e-mail neste status')).toBeNull();
   expect(screen.queryByText('segredo-erro')).toBeNull();
 });

@@ -89,19 +89,44 @@ export class RegistrationsService {
           include: { owner: true },
         });
         if (!event) throw new NotFoundException('Evento não encontrado.');
+        const configuredTypes = Array.isArray(event.registrationTypes)
+          ? (event.registrationTypes as unknown as Array<{
+              id: string;
+              name: string;
+              priceInCents: number;
+              capacity?: number | null;
+            }>)
+          : [];
+        const availableTypes = configuredTypes.length
+          ? configuredTypes
+          : [
+              {
+                id: 'geral',
+                name: 'Inscrição geral',
+                priceInCents: event.priceInCents,
+                capacity: null,
+              },
+            ];
+        const registrationType = availableTypes.find(
+          (type) => type.id === (input.registrationTypeId ?? availableTypes[0].id),
+        );
+        if (!registrationType)
+          throw new BadRequestException('Selecione um tipo de inscrição válido.');
         const now = new Date();
         assertRegistrationOpen(event, now);
         if (!event.owner?.active)
           throw new ConflictException(
             'O organizador deste evento está indisponível.',
           );
-        const account = await tx.paymentAccount.findFirst({
-          where: { ownerId: event.ownerId!, active: true },
-        });
-        if (!account)
-          throw new ConflictException(
-            'O organizador ainda não conectou sua conta de recebimento.',
-          );
+        if (registrationType.priceInCents > 0) {
+          const account = await tx.paymentAccount.findFirst({
+            where: { ownerId: event.ownerId!, active: true },
+          });
+          if (!account)
+            throw new ConflictException(
+              'O organizador ainda não conectou sua conta de recebimento.',
+            );
+        }
         const answers = validateAnswers(event.form, input.answers);
         const occupied = await tx.registration.count({
           where: {
@@ -113,6 +138,19 @@ export class RegistrationsService {
           },
         });
         assertAvailableCapacity(event.capacity, occupied);
+        if (registrationType.capacity != null) {
+          const typeOccupied = await tx.registration.count({
+            where: {
+              eventId: event.id,
+              registrationTypeId: registrationType.id,
+              OR: [
+                { status: 'confirmed' },
+                { status: 'reserved', reservationExpiresAt: { gt: now } },
+              ],
+            },
+          });
+          assertAvailableCapacity(registrationType.capacity, typeOccupied);
+        }
         const expired = await tx.registration.updateMany({
           where: {
             eventId: event.id,
@@ -144,7 +182,10 @@ export class RegistrationsService {
             email,
             answers: answers as Prisma.InputJsonObject,
             formSnapshot: event.form as Prisma.InputJsonValue,
-            priceInCents: event.priceInCents,
+            registrationTypeId: registrationType.id,
+            registrationTypeName: registrationType.name,
+            priceInCents: registrationType.priceInCents,
+            status: registrationType.priceInCents === 0 ? 'confirmed' : 'reserved',
             reservationExpiresAt: expiresAt,
             manageTokenHash: hashParticipantToken(manageToken),
             manageTokenEncrypted: encryptCredential(manageToken),
@@ -154,8 +195,14 @@ export class RegistrationsService {
           data: {
             entityType: 'registration',
             entityId: registration.id,
-            action: 'registration.reserved',
-            metadata: { eventId: event.id },
+            action:
+              registrationType.priceInCents === 0
+                ? 'registration.confirmed_free'
+                : 'registration.reserved',
+            metadata: {
+              eventId: event.id,
+              registrationTypeId: registrationType.id,
+            },
           },
         });
         return registration;
@@ -426,6 +473,7 @@ export class RegistrationsService {
           formSnapshot: true,
           reviewReason: true,
           priceInCents: true,
+          registrationTypeName: true,
           status: true,
           reservationExpiresAt: true,
           suspendedAt: true,

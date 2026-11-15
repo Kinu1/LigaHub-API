@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ThemeProvider, ThemeToggle } from '../theme';
 import { PublicEvent, ParticipantPage } from './public';
 import { api, send, ApiError } from '../api';
 vi.mock('../api', async (importOriginal) => {
@@ -59,6 +60,7 @@ function show(
   const router = createMemoryRouter(
     [
       { path, element: component },
+      { path: '/recuperar', element: <p>Recuperação de acesso</p> },
       { path: '/inscricao/:id', element: <p>Inscrição criada</p> },
     ],
     { initialEntries: [entry] },
@@ -79,7 +81,9 @@ describe('Inscrição e pagamento', () => {
       bannerImage: 'data:image/webp;base64,banner',
     });
     show(<PublicEvent />);
-    expect(await screen.findByAltText(`Logo do evento ${event.title}`)).toBeTruthy();
+    expect(
+      await screen.findByAltText(`Logo do evento ${event.title}`),
+    ).toBeTruthy();
     expect(screen.getByAltText(`Banner do evento ${event.title}`)).toBeTruthy();
   });
   it.each([null, '2026-10-26T12:00:00Z'])(
@@ -228,7 +232,7 @@ describe('Inscrição e pagamento', () => {
     expect(vi.mocked(send).mock.calls[0][1]).toEqual({
       name: 'Ana Silva',
       email: 'ana@exemplo.com',
-      answers: { instituicao: 'Universidade' },
+      answers: { instituicao: 'Universidade' }, registrationTypeId: 'geral',
     });
   });
   it('não apresenta pagamento pendente como inscrição confirmada', async () => {
@@ -355,5 +359,122 @@ describe('Inscrição e pagamento', () => {
       cpf: '12345678909',
       installments: 3,
     });
+  });
+});
+
+describe('Preservação de preenchimento e tema', () => {
+  it('restaura o foco e mantém dados e respostas ao cancelar a saída da inscrição', async () => {
+    vi.mocked(api).mockResolvedValue(event);
+    const router = show(<PublicEvent />);
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText('Nome completo'), 'Ana Silva');
+    await user.type(screen.getByLabelText('E-mail'), 'ana@exemplo.com');
+    await user.type(screen.getByLabelText('Instituição *'), 'FABA');
+    const recovery = screen.getByRole('link', { name: /Já se inscreveu/ });
+    await user.click(recovery);
+    const dialog = await screen.findByRole('alertdialog', {
+      name: 'Sair sem concluir?',
+    });
+    expect(dialog.getAttribute('aria-describedby')).toBeTruthy();
+    const cancel = within(dialog).getByRole('button', { name: 'Continuar' });
+    await waitFor(() => expect(document.activeElement).toBe(cancel));
+    await user.click(cancel);
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(recovery));
+    expect(screen.getByLabelText('Nome completo')).toHaveProperty(
+      'value',
+      'Ana Silva',
+    );
+    expect(screen.getByLabelText('E-mail')).toHaveProperty(
+      'value',
+      'ana@exemplo.com',
+    );
+    expect(screen.getByLabelText('Instituição *')).toHaveProperty(
+      'value',
+      'FABA',
+    );
+    await user.click(recovery);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(router.state.location.pathname).toBe(`/eventos/${event.publicId}`);
+    await user.click(recovery);
+    await user.click(await screen.findByRole('button', { name: 'Sair' }));
+    expect(await screen.findByText('Recuperação de acesso')).toBeTruthy();
+    expect(router.state.location.search).toBe(`?evento=${event.publicId}`);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('mantém o formulário do provedor montado e o pagador ao trocar o tema', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    localStorage.removeItem('ligahub:theme');
+    const registration = {
+      id: 'r',
+      name: 'Ana Silva',
+      email: 'ana@exemplo.com',
+      status: 'reserved',
+      answers: {},
+      priceInCents: 2500,
+      reservationExpiresAt: '2030-10-08T15:00:00Z',
+      event: {
+        title: 'Jornada',
+        publicId: event.publicId,
+        status: 'published',
+      },
+      payments: [],
+    };
+    vi.mocked(api).mockImplementation(async (path) =>
+      path.endsWith('/checkout')
+        ? { publicKey: 'TEST', amountInCents: 2500, maxInstallments: 12 }
+        : registration,
+    );
+    try {
+      show(
+        <ThemeProvider>
+          <ThemeToggle />
+          <ParticipantPage />
+        </ThemeProvider>,
+        '/acompanhar/:id',
+        '/acompanhar/r',
+      );
+      const user = userEvent.setup();
+      const payer = await screen.findByLabelText('Nome completo do pagador');
+      await user.clear(payer);
+      await user.type(payer, 'Bruno Souza');
+      await user.click(screen.getByRole('button', { name: /^Cartão$/ }));
+      const sdk = await screen.findByRole('button', {
+        name: 'Revisar cartão simulado',
+      });
+      expect(sdk.closest('.payment-sdk-light')).not.toBeNull();
+      for (const theme of ['Escuro', 'Claro']) {
+        await user.click(screen.getByRole('button', { name: /^Tema:/ }));
+        await user.click(
+          await screen.findByRole('menuitemradio', {
+            name: theme,
+          }),
+        );
+        expect(document.documentElement.classList.contains('dark')).toBe(
+          theme === 'Escuro',
+        );
+        expect(
+          screen.getByRole('button', { name: 'Revisar cartão simulado' }),
+        ).toBe(sdk);
+        expect(
+          screen.getByLabelText('Nome completo do pagador'),
+        ).toHaveProperty('value', 'Bruno Souza');
+      }
+      expect(send).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      localStorage.removeItem('ligahub:theme');
+      document.documentElement.classList.remove('dark');
+      document.documentElement.style.colorScheme = '';
+    }
   });
 });

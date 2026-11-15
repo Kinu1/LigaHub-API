@@ -28,6 +28,7 @@ model AcademicEvent {
   registrationDeadline DateTime?
   reservationMinutes   Int            @default(15)
   form                 Json           @default("[]")
+  registrationTypes    Json           @default("[]")
   registrations        Registration[]
 
   @@map("academic_events")
@@ -65,6 +66,8 @@ model Registration {
   answers                 Json
   formSnapshot            Json
   priceInCents            Int
+  registrationTypeId      String?
+  registrationTypeName    String?
   status                  String           @default("reserved")
   reviewReason            String?
   reservationExpiresAt    DateTime

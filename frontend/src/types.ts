@@ -12,6 +12,13 @@ export type Field = {
   required: boolean;
   options?: string[];
 };
+export type RegistrationType = {
+  id: string;
+  name: string;
+  priceInCents: number;
+  capacity: number | null;
+  availableSpots?: number | null;
+};
 export type Event = {
   id: string;
   publicId: string;
@@ -25,6 +32,7 @@ export type Event = {
   registrationDeadline: string | null;
   registrationStartsAt: string | null;
   priceInCents: number;
+  registrationTypes?: RegistrationType[];
   capacity: number;
   ownerId: string;
   reservationMinutes: number;
@@ -32,6 +40,7 @@ export type Event = {
   status: string;
   availableSpots?: number;
   acceptingRegistrations?: boolean;
+  publicKey?: string | null;
 };
 export type Page<T> = {
   items: T[];
@@ -60,6 +69,7 @@ export type Registration = {
   reviewReason?: string | null;
   answers: Record<string, unknown>;
   priceInCents: number;
+  registrationTypeName?: string | null;
   reservationExpiresAt: string;
   suspended?: boolean;
   suspendedAt?: string | null;

@@ -1,3 +1,12 @@
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '../components/ui/table';
+import { Button } from '../components/ui/button';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api';
@@ -144,13 +153,13 @@ function AdminOperations() {
           Diagnóstico administrativo seguro de rotinas de segundo plano, filas
           de e-mail e sincronização de pagamentos.
         </Heading>
-        <button
-          className="btn secondary"
+        <Button
+          variant="outline"
           disabled={query.isFetching}
           onClick={() => void query.refetch()}
         >
           {query.isFetching ? 'Atualizando...' : 'Atualizar diagnóstico'}
-        </button>
+        </Button>
       </div>
 
       {query.isError && (
@@ -167,48 +176,48 @@ function AdminOperations() {
       {query.data && (
         <div className="space-y-8">
           {/* Habilitação de flags */}
-          <div className="card">
+          <div className="data-section">
             <h2 className="text-lg font-semibold mb-4">
               Habilitação do sistema
             </h2>
             <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 text-sm">
-              <div className="p-3 bg-zinc-50 rounded-lg">
+              <div className="min-w-0 border-l border-border pl-3">
                 <dt className="muted">Endpoints HTTP de rotina</dt>
                 <dd className="font-semibold text-base mt-1">
                   {query.data.flags.backgroundJobsEnabled ? (
-                    <span className="text-emerald-700">Habilitado</span>
+                    <span className="text-success">Habilitado</span>
                   ) : (
-                    <span className="text-zinc-500">Desabilitado</span>
+                    <span className="text-muted-foreground">Desabilitado</span>
                   )}
                 </dd>
               </div>
-              <div className="p-3 bg-zinc-50 rounded-lg">
+              <div className="min-w-0 border-l border-border pl-3">
                 <dt className="muted">Timers automáticos</dt>
                 <dd className="font-semibold text-base mt-1">
                   {query.data.flags.backgroundTimersEnabled ? (
-                    <span className="text-emerald-700">Ativo</span>
+                    <span className="text-success">Ativo</span>
                   ) : (
-                    <span className="text-zinc-500">Inativo</span>
+                    <span className="text-muted-foreground">Inativo</span>
                   )}
                 </dd>
               </div>
-              <div className="p-3 bg-zinc-50 rounded-lg">
+              <div className="min-w-0 border-l border-border pl-3">
                 <dt className="muted">Envio de e-mails</dt>
                 <dd className="font-semibold text-base mt-1">
                   {query.data.flags.emailDeliveryEnabled ? (
-                    <span className="text-emerald-700">Ativo</span>
+                    <span className="text-success">Ativo</span>
                   ) : (
-                    <span className="text-zinc-500">Inativo</span>
+                    <span className="text-muted-foreground">Inativo</span>
                   )}
                 </dd>
               </div>
-              <div className="p-3 bg-zinc-50 rounded-lg">
+              <div className="min-w-0 border-l border-border pl-3">
                 <dt className="muted">Reconciliação de pagamentos</dt>
                 <dd className="font-semibold text-base mt-1">
                   {query.data.flags.paymentReconciliationEnabled ? (
-                    <span className="text-emerald-700">Ativo</span>
+                    <span className="text-success">Ativo</span>
                   ) : (
-                    <span className="text-zinc-500">Inativo</span>
+                    <span className="text-muted-foreground">Inativo</span>
                   )}
                 </dd>
               </div>
@@ -216,7 +225,7 @@ function AdminOperations() {
           </div>
 
           {/* Rotinas de segundo plano */}
-          <div className="card">
+          <div className="data-section">
             <h2 className="text-lg font-semibold mb-2">
               Rotinas de segundo plano
             </h2>
@@ -235,223 +244,176 @@ function AdminOperations() {
               </p>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2">
-              {query.data.routines.map((routine) => (
-                <div
-                  key={routine.name}
-                  className="border border-zinc-200 rounded-xl p-5 space-y-4"
-                >
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-base">
-                      {routineLabels[routine.name] ?? routine.name}
-                    </h3>
-                    <div className="flex items-center gap-2">
-                      {routine.activeLease && routine.status !== 'running' && (
-                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
-                          Em execução
-                        </span>
-                      )}
-                      <span
-                        className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                          routine.status === 'completed'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : ['partial', 'running', 'unfinished'].includes(
-                                  routine.status ?? '',
-                                )
-                              ? 'bg-amber-100 text-amber-800'
-                              : routine.status === 'failed'
-                                ? 'bg-red-100 text-red-800'
-                                : 'bg-zinc-100 text-zinc-700'
-                        }`}
+            <Table className="data-table" aria-label="Rotinas de segundo plano">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Rotina / estado</TableHead>
+                  <TableHead>Execução (Brasília)</TableHead>
+                  <TableHead>Contadores da última execução</TableHead>
+                  <TableHead className="md:text-right">Totais</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {query.data.routines.map((routine) => (
+                  <TableRow key={routine.name}>
+                    <TableCell
+                      data-label="Rotina / estado"
+                      className="whitespace-normal break-words"
+                    >
+                      <h3 className="text-sm font-semibold">
+                        {routineLabels[routine.name] ?? routine.name}
+                      </h3>
+                      <p
+                        className={`mt-2 text-xs ${routine.status === 'completed' ? 'text-success' : routine.status === 'failed' ? 'text-destructive' : ['partial', 'running', 'unfinished'].includes(routine.status ?? '') ? 'text-warning' : 'text-muted-foreground'}`}
                       >
                         {statusLabels[routine.status ?? ''] ?? 'Sem execução'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {routine.errorCode && (
-                    <p className="text-sm text-red-700 bg-red-50 p-2 rounded">
-                      Classificação:{' '}
-                      {errorCategories[routine.errorCode] ?? routine.errorCode}
-                    </p>
-                  )}
-
-                  <dl className="grid grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <dt className="muted">Último sucesso verificável</dt>
-                      <dd className="font-medium">
-                        {date(routine.lastSucceededAt)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="muted">Última tentativa</dt>
-                      <dd className="font-medium">{date(routine.startedAt)}</dd>
-                    </div>
-                    <div>
-                      <dt className="muted">Última falha</dt>
-                      <dd className="font-medium">
-                        {date(routine.lastFailedAt)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="muted">Término</dt>
-                      <dd className="font-medium">
-                        {date(routine.finishedAt)}
-                      </dd>
-                    </div>
-                  </dl>
-
-                  <div className="border-t border-zinc-100 pt-3">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                      {routine.status === 'running' ||
-                      routine.status === 'unfinished'
-                        ? 'Contadores disponíveis após o término'
-                        : 'Contadores da última execução'}
-                    </p>
-                    <div className="grid grid-cols-4 gap-2 text-center text-sm">
-                      <div className="bg-zinc-50 p-2 rounded">
-                        <span className="block text-xs muted">Processados</span>
-                        <span className="font-semibold">
-                          {routine.processedCount ?? '—'}
-                        </span>
-                      </div>
-                      <div className="bg-emerald-50 p-2 rounded text-emerald-900">
-                        <span className="block text-xs text-emerald-700">
-                          Sucessos
-                        </span>
-                        <span className="font-semibold">
-                          {routine.succeededCount ?? '—'}
-                        </span>
-                      </div>
-                      <div className="bg-red-50 p-2 rounded text-red-900">
-                        <span className="block text-xs text-red-700">
-                          Falhas
-                        </span>
-                        <span className="font-semibold">
-                          {routine.failedCount ?? '—'}
-                        </span>
-                      </div>
-                      <div className="bg-zinc-50 p-2 rounded">
-                        <span className="block text-xs muted">Ignorados</span>
-                        <span className="font-semibold">
-                          {routine.skippedCount ?? '—'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-xs muted flex justify-between pt-1">
-                    <span>Execuções totais: {routine.runCount}</span>
-                    <span>Falhas registradas: {routine.failureCount}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                      </p>
+                      {routine.activeLease && routine.status !== 'running' && (
+                        <p className="text-xs text-warning">Em execução</p>
+                      )}
+                      {routine.errorCode && (
+                        <p className="mt-2 text-xs text-destructive">
+                          Classificação:{' '}
+                          {errorCategories[routine.errorCode] ??
+                            routine.errorCode}
+                        </p>
+                      )}
+                    </TableCell>
+                    <TableCell
+                      data-label="Execução (Brasília)"
+                      className="whitespace-normal"
+                    >
+                      <dl className="space-y-2 text-xs">
+                        {[
+                          [
+                            'Último sucesso verificável',
+                            routine.lastSucceededAt,
+                          ],
+                          ['Última tentativa', routine.startedAt],
+                          ['Última falha', routine.lastFailedAt],
+                          ['Término', routine.finishedAt],
+                        ].map(([label, value]) => (
+                          <div key={label}>
+                            <dt className="text-muted-foreground">{label}</dt>
+                            <dd>{date(value)}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </TableCell>
+                    <TableCell
+                      data-label="Contadores da última execução"
+                      className="whitespace-normal"
+                    >
+                      {(routine.status === 'running' ||
+                        routine.status === 'unfinished') && (
+                        <p className="mb-2 text-xs text-muted-foreground">
+                          Contadores disponíveis após o término
+                        </p>
+                      )}
+                      <dl className="space-y-1 text-xs tabular-nums">
+                        {[
+                          ['Processados', routine.processedCount],
+                          ['Sucessos', routine.succeededCount],
+                          ['Falhas', routine.failedCount],
+                          ['Ignorados', routine.skippedCount],
+                        ].map(([label, value]) => (
+                          <div
+                            key={label}
+                            className="flex flex-wrap justify-between gap-3"
+                          >
+                            <dt>{label}</dt>
+                            <dd>{value ?? '—'}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </TableCell>
+                    <TableCell
+                      data-label="Totais"
+                      className="whitespace-normal tabular-nums md:text-right"
+                    >
+                      <p>Execuções totais: {routine.runCount}</p>
+                      <p>Falhas registradas: {routine.failureCount}</p>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
 
           {/* Filas de e-mails: Confirmação vs Acesso */}
-          <div className="card">
+          <div className="data-section">
             <h2 className="text-lg font-semibold mb-2">Filas de e-mails</h2>
             <p className="text-xs muted mb-4">
               Aceito pelo provedor não significa entregue na caixa de entrada do
               participante.
             </p>
 
-            <div className="grid gap-6 md:grid-cols-2">
-              {/* Confirmações */}
-              <div className="border border-zinc-200 rounded-xl p-5 space-y-4">
-                <h3 className="font-semibold text-base">
-                  Confirmações de inscrição
-                </h3>
-                <dl className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <dt className="muted">Pendentes</dt>
-                    <dd className="text-lg font-semibold">
-                      {query.data.queues.confirmation.pending}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="muted">Em processamento</dt>
-                    <dd className="text-lg font-semibold text-amber-700">
-                      {query.data.queues.confirmation.processing}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="muted">Aceitos pelo provedor</dt>
-                    <dd className="text-lg font-semibold text-emerald-700">
-                      {query.data.queues.confirmation.sent}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="muted">Falhas</dt>
-                    <dd className="text-lg font-semibold text-red-700">
-                      {query.data.queues.confirmation.failed}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="muted">Ignorados</dt>
-                    <dd className="text-lg font-semibold text-zinc-500">
-                      {query.data.queues.confirmation.skipped}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="muted">Próximo agendado mais antigo</dt>
-                    <dd className="text-sm font-medium">
-                      {date(query.data.queues.confirmation.oldestNextAttemptAt)}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-
-              {/* Links de acesso */}
-              <div className="border border-zinc-200 rounded-xl p-5 space-y-4">
-                <h3 className="font-semibold text-base">
-                  Links de acesso e gestão
-                </h3>
-                <dl className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <dt className="muted">Pendentes</dt>
-                    <dd className="text-lg font-semibold">
-                      {query.data.queues.access.pending}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="muted">Em processamento</dt>
-                    <dd className="text-lg font-semibold text-amber-700">
-                      {query.data.queues.access.processing}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="muted">Aceitos pelo provedor</dt>
-                    <dd className="text-lg font-semibold text-emerald-700">
-                      {query.data.queues.access.sent}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="muted">Falhas</dt>
-                    <dd className="text-lg font-semibold text-red-700">
-                      {query.data.queues.access.failed}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="muted">Ignorados</dt>
-                    <dd className="text-lg font-semibold text-zinc-500">
-                      {query.data.queues.access.skipped}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="muted">Próximo agendado mais antigo</dt>
-                    <dd className="text-sm font-medium">
-                      {date(query.data.queues.access.oldestNextAttemptAt)}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-            </div>
+            <Table className="data-table" aria-label="Filas de e-mails">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fila</TableHead>
+                  {[
+                    'Pendentes',
+                    'Em processamento',
+                    'Aceitos pelo provedor',
+                    'Falhas',
+                    'Ignorados',
+                  ].map((label) => (
+                    <TableHead key={label} className="md:text-right">
+                      {label}
+                    </TableHead>
+                  ))}
+                  <TableHead>Próximo agendado mais antigo</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(
+                  [
+                    ['confirmation', 'Confirmações de inscrição'],
+                    ['access', 'Links de acesso e gestão'],
+                  ] as const
+                ).map(([key, title]) => {
+                  const queue = query.data.queues[key];
+                  return (
+                    <TableRow key={key}>
+                      <TableCell
+                        data-label="Fila"
+                        className="whitespace-normal font-medium"
+                      >
+                        {title}
+                      </TableCell>
+                      {(
+                        [
+                          ['pending', 'Pendentes'],
+                          ['processing', 'Em processamento'],
+                          ['sent', 'Aceitos pelo provedor'],
+                          ['failed', 'Falhas'],
+                          ['skipped', 'Ignorados'],
+                        ] as const
+                      ).map(([field, label]) => (
+                        <TableCell
+                          key={field}
+                          data-label={label}
+                          className={`tabular-nums md:text-right ${field === 'failed' ? 'text-destructive' : field === 'sent' ? 'text-success' : field === 'processing' ? 'text-warning' : ''}`}
+                        >
+                          {queue[field]}
+                        </TableCell>
+                      ))}
+                      <TableCell
+                        data-label="Próximo agendado mais antigo"
+                        className="whitespace-normal"
+                      >
+                        {date(queue.oldestNextAttemptAt)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
 
           {/* Consultas de pagamento com erro */}
-          <div className="card">
+          <div className="data-section">
             <h2 className="text-lg font-semibold mb-2">
               Pagamentos com falha de sincronização
             </h2>
@@ -465,57 +427,88 @@ function AdminOperations() {
             )}
 
             {query.data.failedPayments.items.length > 0 && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-zinc-200">
-                      <th className="py-2.5 px-3">Identificador</th>
-                      <th className="py-2.5 px-3">Evento</th>
-                      <th className="py-2.5 px-3">Valor</th>
-                      <th className="py-2.5 px-3">Categoria do erro</th>
-                      <th className="py-2.5 px-3">Última tentativa de sync</th>
-                      <th className="py-2.5 px-3">Último sucesso</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100">
+              <div className="min-w-0">
+                <Table
+                  className="data-table"
+                  aria-label="Pagamentos com falha de sincronização"
+                >
+                  <TableHeader>
+                    <TableRow className="border-b border-border">
+                      <TableHead className="py-2.5 px-3">
+                        Identificador
+                      </TableHead>
+                      <TableHead className="py-2.5 px-3">Evento</TableHead>
+                      <TableHead className="py-2.5 px-3 md:text-right">
+                        Valor
+                      </TableHead>
+                      <TableHead className="py-2.5 px-3">
+                        Categoria do erro
+                      </TableHead>
+                      <TableHead className="py-2.5 px-3">
+                        Última tentativa de sync
+                      </TableHead>
+                      <TableHead className="py-2.5 px-3">
+                        Último sucesso
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody className="divide-y divide-border">
                     {query.data.failedPayments.items.map((item) => (
-                      <tr key={item.id} className="hover:bg-zinc-50/50">
-                        <td className="py-3 px-3">
+                      <TableRow key={item.id} className="hover:bg-muted/50">
+                        <TableCell
+                          data-label="Identificador"
+                          className="py-3 px-3 whitespace-normal break-words"
+                        >
                           <span className="font-mono text-xs block">
                             {item.id.slice(0, 8)}...
                           </span>
                           <span className="text-xs muted font-mono">
                             Inscrição: {item.registrationId.slice(0, 8)}...
                           </span>
-                        </td>
-                        <td className="py-3 px-3">
+                        </TableCell>
+                        <TableCell
+                          data-label="Evento"
+                          className="py-3 px-3 whitespace-normal break-words"
+                        >
                           <span className="font-medium">
                             {item.event?.title ?? 'Evento não informado'}
                           </span>
                           <span className="block text-xs muted uppercase">
                             {item.method}
                           </span>
-                        </td>
-                        <td className="py-3 px-3 font-medium">
+                        </TableCell>
+                        <TableCell
+                          data-label="Valor"
+                          className="py-3 px-3 font-medium whitespace-normal break-words tabular-nums md:text-right"
+                        >
                           {money(item.amountInCents)}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-800">
+                        </TableCell>
+                        <TableCell
+                          data-label="Categoria do erro"
+                          className="py-3 px-3 whitespace-normal break-words"
+                        >
+                          <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-destructive/10 text-destructive">
                             {errorCategories[item.lastSyncErrorCode ?? ''] ??
                               item.lastSyncErrorCode ??
                               'Erro não informado'}
                           </span>
-                        </td>
-                        <td className="py-3 px-3 text-xs">
+                        </TableCell>
+                        <TableCell
+                          data-label="Última tentativa de sync"
+                          className="py-3 px-3 text-xs whitespace-normal break-words"
+                        >
                           {date(item.lastSyncAttemptAt)}
-                        </td>
-                        <td className="py-3 px-3 text-xs">
+                        </TableCell>
+                        <TableCell
+                          data-label="Último sucesso"
+                          className="py-3 px-3 text-xs whitespace-normal break-words"
+                        >
                           {date(item.lastSyncSucceededAt)}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             )}
 

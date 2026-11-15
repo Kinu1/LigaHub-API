@@ -1,3 +1,13 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
-export default defineConfig({plugins:[react()],test:{environment:'jsdom',include:['src/**/*.test.tsx','src/**/*.test.ts'],setupFiles:['./src/test-setup.ts']}});
+import { fileURLToPath } from 'node:url';
+export default defineConfig({
+  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
+  plugins: [react()],
+  test: {
+    maxWorkers: 4,
+    environment: 'jsdom',
+    include: ['src/**/*.test.tsx', 'src/**/*.test.ts'],
+    setupFiles: ['./src/test-setup.ts'],
+  },
+});

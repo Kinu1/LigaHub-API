@@ -1,3 +1,5 @@
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import { useState } from 'react';
 import { labels } from '../types';
 import { Notice } from '../ui';
@@ -57,7 +59,10 @@ export const paymentStatuses = [
 export function paymentFiltersFromSearch(search: string): PaymentFilters {
   const params = new URLSearchParams(search);
   const status = params.get('status') || '';
-  return { ...emptyPaymentFilters, status: paymentStatuses.includes(status) ? status : '' };
+  return {
+    ...emptyPaymentFilters,
+    status: paymentStatuses.includes(status) ? status : '',
+  };
 }
 export function FinanceFilters({
   onApply,
@@ -91,7 +96,7 @@ export function FinanceFilters({
       <div className="grid gap-4 md:grid-cols-3">
         <label htmlFor="finance-event">
           Evento
-          <input
+          <Input
             id="finance-event"
             value={draft.eventSearch}
             maxLength={120}
@@ -128,7 +133,7 @@ export function FinanceFilters({
         </div>
         <label htmlFor="finance-from">
           Data inicial
-          <input
+          <Input
             id="finance-from"
             type="date"
             value={draft.from}
@@ -138,7 +143,7 @@ export function FinanceFilters({
         </label>
         <label htmlFor="finance-to">
           Data final
-          <input
+          <Input
             id="finance-to"
             type="date"
             value={draft.to}
@@ -152,9 +157,9 @@ export function FinanceFilters({
         final inteiro.
       </p>
       <div className="flex flex-wrap gap-3">
-        <button className="btn">Aplicar filtros</button>
-        <button
-          className="btn secondary"
+        <Button type="submit">Aplicar filtros</Button>
+        <Button
+          variant="outline"
           type="button"
           onClick={() => {
             setDraft({ ...emptyPaymentFilters });
@@ -163,7 +168,7 @@ export function FinanceFilters({
           }}
         >
           Limpar filtros
-        </button>
+        </Button>
       </div>
       {error && <Notice>{error}</Notice>}
     </form>

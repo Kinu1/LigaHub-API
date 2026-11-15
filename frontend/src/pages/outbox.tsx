@@ -1,4 +1,13 @@
-﻿import { useRef, useState } from 'react';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '../components/ui/table';
+import { Button } from '../components/ui/button';
+import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../api';
 import { useAuth } from '../auth';
@@ -107,7 +116,7 @@ function AdminOutbox() {
         Acompanhe o processamento. Aceito pelo provedor não significa entregue
         na caixa de entrada.
       </Heading>
-      <div className="card mb-5 flex flex-wrap items-end gap-4">
+      <div className="filter-bar mb-5 flex flex-wrap items-end gap-4">
         <div className="field">
           <label htmlFor="outbox-status">Status</label>
           <select
@@ -126,13 +135,13 @@ function AdminOutbox() {
             ))}
           </select>
         </div>
-        <button
-          className="btn secondary"
+        <Button
+          variant="outline"
           disabled={query.isFetching}
           onClick={() => void query.refetch()}
         >
           Atualizar fila
-        </button>
+        </Button>
       </div>
       {message && <Notice success>{message}</Notice>}
       {query.isError && (
@@ -145,84 +154,128 @@ function AdminOutbox() {
       )}
       {query.isPending && <Loading />}
       {query.data && (
-        <div className="card">
+        <div className="data-section">
           {!query.data.items.length && !query.isError && (
             <Empty title="Nenhum e-mail neste status" />
           )}
-          <ol className="divide-y divide-zinc-100">
-            {query.data.items.map((item) => (
-              <li key={item.id} className="py-5 space-y-3">
-                <h2 className="font-semibold">
-                  <span className={`badge ${item.status === 'sent' ? 'badge-good' : item.status === 'failed' ? 'badge-danger' : ['pending', 'processing'].includes(item.status) ? 'badge-warning' : ''}`}>
-                    {statuses[item.status] ?? 'Status não reconhecido'}
-                  </span>
-                </h2>
-                <p>Tentativas: {item.attempts}</p>
-                {item.status === 'failed' && (
-                  <p>
-                    Classificação atual:{' '}
-                    {item.reason
-                      ? (reasons[item.reason] ?? 'Não disponível')
-                      : 'Sem classificação informada'}
-                    . Esta classificação não comprova a causa histórica da
-                    falha.
-                  </p>
-                )}
-                <dl className="grid gap-3 text-sm sm:grid-cols-2">
-                  {(
-                    [
-                      ['Criado em', item.createdAt],
-                      ['Primeira tentativa', item.firstAttemptAt],
-                      ...(item.status === 'pending'
-                        ? [['Próxima tentativa', item.nextAttemptAt] as const]
-                        : []),
-                      ...(item.status === 'processing'
-                        ? [
-                            [
-                              'Fim da reserva de processamento',
-                              item.leaseExpiresAt,
-                            ] as const,
-                          ]
-                        : []),
-                      ...(item.sentAt
-                        ? [['Aceito pelo provedor em', item.sentAt] as const]
-                        : []),
-                    ] as const
-                  ).map(([label, value]) => (
-                    <div key={label}>
-                      <dt className="muted">{label} (Brasília)</dt>
-                      <dd>{date(value)}</dd>
-                    </div>
-                  ))}
-                </dl>
-                <details className="text-sm">
-                  <summary className="cursor-pointer">Identificadores</summary>
-                  <dl className="break-all">
-                    <dt>ID do e-mail</dt>
-                    <dd>{item.id}</dd>
-                    <dt>ID da inscrição</dt>
-                    <dd>{item.registrationId}</dd>
-                  </dl>
-                </details>
-                {eligible(item) ? (
-                  <Confirm
-                    title="Retomar e-mail?"
-                    description="A retomada reutiliza a mensagem e a chave originais. Com SMTP, uma falha incerta pode causar duplicidade. A API decide a elegibilidade final da retomada."
-                    onConfirm={() => retry(item)}
+          <Table className="data-table" aria-label="Fila de e-mails">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Estado / classificação</TableHead>
+                <TableHead className="md:text-right">Tentativas</TableHead>
+                <TableHead>Datas (Brasília)</TableHead>
+                <TableHead>Identificadores / ação</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {query.data.items.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell
+                    data-label="Estado / classificação"
+                    className="whitespace-normal break-words"
                   >
-                    Retomar e-mail
-                  </Confirm>
-                ) : (
-                  item.status === 'failed' && (
-                    <p className="muted text-sm">
-                      Retomada indisponível: exige primeira tentativa conhecida
-                      há menos de 23 horas. Revise manualmente.
-                    </p>
-                  )
-                )}
-              </li>
-            ))}
-          </ol>
+                    <h2 className="font-semibold">
+                      <span
+                        className={`badge ${item.status === 'sent' ? 'badge-good' : item.status === 'failed' ? 'badge-danger' : ['pending', 'processing'].includes(item.status) ? 'badge-warning' : ''}`}
+                      >
+                        {statuses[item.status] ?? 'Status não reconhecido'}
+                      </span>
+                    </h2>
+                    {item.status === 'failed' && (
+                      <p>
+                        Classificação atual:{' '}
+                        {item.reason
+                          ? (reasons[item.reason] ?? 'Não disponível')
+                          : 'Sem classificação informada'}
+                        . Esta classificação não comprova a causa histórica da
+                        falha.
+                      </p>
+                    )}
+                  </TableCell>
+                  <TableCell
+                    data-label="Tentativas"
+                    className="tabular-nums md:text-right"
+                  >
+                    {item.attempts}
+                  </TableCell>
+                  <TableCell
+                    data-label="Datas (Brasília)"
+                    className="whitespace-normal"
+                  >
+                    <dl className="space-y-2 text-sm">
+                      {(
+                        [
+                          ['Criado em', item.createdAt],
+                          ['Primeira tentativa', item.firstAttemptAt],
+                          ...(item.status === 'pending'
+                            ? [
+                                [
+                                  'Próxima tentativa',
+                                  item.nextAttemptAt,
+                                ] as const,
+                              ]
+                            : []),
+                          ...(item.status === 'processing'
+                            ? [
+                                [
+                                  'Fim da reserva de processamento',
+                                  item.leaseExpiresAt,
+                                ] as const,
+                              ]
+                            : []),
+                          ...(item.sentAt
+                            ? [
+                                [
+                                  'Aceito pelo provedor em',
+                                  item.sentAt,
+                                ] as const,
+                              ]
+                            : []),
+                        ] as const
+                      ).map(([label, value]) => (
+                        <div key={label}>
+                          <dt className="muted">{label} (Brasília)</dt>
+                          <dd>{date(value)}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </TableCell>
+                  <TableCell
+                    data-label="Identificadores / ação"
+                    className="whitespace-normal break-words"
+                  >
+                    <details className="text-sm">
+                      <summary className="cursor-pointer">
+                        Identificadores
+                      </summary>
+                      <dl className="break-all">
+                        <dt>ID do e-mail</dt>
+                        <dd>{item.id}</dd>
+                        <dt>ID da inscrição</dt>
+                        <dd>{item.registrationId}</dd>
+                      </dl>
+                    </details>
+                    {eligible(item) ? (
+                      <Confirm
+                        title="Retomar e-mail?"
+                        description="A retomada reutiliza a mensagem e a chave originais. Com SMTP, uma falha incerta pode causar duplicidade. A API decide a elegibilidade final da retomada."
+                        onConfirm={() => retry(item)}
+                      >
+                        Retomar e-mail
+                      </Confirm>
+                    ) : (
+                      item.status === 'failed' && (
+                        <p className="muted text-sm">
+                          Retomada indisponível: exige primeira tentativa
+                          conhecida há menos de 23 horas. Revise manualmente.
+                        </p>
+                      )
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
           <Pager
             page={page}
             total={query.data.total}
