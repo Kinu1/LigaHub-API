@@ -63,6 +63,8 @@ Reconectar outra conta desativa a anterior para novas cobranças. Tentativas ant
 
 ## Roteiro de sandbox
 
+A verificação remota de 15/11/2026 confirmou a conta de teste, mas o endereço configurado do webhook não resolveu DNS. Consulte [o resultado atual e o roteiro para concluir o recebimento automático](HOMOLOGACAO_WEBHOOK_2026-11-15.md). O comando `node scripts/check-mercado-pago-remote.mjs` executa consultas sem criar cobranças; seu sucesso não substitui a homologação automática.
+
 - Prepare comprador e vendedor de teste no painel, seguindo as instruções de testes exibidas para sua aplicação. Autorize a conta recebedora no ambiente de teste, em uma sessão separada da conta proprietária da aplicação.
 - Publique um evento futuro, faça a inscrição e consulte a configuração de checkout.
 - Gere token de cartão pelo SDK do Mercado Pago com dados de teste, ou inicie um Pix usando o roteiro do provedor.
