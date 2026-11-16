@@ -4,13 +4,13 @@ Os testes Playwright executam Chromium com viewport de desktop e celular. Usam a
 
 ## Execução local
 
-Instale as dependências do backend e frontend, gere o cliente Prisma e aplique as migrations em um PostgreSQL de desenvolvimento ou de teste. Não utilize banco de produção. A execução exige banco em `localhost`, `127.0.0.1` ou loopback IPv6.
+Instale as dependências do backend e frontend, gere o cliente Prisma e crie um banco PostgreSQL **exclusivo de testes**, separado do banco habitual da aplicação. Configure `DATABASE_TEST_URL` no `.env` ou na sessão PowerShell; por exemplo, use o banco `ligahub_browser_test`. O nome deve conter `test` ou `tests` como palavra delimitada por `_` ou `-`. A execução exige banco em `localhost`, `127.0.0.1` ou loopback IPv6 e recusa a mesma conexão de `DATABASE_URL` ou `DIRECT_URL`, mesmo com outro schema ou credencial. Sem `DATABASE_TEST_URL`, os comandos param antes de abrir conexões; não existe fallback para o banco da aplicação.
 
 ```powershell
 npm.cmd ci
 npm.cmd --prefix frontend ci
 npm.cmd run db:generate
-npm.cmd run db:migrate
+npm.cmd run db:migrate:test
 npm.cmd run build
 npx.cmd playwright install chromium
 npm.cmd run test:browser
@@ -36,7 +36,7 @@ O histórico financeiro do servidor de teste é limitado ao proprietário da fix
 - Filtros financeiros no painel e recusa HTTP de filtros inválidos ou repetidos.
 - Apresentação final da inscrição reembolsada e verificação de ausência de rolagem horizontal no fluxo testado.
 
-O workflow `Navegador` utiliza um banco exclusivo do job. Os relatórios, traces e screenshots ficam em `playwright-report/` e `test-results/`, ignorados pelo Git. Eles podem conter links pessoais das fixtures; não devem ser publicados como dados de usuários reais.
+O workflow `Navegador` mantém seu banco exclusivo `ligahub_browser_test`, passado explicitamente em `DATABASE_TEST_URL`. Somente dentro do GitHub Actions é aceita a igualdade entre essa URL e `DATABASE_URL`, pois o próprio job provisiona o serviço exclusivo. Os relatórios, traces e screenshots ficam em `playwright-report/` e `test-results/`, ignorados pelo Git. Eles podem conter links pessoais das fixtures; não devem ser publicados como dados de usuários reais.
 
 Estes testes não homologam tokenização de cartão pelo SDK, entrega externa de e-mail, notificações automáticas do provedor nem deploy. As mudanças de estado financeiro usam o gateway simulado e os serviços reais da aplicação.
 

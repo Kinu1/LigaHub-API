@@ -1,4 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
+import 'dotenv/config';
+import { testDatabaseEnvironment } from './scripts/test-database.mjs';
+
+const database = testDatabaseEnvironment();
 
 export default defineConfig({
   testDir: './test/browser',
@@ -30,7 +34,14 @@ export default defineConfig({
       command: 'node scripts/browser-test-server.mjs',
       url: 'http://127.0.0.1:3100/',
       reuseExistingServer: false,
-      env: { LIGAHUB_BROWSER_TEST: 'true', NODE_ENV: 'test' },
+      env: {
+        // A URL habitual já foi validada acima. O filho seleciona somente a URL de teste.
+        DATABASE_URL: '',
+        DIRECT_URL: '',
+        DATABASE_TEST_URL: database.DATABASE_URL,
+        LIGAHUB_BROWSER_TEST: 'true',
+        NODE_ENV: 'test',
+      },
       timeout: 60_000,
     },
     {
