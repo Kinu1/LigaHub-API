@@ -1,4 +1,12 @@
 import ExcelJS from 'exceljs';
+import { Writable } from 'node:stream';
+import type { Transform } from 'node:stream';
+
+// ExcelJS 4 has no public abort API for its streaming writer. Keep its internal
+// resource access isolated here so failures also stop compression and row input.
+type StreamingResources = {
+  zip: Transform & { abort(): void };
+};
 
 export const participantStatusLabels: Record<string, string> = {
   reserved: 'Reservada',
@@ -37,9 +45,23 @@ type ParticipantExportRow = {
 
 export async function createParticipantsWorkbook(
   event: string,
-  rows: ParticipantExportRow[],
+  rows: Iterable<ParticipantExportRow> | AsyncIterable<ParticipantExportRow>,
 ) {
-  const workbook = new ExcelJS.Workbook();
+  // Only compressed XLSX bytes stay in memory; committed rows are released.
+  // The controller sends the completed buffer, so failures cannot leak a partial file.
+  const chunks: Buffer[] = [];
+  const stream = new Writable({
+    write(chunk: Buffer, _encoding, callback) {
+      chunks.push(Buffer.from(chunk));
+      callback();
+    },
+  });
+  const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+    stream,
+    useStyles: true,
+    useSharedStrings: false,
+  });
+  const archive = (workbook as unknown as StreamingResources).zip;
   workbook.creator = 'LigaHub';
   const sheet = workbook.addWorksheet('Participantes', {
     views: [{ state: 'frozen', ySplit: 1 }],
@@ -66,33 +88,6 @@ export async function createParticipantsWorkbook(
     { header: 'Última tentativa', key: 'latestPayment', width: 25 },
     { header: 'Alertas financeiros', key: 'warnings', width: 48 },
   ];
-  for (const row of rows)
-    sheet.addRow({
-      event,
-      type: row.registrationTypeName ?? 'Inscrição geral',
-      name: row.name,
-      cpf: row.cpf ?? 'Não informado',
-      email: row.email,
-      status: participantStatusLabels[row.status] ?? row.status,
-      payment:
-        participantPaymentLabels[row.financialStatus ?? row.paymentStatus] ??
-        row.financialStatus ??
-        row.paymentStatus,
-      latestPayment:
-        participantPaymentLabels[
-          row.latestPaymentStatus ?? row.paymentStatus
-        ] ??
-        row.latestPaymentStatus ??
-        row.paymentStatus,
-      warnings: (row.financialWarnings ?? [])
-        .map((warning) =>
-          warning === 'multiple_approvals'
-            ? 'Mais de um pagamento aprovado'
-            : 'Histórico de contestação',
-        )
-        .join('; '),
-      price: row.priceInCents / 100,
-    });
   sheet.autoFilter = 'A1:J1';
   sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   sheet.getRow(1).fill = {
@@ -101,5 +96,61 @@ export async function createParticipantsWorkbook(
     fgColor: { argb: 'FF9F1239' },
   };
   sheet.getRow(1).height = 24;
-  return Buffer.from(await workbook.xlsx.writeBuffer());
+  try {
+    for await (const row of rows)
+      sheet
+        .addRow({
+          event,
+          type: row.registrationTypeName ?? 'Inscrição geral',
+          name: row.name,
+          cpf: row.cpf ?? 'Não informado',
+          email: row.email,
+          status: participantStatusLabels[row.status] ?? row.status,
+          payment:
+            participantPaymentLabels[
+              row.financialStatus ?? row.paymentStatus
+            ] ??
+            row.financialStatus ??
+            row.paymentStatus,
+          latestPayment:
+            participantPaymentLabels[
+              row.latestPaymentStatus ?? row.paymentStatus
+            ] ??
+            row.latestPaymentStatus ??
+            row.paymentStatus,
+          warnings: (row.financialWarnings ?? [])
+            .map((warning) =>
+              warning === 'multiple_approvals'
+                ? 'Mais de um pagamento aprovado'
+                : 'Histórico de contestação',
+            )
+            .join('; '),
+          price: row.priceInCents / 100,
+        })
+        .commit();
+    sheet.commit();
+    await workbook.commit();
+    return Buffer.concat(chunks);
+  } catch (error) {
+    archive.abort();
+    archive.destroy();
+    // ExcelJS StreamBuf is a legacy Duplex: destroy() alone does not release
+    // its own buffers or finish the input. Disconnect its pipes before ending.
+    const input = (
+      sheet as unknown as {
+        stream: {
+          pipes: unknown[];
+          unpipe(pipe: unknown): void;
+          read(): unknown;
+          end(): void;
+        };
+      }
+    ).stream;
+    for (const pipe of input.pipes) input.unpipe(pipe);
+    input.read();
+    input.end();
+    throw error;
+  } finally {
+    stream.destroy();
+  }
 }
