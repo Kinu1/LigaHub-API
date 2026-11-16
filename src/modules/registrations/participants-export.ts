@@ -29,6 +29,9 @@ type ParticipantExportRow = {
   registrationTypeName: string | null;
   status: string;
   paymentStatus: string;
+  financialStatus?: string;
+  latestPaymentStatus?: string;
+  financialWarnings?: string[];
   priceInCents: number;
 };
 
@@ -53,13 +56,15 @@ export async function createParticipantsWorkbook(
     },
     { header: 'E-mail', key: 'email', width: 38 },
     { header: 'Situação da inscrição', key: 'status', width: 25 },
-    { header: 'Status do pagamento', key: 'payment', width: 25 },
+    { header: 'Situação financeira', key: 'payment', width: 25 },
     {
       header: 'Valor da inscrição (R$)',
       key: 'price',
       width: 24,
       style: { numFmt: '"R$" #,##0.00' },
     },
+    { header: 'Última tentativa', key: 'latestPayment', width: 25 },
+    { header: 'Alertas financeiros', key: 'warnings', width: 48 },
   ];
   for (const row of rows)
     sheet.addRow({
@@ -69,10 +74,26 @@ export async function createParticipantsWorkbook(
       cpf: row.cpf ?? 'Não informado',
       email: row.email,
       status: participantStatusLabels[row.status] ?? row.status,
-      payment: participantPaymentLabels[row.paymentStatus] ?? row.paymentStatus,
+      payment:
+        participantPaymentLabels[row.financialStatus ?? row.paymentStatus] ??
+        row.financialStatus ??
+        row.paymentStatus,
+      latestPayment:
+        participantPaymentLabels[
+          row.latestPaymentStatus ?? row.paymentStatus
+        ] ??
+        row.latestPaymentStatus ??
+        row.paymentStatus,
+      warnings: (row.financialWarnings ?? [])
+        .map((warning) =>
+          warning === 'multiple_approvals'
+            ? 'Mais de um pagamento aprovado'
+            : 'Histórico de contestação',
+        )
+        .join('; '),
       price: row.priceInCents / 100,
     });
-  sheet.autoFilter = 'A1:H1';
+  sheet.autoFilter = 'A1:J1';
   sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   sheet.getRow(1).fill = {
     type: 'pattern',

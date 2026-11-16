@@ -23,6 +23,7 @@ import {
   encryptCredential,
   decryptCredential,
 } from '../payments/payment-security.js';
+import { participantFinancial } from './participant-financial.js';
 import { validParticipantCpf } from './participant-cpf.js';
 import { createParticipantsWorkbook } from './participants-export.js';
 import type { RegistrationPaginationDto } from './registrations.dto.js';
@@ -511,9 +512,8 @@ export class RegistrationsService {
           registrationTypeId: true,
           participantCpfEncrypted: true,
           payments: {
-            orderBy: { createdAt: 'desc' },
-            take: 1,
-            select: { status: true },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            select: { id: true, status: true },
           },
           status: true,
           reservationExpiresAt: true,
@@ -524,14 +524,18 @@ export class RegistrationsService {
       }),
       this.prisma.registration.count({ where }),
     ]);
+    const disputed = await this.disputedPayments(this.prisma, items);
     return {
       items: items.map(({ participantCpfEncrypted, payments, ...item }) => ({
         ...item,
         cpf: participantCpfEncrypted
           ? decryptCredential(participantCpfEncrypted)
           : null,
-        paymentStatus:
-          item.priceInCents === 0 ? 'free' : (payments[0]?.status ?? 'unpaid'),
+        ...participantFinancial(
+          item.priceInCents,
+          payments,
+          payments.some((payment) => disputed.has(payment.id)),
+        ),
         status:
           item.status === 'reserved' && item.reservationExpiresAt <= now
             ? 'expired'
@@ -541,6 +545,30 @@ export class RegistrationsService {
       page: pagination.page,
       limit: pagination.limit,
     };
+  }
+
+  private async disputedPayments(
+    db: Prisma.TransactionClient,
+    items: { payments: { id: string }[] }[],
+  ) {
+    const ids = items.flatMap((item) =>
+      item.payments.map((payment) => payment.id),
+    );
+    if (!ids.length) return new Set<string>();
+    const history = await db.auditLog.findMany({
+      where: {
+        entityType: 'payment',
+        entityId: { in: ids },
+        action: 'payment.updated',
+        OR: [
+          { metadata: { path: ['status'], equals: 'in_mediation' } },
+          { metadata: { path: ['status'], equals: 'charged_back' } },
+        ],
+      },
+      select: { entityId: true },
+      distinct: ['entityId'],
+    });
+    return new Set(history.map((entry) => entry.entityId));
   }
 
   async exportParticipants(

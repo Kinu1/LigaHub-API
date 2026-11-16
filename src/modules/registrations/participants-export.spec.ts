@@ -16,11 +16,13 @@ const actor = {
 const prisma = {
   academicEvent: { findUnique: vi.fn() },
   registration: { findMany: vi.fn(), count: vi.fn() },
+  auditLog: { findMany: vi.fn() },
 };
 const service = new RegistrationsService(prisma as unknown as PrismaService);
 
 beforeEach(() => {
   vi.resetAllMocks();
+  prisma.auditLog.findMany.mockResolvedValue([]);
   process.env.CREDENTIALS_ENCRYPTION_KEY = Buffer.alloc(32, 2).toString(
     'base64',
   );
@@ -105,6 +107,45 @@ describe('Participantes por tipo e exportação protegida', () => {
     expect(args.where.AND).toHaveLength(2);
     expect(args.where.AND[1]).toEqual({
       OR: [{ registrationTypeId: 'geral' }, { registrationTypeId: null }],
+    });
+  });
+  it('mantém inscrição cancelada independente do aprovado e consulta contestação histórica', async () => {
+    prisma.registration.findMany.mockResolvedValue([
+      {
+        id: 'registration',
+        name: 'Ana',
+        email: 'ana@example.com',
+        status: 'canceled',
+        priceInCents: 2500,
+        participantCpfEncrypted: null,
+        payments: [
+          { id: 'recent', status: 'rejected' },
+          { id: 'older', status: 'approved' },
+        ],
+      },
+    ]);
+    prisma.auditLog.findMany.mockResolvedValue([{ entityId: 'older' }]);
+    const result = await service.list('event', actor, { page: 1, limit: 20 });
+    expect(result.items[0]).toMatchObject({
+      status: 'canceled',
+      paymentStatus: 'rejected',
+      latestPaymentStatus: 'rejected',
+      financialStatus: 'approved',
+      financialWarnings: ['dispute_history'],
+    });
+    expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          entityType: 'payment',
+          entityId: { in: ['recent', 'older'] },
+        }),
+      }),
+    );
+    expect(
+      prisma.registration.findMany.mock.calls[0][0].select.payments,
+    ).toEqual({
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { id: true, status: true },
     });
   });
   it('exporta todas as páginas e mantém CPF e texto literal no XLSX', async () => {
