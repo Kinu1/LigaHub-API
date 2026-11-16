@@ -13,6 +13,12 @@ export const pixKeyTypes = [
   'PHONE',
   'PIX_CODE',
 ] as const;
+export function payoutMode(): 'manual' | 'automatic' {
+  const mode = process.env.MERCADO_PAGO_PAYOUT_MODE ?? 'manual';
+  if (mode !== 'manual' && mode !== 'automatic')
+    throw new ServiceUnavailableException('O modo de repasse está inválido.');
+  return mode;
+}
 export type PixDestination = {
   ownerId: string;
   keyType: (typeof pixKeyTypes)[number];

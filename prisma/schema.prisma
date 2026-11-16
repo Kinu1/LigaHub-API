@@ -203,6 +203,11 @@ model PixPayout {
   status                String         @default("pending")
   reason                String?
   submittedAt           DateTime?
+  manualReservedBy      String?        @db.Uuid
+  manualReservedAt      DateTime?
+  manualReceiptEncrypted String?
+  manualReceiptHash     String?        @unique
+  manualPaidAt          DateTime?
   providerPayoutId      String?        @unique
   providerTransactionId String?        @unique
   leaseId               String?        @db.Uuid

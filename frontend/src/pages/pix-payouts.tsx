@@ -7,10 +7,12 @@ import { Input } from '../components/ui/input';
 import { date, money, type Page, type User } from '../types';
 import { Field, Notice, Pager } from '../ui';
 import { QueryState } from './query-state';
+import { ManualPayout } from './manual-payout';
 
 type DestinationStatus = {
   platformPix: boolean;
   automaticPayoutsEnabled: boolean;
+  payoutMode?: 'manual' | 'automatic';
   destination: {
     id: string;
     ownerId: string;
@@ -27,6 +29,8 @@ type Payout = {
   status: string;
   reason?: string;
   createdAt: string;
+  manualReservedBy?: string | null;
+  payment?: { registration: { name: string; event: { title: string } } };
 };
 const statusLabels: Record<string, string> = {
   pending: 'Aguardando envio',
@@ -35,6 +39,8 @@ const statusLabels: Record<string, string> = {
   held: 'Aguardando revisão',
   unknown: 'Resultado incerto — revisão necessária',
   failed: 'Não concluído — revisão necessária',
+  manual_reserved: 'Reservado para repasse manual',
+  manual_paid: 'Repasse manual registrado',
 };
 
 export function PixPayoutSection() {
@@ -61,7 +67,9 @@ export function PixPayoutSection() {
   });
   const payouts = useQuery({
     queryKey: ['payouts', user?.id, page],
-    enabled: !!destination.data?.platformPix,
+    enabled:
+      !!destination.data?.platformPix ||
+      destination.data?.payoutMode === 'manual',
     queryFn: () => api<Page<Payout>>(`/payments/payouts?page=${page}`),
     refetchInterval: 30_000,
   });
@@ -89,16 +97,35 @@ export function PixPayoutSection() {
       </Notice>
     );
   // A interface anterior permanece quando o novo modo não está configurado.
-  if (!destination.data?.platformPix) return null;
+  if (
+    !destination.data?.platformPix &&
+    destination.data?.payoutMode !== 'manual'
+  )
+    return null;
   const selected = destination.data.destination;
+  const manual = destination.data.payoutMode === 'manual';
   return (
     <section className="data-section mb-6 space-y-5">
       <h2>Recebimento por Pix</h2>
       <p className="text-sm text-muted-foreground">
-        O valor integral de cada inscrição paga por Pix será repassado à chave
-        aprovada do organizador. As tarifas ficam por conta da plataforma.
+        O valor integral de cada inscrição paga por Pix será repassado{' '}
+        {manual ? 'manualmente ' : ''}à chave aprovada do organizador. As
+        tarifas ficam por conta da plataforma.
       </p>
-      {!destination.data.automaticPayoutsEnabled && (
+      {manual && (
+        <p className="text-sm text-muted-foreground">
+          A plataforma envia o Pix pelo aplicativo do Mercado Pago e registra o
+          comprovante aqui.
+        </p>
+      )}
+      {!destination.data.platformPix && user?.role === 'admin' && (
+        <Notice>
+          Cadastre e aprove a chave do organizador antes de configurar o
+          recebimento Pix na conta da plataforma. As cobranças atuais mantêm a
+          configuração anterior.
+        </Notice>
+      )}
+      {!manual && !destination.data.automaticPayoutsEnabled && (
         <Notice>
           Os repasses automáticos ainda não estão ativados. O cadastro da chave
           não inicia uma transferência.
@@ -223,9 +250,18 @@ export function PixPayoutSection() {
                     {date(p.createdAt)} · {money(p.amountInCents)}
                   </p>
                   <p>{statusLabels[p.status] ?? 'Aguardando revisão'}</p>
+                  {p.payment && (
+                    <p>
+                      {p.payment.registration.event.title} ·{' '}
+                      {p.payment.registration.name}
+                    </p>
+                  )}
                   <p className="break-all text-xs text-muted-foreground">
                     Inscrição: {p.registrationId}
                   </p>
+                  {(manual || p.status === 'manual_paid') && (
+                    <ManualPayout payout={p} />
+                  )}
                 </li>
               ))}
             </ul>

@@ -8,6 +8,7 @@ import { PixPayoutGateway } from './pix-payout.gateway.js';
 import { PixPayoutsService } from './pix-payouts.service.js';
 import { PixDestinationsService } from './pix-destinations.service.js';
 import { PixPayoutsController } from './pix-payouts.controller.js';
+import { ManualPayoutsService } from './manual-payouts.service.js';
 
 @Module({
   imports: [PrismaModule],
@@ -18,6 +19,7 @@ import { PixPayoutsController } from './pix-payouts.controller.js';
     PixPayoutGateway,
     PixPayoutsService,
     PixDestinationsService,
+    ManualPayoutsService,
     { provide: PaymentGateway, useClass: MercadoPagoGateway },
   ],
   exports: [PaymentsService, PixPayoutsService],

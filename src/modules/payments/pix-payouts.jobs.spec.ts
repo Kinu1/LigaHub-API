@@ -11,6 +11,7 @@ describe('Agendamento dos repasses na rotina de pagamentos', () => {
     'respeita habilitação explícita: %s',
     async (enabled) => {
       vi.stubEnv('MERCADO_PAGO_PAYOUTS_ENABLED', String(enabled));
+      vi.stubEnv('MERCADO_PAGO_PAYOUT_MODE', 'automatic');
       vi.stubEnv('PAYMENT_RECONCILIATION_ENABLED', 'true');
       vi.stubEnv(
         'CREDENTIALS_ENCRYPTION_KEY',
@@ -20,24 +21,20 @@ describe('Agendamento dos repasses na rotina de pagamentos', () => {
         $queryRaw: vi.fn().mockResolvedValue([{ name: 'payments' }]),
         backgroundJob: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       };
-      const reconcile = vi
-        .fn()
-        .mockResolvedValue({
-          status: 'completed',
-          processed: 1,
-          succeeded: 1,
-          failed: 0,
-          skipped: 0,
-        });
-      const process = vi
-        .fn()
-        .mockResolvedValue({
-          status: 'completed',
-          processed: 2,
-          succeeded: 2,
-          failed: 0,
-          skipped: 0,
-        });
+      const reconcile = vi.fn().mockResolvedValue({
+        status: 'completed',
+        processed: 1,
+        succeeded: 1,
+        failed: 0,
+        skipped: 0,
+      });
+      const process = vi.fn().mockResolvedValue({
+        status: 'completed',
+        processed: 2,
+        succeeded: 2,
+        failed: 0,
+        skipped: 0,
+      });
       const runner = new JobsRunner(
         prisma as unknown as PrismaService,
         {} as EmailOutboxService,

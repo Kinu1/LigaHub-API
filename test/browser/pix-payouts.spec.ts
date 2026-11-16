@@ -1,5 +1,120 @@
 import { test, expect } from '@playwright/test';
 
+test('administrador registra repasse manual sem acionar uma transferência', async ({
+  page,
+  request,
+}) => {
+  const control = async (path: string) => {
+    const response = await request.post(
+      `http://127.0.0.1:3100/__browser/${path}`,
+      { headers: { 'x-browser-test': 'controle-local-de-testes' } },
+    );
+    expect(response.ok()).toBeTruthy();
+    return response.json();
+  };
+  const fixture = await control('fixture');
+  let status = 'pending';
+  const row = {
+    id: 'daf06e48-79f3-4943-9ad9-eb1526df9412',
+    registrationId: 'inscricao-ficticia',
+    ownerId: fixture.ownerId,
+    amountInCents: 2500,
+    createdAt: new Date().toISOString(),
+  };
+  const details = {
+    id: row.id,
+    amountInCents: 2500,
+    keyType: 'EMAIL',
+    key: 'organizacao@example.test',
+    receiptId: null as string | null,
+    paidAt: null as string | null,
+  };
+  let confirmations = 0;
+  await page.route('**/api/payments/accounts**', (route) =>
+    route.fulfill({ json: { connected: true, platformPix: true } }),
+  );
+  await page.route('**/api/payments/pix-destination**', (route) =>
+    route.fulfill({
+      json: {
+        platformPix: true,
+        payoutMode: 'manual',
+        automaticPayoutsEnabled: false,
+        destination: null,
+      },
+    }),
+  );
+  await page.route('**/api/payments/payouts**', async (route) => {
+    const req = route.request();
+    if (req.url().endsWith('/manual-reservation')) {
+      status = 'manual_reserved';
+      return route.fulfill({ json: details });
+    }
+    if (req.url().endsWith('/manual-confirmation')) {
+      const body = req.postDataJSON();
+      confirmations++;
+      expect(body.amountInCents).toBe(2500);
+      expect(body.receiptId).toBe('BANCO-TESTE-01');
+      details.receiptId = body.receiptId;
+      details.paidAt = body.paidAt;
+      status = 'manual_paid';
+      return route.fulfill({ json: details });
+    }
+    if (req.url().endsWith('/receipt')) return route.fulfill({ json: details });
+    return route.fulfill({
+      json: {
+        items: [
+          {
+            ...row,
+            status,
+            manualReservedBy: status === 'pending' ? null : fixture.ownerId,
+          },
+        ],
+        total: 1,
+        page: 1,
+        limit: 50,
+      },
+    });
+  });
+  try {
+    await page.goto('/login');
+    await page.getByLabel('E-mail', { exact: true }).fill(fixture.email);
+    await page
+      .getByLabel('Senha', { exact: true })
+      .fill('Senha-exclusiva-do-teste');
+    await page.getByRole('button', { name: /Entrar no painel/ }).click();
+    await expect(page).toHaveURL(/\/painel$/);
+    await page.goto('/painel/financeiro');
+    await page
+      .getByRole('button', { name: 'Reservar e visualizar repasse' })
+      .click();
+    await expect(page.getByText(/Esta tela não envia dinheiro/)).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Registrar repasse realizado' }),
+    ).toBeDisabled();
+    await page
+      .getByLabel('ID da transação no comprovante')
+      .fill('BANCO-TESTE-01');
+    await page.getByRole('checkbox', { name: /Já transferi/ }).check();
+    await page
+      .getByRole('button', { name: 'Registrar repasse realizado' })
+      .click();
+    await expect(
+      page.getByText('Repasse manual registrado', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(/não é uma confirmação bancária automática/),
+    ).toBeVisible();
+    expect(confirmations).toBe(1);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  } finally {
+    await control('cleanup');
+  }
+});
+
 test('Financeiro cadastra e aprova chave Pix e distingue repasse creditado', async ({
   page,
   request,

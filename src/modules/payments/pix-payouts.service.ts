@@ -13,6 +13,7 @@ import {
 } from './pix-payout.gateway.js';
 import {
   platformPixAccountId,
+  payoutMode,
   readPixDestination,
 } from './pix-payout.policy.js';
 import type { ReconcileResult } from './payments.service.js';
@@ -39,6 +40,16 @@ export class PixPayoutsService {
       reason: true,
       createdAt: true,
       updatedAt: true,
+      manualReservedBy: true,
+      manualReservedAt: true,
+      manualPaidAt: true,
+      payment: {
+        select: {
+          registration: {
+            select: { name: true, event: { select: { title: true } } },
+          },
+        },
+      },
     };
     const [items, total] = await this.prisma.$transaction([
       this.prisma.pixPayout.findMany({
@@ -61,7 +72,11 @@ export class PixPayoutsService {
       failed: 0,
       skipped: 0,
     };
-    if (process.env.MERCADO_PAGO_PAYOUTS_ENABLED !== 'true') return result;
+    if (
+      payoutMode() !== 'automatic' ||
+      process.env.MERCADO_PAGO_PAYOUTS_ENABLED !== 'true'
+    )
+      return result;
     this.gateway.preflight();
     const rows = await this.prisma.pixPayout.findMany({
       where: {

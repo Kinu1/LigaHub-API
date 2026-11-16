@@ -5,7 +5,7 @@ import { PaymentsService } from '../src/modules/payments/payments.service.js';
 import { PixDestinationsService } from '../src/modules/payments/pix-destinations.service.js';
 import { PixPayoutsService } from '../src/modules/payments/pix-payouts.service.js';
 import { pixRouting } from '../src/modules/payments/pix-routing.js';
-import type { PaymentAccountsService } from '../src/modules/payments/payment-accounts.service.js';
+import { PaymentAccountsService } from '../src/modules/payments/payment-accounts.service.js';
 import { PaymentGateway } from '../src/modules/payments/payment.gateway.js';
 import { PixPayoutGateway } from '../src/modules/payments/pix-payout.gateway.js';
 import { Test } from '@nestjs/testing';
@@ -13,6 +13,7 @@ import { JwtService } from '@nestjs/jwt';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { validationPipe, ApiExceptionFilter } from '../src/common/http.js';
+import { ManualPayoutsService } from '../src/modules/payments/manual-payouts.service.js';
 import {
   digest,
   type ProviderPayment,
@@ -71,6 +72,7 @@ describe('Pix na plataforma e repasse integral com PostgreSQL', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.stubEnv('MERCADO_PAGO_PAYOUTS_ENABLED', 'true');
+    vi.stubEnv('MERCADO_PAGO_PAYOUT_MODE', 'automatic');
     vi.stubEnv('MERCADO_PAGO_TEST_MODE', 'true');
     vi.stubEnv(
       'MERCADO_PAGO_NOTIFICATION_URL',
@@ -229,6 +231,108 @@ describe('Pix na plataforma e repasse integral com PostgreSQL', () => {
       data: { nextAttemptAt: new Date(0) },
     });
   }
+
+  function manualService() {
+    vi.stubEnv('MERCADO_PAGO_PAYOUT_MODE', 'manual');
+    return new ManualPayoutsService(
+      prisma,
+      accounts as unknown as PaymentAccountsService,
+      paymentGateway as unknown as PaymentGateway,
+    );
+  }
+
+  it('reserva o repasse manual, registra o comprovante criptografado e nunca envia dinheiro pela API', async () => {
+    await approved();
+    const manual = manualService();
+    const row = await prisma.pixPayout.findFirstOrThrow({ where: { ownerId } });
+    await expect(manual.prepare(actor(), row.id)).rejects.toMatchObject({
+      status: 403,
+    });
+    const details = await manual.prepare(admin(), row.id);
+    expect(details).toMatchObject({
+      amountInCents: 1055,
+      key,
+      status: 'manual_reserved',
+    });
+    expect(await manual.prepare(admin(), row.id)).toMatchObject({
+      status: 'manual_reserved',
+    });
+    const receipt = {
+      receiptId: 'E00000000202611150000000000000001',
+      paidAt: new Date().toISOString(),
+      amountInCents: 1055,
+    };
+    await expect(
+      manual.confirm(admin(), row.id, { ...receipt, amountInCents: 1000 }),
+    ).rejects.toMatchObject({ status: 409 });
+    await Promise.all([
+      manual.confirm(admin(), row.id, receipt),
+      manual.confirm(admin(), row.id, receipt),
+    ]);
+    const saved = await prisma.pixPayout.findUniqueOrThrow({
+      where: { id: row.id },
+    });
+    expect(saved.status).toBe('manual_paid');
+    expect(saved.manualReceiptEncrypted).not.toContain(receipt.receiptId);
+    expect((await manual.receipt(actor(), row.id)).receiptId).toBe(
+      receipt.receiptId,
+    );
+    await expect(
+      manual.receipt({ ...actor(), id: randomUUID() }, row.id),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(
+      await prisma.auditLog.count({
+        where: { entityId: row.id, action: 'pix_payout.manual_recorded' },
+      }),
+    ).toBe(1);
+    await due();
+    await payouts.process(future());
+    expect(payoutGateway.create).not.toHaveBeenCalled();
+  });
+
+  it('permite somente uma reserva concorrente e impede outro administrador de registrar o repasse', async () => {
+    await approved();
+    const manual = manualService();
+    const row = await prisma.pixPayout.findFirstOrThrow({ where: { ownerId } });
+    const otherAdmin = { ...admin(), id: ownerId };
+    const results = await Promise.allSettled([
+      manual.prepare(admin(), row.id),
+      manual.prepare(otherAdmin, row.id),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const saved = await prisma.pixPayout.findUniqueOrThrow({
+      where: { id: row.id },
+    });
+    const other = saved.manualReservedBy === adminId ? otherAdmin : admin();
+    await expect(
+      manual.confirm(other, row.id, {
+        receiptId: 'BANCO-TESTE-01',
+        paidAt: new Date().toISOString(),
+        amountInCents: 1055,
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('não permite reserva manual com envio automático incerto nem pagamento estornado', async () => {
+    const id = await approved();
+    const manual = manualService();
+    const row = await prisma.pixPayout.findFirstOrThrow({ where: { ownerId } });
+    paymentGateway.getPayment.mockResolvedValueOnce({
+      ...provider(id),
+      status: 'refunded',
+    });
+    await expect(manual.prepare(admin(), row.id)).rejects.toMatchObject({
+      status: 409,
+    });
+    await prisma.pixPayout.update({
+      where: { id: row.id },
+      data: { submittedAt: new Date(), status: 'unknown' },
+    });
+    await expect(manual.prepare(admin(), row.id)).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(payoutGateway.create).not.toHaveBeenCalled();
+  });
 
   it('recebe na conta da plataforma sem conta MP do organizador, registra uma fila e repassa o valor integral uma vez', async () => {
     expect(
@@ -412,11 +516,18 @@ describe('Pix na plataforma e repasse integral com PostgreSQL', () => {
     expect(payoutGateway.create).not.toHaveBeenCalled();
   });
   it('protege as rotas HTTP e valida campos antes de persistir chaves ou aprovar destinos', async () => {
+    await approved();
+    vi.stubEnv('MERCADO_PAGO_PAYOUT_MODE', 'manual');
+    const manualRow = await prisma.pixPayout.findFirstOrThrow({
+      where: { ownerId },
+    });
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(PrismaService)
       .useValue(prisma)
       .overrideProvider(PaymentGateway)
       .useValue(paymentGateway)
+      .overrideProvider(PaymentAccountsService)
+      .useValue(accounts)
       .overrideProvider(PixPayoutGateway)
       .useValue(payoutGateway)
       .compile();
@@ -440,6 +551,15 @@ describe('Pix na plataforma e repasse integral com PostgreSQL', () => {
         .get('/payments/pix-destination')
         .expect(401);
       await request(app.getHttpServer()).get('/payments/payouts').expect(401);
+      await request(app.getHttpServer())
+        .post(`/payments/payouts/${randomUUID()}/manual-reservation`)
+        .auth(token(ownerId), { type: 'bearer' })
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(`/payments/payouts/${randomUUID()}/manual-confirmation`)
+        .auth(token(ownerId), { type: 'bearer' })
+        .send({})
+        .expect(403);
       await request(app.getHttpServer())
         .get('/payments/pix-destination')
         .query({ ownerId: adminId })
@@ -472,6 +592,32 @@ describe('Pix na plataforma e repasse integral com PostgreSQL', () => {
         .query({ page: -1 })
         .auth(token(ownerId), { type: 'bearer' })
         .expect(400);
+      const prepare = await request(app.getHttpServer())
+        .post(`/payments/payouts/${manualRow.id}/manual-reservation`)
+        .auth(token(adminId), { type: 'bearer' })
+        .expect(201);
+      expect(prepare.body).toMatchObject({ key, amountInCents: 1055 });
+      const receipt = {
+        receiptId: 'HTTP-COMPROVANTE-01',
+        paidAt: new Date().toISOString(),
+        amountInCents: 1055,
+      };
+      await request(app.getHttpServer())
+        .post(`/payments/payouts/${manualRow.id}/manual-confirmation`)
+        .auth(token(adminId), { type: 'bearer' })
+        .send({ ...receipt, status: 'paid' })
+        .expect(400);
+      await request(app.getHttpServer())
+        .post(`/payments/payouts/${manualRow.id}/manual-confirmation`)
+        .auth(token(adminId), { type: 'bearer' })
+        .send(receipt)
+        .expect(201);
+      const proof = await request(app.getHttpServer())
+        .get(`/payments/payouts/${manualRow.id}/receipt`)
+        .auth(token(ownerId), { type: 'bearer' })
+        .expect(200);
+      expect(proof.headers['cache-control']).toBe('no-store');
+      expect(proof.body.receiptId).toBe(receipt.receiptId);
     } finally {
       await app.close();
     }
