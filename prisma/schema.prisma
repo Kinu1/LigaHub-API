@@ -162,6 +162,10 @@ model PaymentAttempt {
   method            String
   installments      Int
   amountInCents     Int
+  registrationAmountInCents Int?
+  platformFeeInCents Int?
+  processingFeeInCents Int?
+  pricingSnapshot Json?
   status            String         @default("created")
   statusDetail      String?
   checkout          Json?

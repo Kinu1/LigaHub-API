@@ -14,6 +14,8 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { validationPipe, ApiExceptionFilter } from '../src/common/http.js';
 import { ManualPayoutsService } from '../src/modules/payments/manual-payouts.service.js';
+import { CatalogService } from '../src/modules/catalog/catalog.service.js';
+import { RegistrationsService } from '../src/modules/registrations/registrations.service.js';
 import {
   digest,
   type ProviderPayment,
@@ -240,6 +242,92 @@ describe('Pix na plataforma e repasse integral com PostgreSQL', () => {
       paymentGateway as unknown as PaymentGateway,
     );
   }
+  it('publica aviso das taxas e permite reservar com a conta centralizada sem conta Mercado Pago do organizador', async () => {
+    manualService();
+    const event = await prisma.academicEvent.findUniqueOrThrow({ where: { id: eventId } });
+    const info = await new CatalogService(prisma).publicEvent(event.publicId);
+    expect(info).toMatchObject({ acceptingRegistrations: true, publicKey: 'TEST-ficticia', pixFeePolicy: { platformFeeInCents: 100 } });
+    const registration = await new RegistrationsService(prisma).reserve(event.publicId, { name: 'Outra Pessoa', email: 'outro@example.test', cpf: '12345678909', answers: {} });
+    try { expect(registration.priceInCents).toBe(1055); }
+    finally {
+      await prisma.auditLog.deleteMany({ where: { entityId: registration.id } });
+      await prisma.registration.delete({ where: { id: registration.id } });
+    }
+  });
+
+  it('recusa criar Pix com taxas sem confirmar a tarifa da conta', async () => {
+    manualService(); vi.stubEnv('MERCADO_PAGO_PIX_FEE_BPS', ''); vi.stubEnv('MERCADO_PAGO_PIX_FEE_FIXED_CENTS', '');
+    await expect(payments.checkoutConfig(registrationId, 'acesso-ficticio')).rejects.toMatchObject({ status: 503 });
+    expect(await prisma.paymentAttempt.count({ where: { registrationId } })).toBe(0); expect(paymentGateway.createPayment).not.toHaveBeenCalled();
+  });
+
+  it('cobra a composição revisada e reserva somente a inscrição para o organizador', async () => {
+    vi.stubEnv('MERCADO_PAGO_PIX_FEE_BPS', '99');
+    vi.stubEnv('MERCADO_PAGO_PIX_FEE_FIXED_CENTS', '0');
+    const manual = manualService();
+    const quote = await payments.checkoutConfig(
+      registrationId,
+      'acesso-ficticio',
+    );
+    expect(quote.pixPricing).toMatchObject({
+      registrationAmountInCents: 1055,
+      platformFeeInCents: 100,
+      processingFeeInCents: 12,
+      totalInCents: 1167,
+    });
+    const input = {
+      method: 'pix' as const,
+      installments: 1,
+      cpf: '12345678909',
+      pixPricingToken: quote.pixPricing!.pricingToken,
+    };
+    await expect(
+      payments.create(registrationId, 'acesso-ficticio', randomUUID(), {
+        ...input,
+        pixPricingToken: '0'.repeat(64),
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(
+      await prisma.paymentAttempt.count({ where: { registrationId } }),
+    ).toBe(0);
+    paymentGateway.createPayment.mockImplementation(
+      async (_token: string, _key: string, body: Record<string, unknown>) => ({
+        ...provider(String(body.external_reference), 'pending'),
+        transaction_amount: Number(body.transaction_amount),
+      }),
+    );
+    const idempotency = randomUUID();
+    const response = await payments.create(
+      registrationId,
+      'acesso-ficticio',
+      idempotency,
+      input,
+    );
+    expect(response.amountInCents).toBe(1167);
+    expect(response.pricing).toMatchObject({ platformFeeInCents: 100 });
+    const paid = { ...provider(response.id), transaction_amount: 11.67 };
+    await payments.applyPayment(response.id, paid);
+    paymentGateway.getPayment.mockResolvedValue(paid);
+    const row = await prisma.pixPayout.findFirstOrThrow({ where: { ownerId } });
+    expect(row.amountInCents).toBe(1055);
+    expect((await manual.prepare(admin(), row.id)).amountInCents).toBe(1055);
+    const saved = await prisma.paymentAttempt.findUniqueOrThrow({
+      where: { id: response.id },
+    });
+    expect(saved.pricingSnapshot).toMatchObject({
+      totalInCents: 1167,
+      processingRateBps: 99,
+    });
+    vi.stubEnv('MERCADO_PAGO_PIX_FEE_BPS', '0');
+    const same = await payments.create(
+      registrationId,
+      'acesso-ficticio',
+      idempotency,
+      input,
+    );
+    expect(same.amountInCents).toBe(1167);
+    expect(paymentGateway.createPayment).toHaveBeenCalledTimes(1);
+  });
 
   it('reserva o repasse manual, registra o comprovante criptografado e nunca envia dinheiro pela API', async () => {
     await approved();

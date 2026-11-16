@@ -22,6 +22,7 @@ import {
   readPixDestination,
 } from './pix-payout.policy.js';
 import type { PixPayout } from '../../generated/prisma/client.js';
+import { organizerPayoutAmount } from './pix-pricing.js';
 
 export type ManualReceipt = {
   receiptId: string;
@@ -105,7 +106,7 @@ export class ManualPayoutsService {
       !attempt.account.active ||
       !attempt.providerPaymentId ||
       attempt.method !== 'pix' ||
-      attempt.amountInCents !== row.amountInCents ||
+      organizerPayoutAmount(attempt) !== row.amountInCents ||
       attempt.account.isTest !==
         ((process.env.MERCADO_PAGO_TEST_MODE ?? 'true') === 'true')
     )
@@ -122,7 +123,7 @@ export class ManualPayoutsService {
       payment,
       attempt.id,
       attempt.account.merchantId,
-      row.amountInCents,
+      attempt.amountInCents,
       'pix',
       1,
     );

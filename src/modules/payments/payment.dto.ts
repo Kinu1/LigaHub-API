@@ -19,6 +19,9 @@ export class AuthorizeAccountDto {
   ownerId?: string;
 }
 export class CreatePaymentDto {
+  @IsOptional()
+  @Matches(/^[a-f0-9]{64}$/, { message: 'Revise a composição do Pix antes de confirmar.' })
+  pixPricingToken?: string;
   // Optional for existing API clients; the web checkout explicitly supplies it.
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>

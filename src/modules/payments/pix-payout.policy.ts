@@ -5,6 +5,7 @@ import {
 import { isEmail, isUUID } from 'class-validator';
 import type { PaymentAttempt, Prisma } from '../../generated/prisma/client.js';
 import { decryptCredential, digest } from './payment-security.js';
+import { organizerPayoutAmount } from './pix-pricing.js';
 
 export const pixKeyTypes = [
   'CPF',
@@ -121,7 +122,7 @@ export async function enqueuePixPayout(
       registrationId: payment.registrationId,
       ownerId: payment.payoutOwnerId,
       destinationEncrypted: payment.payoutDestinationEncrypted,
-      amountInCents: payment.amountInCents,
+      amountInCents: organizerPayoutAmount(payment),
     },
   });
 }

@@ -4,10 +4,17 @@ import { lazy, Suspense, useRef, useState } from 'react';
 import { api, ApiError, send } from '../api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { formatCpf, money, type Registration } from '../types';
+import {
+  formatCpf,
+  money,
+  type Registration,
+  type PaymentPricing,
+} from '../types';
+import { PaymentPricingBreakdown } from './payment-pricing';
 import { Field, Loading, Notice } from '../ui';
 const CardCheckout = lazy(() => import('./card-checkout'));
 type PaymentBody = {
+  pixPricingToken?: string;
   method: 'pix' | 'card';
   installments: number;
   cpf: string;
@@ -30,6 +37,7 @@ export function Checkout({
   const [busy, setBusy] = useState(false);
   const [uncertain, setUncertain] = useState(false);
   const [reviewBody, setReviewBody] = useState<PaymentBody>();
+  const [reviewPricing, setReviewPricing] = useState<PaymentPricing>();
   const attempt = useRef<{ key: string; body: PaymentBody } | null>(null);
   const locked = useRef(false);
   const config = useQuery({
@@ -40,6 +48,7 @@ export function Checkout({
         amountInCents: number;
         maxInstallments: number;
         allowedMethods?: ('pix' | 'card')[];
+        pixPricing?: PaymentPricing & { pricingToken: string };
       }>(`/public/registrations/${registration.id}/checkout`),
   });
   const pay = async (body: PaymentBody) => {
@@ -71,6 +80,7 @@ export function Checkout({
       if (!unknown) {
         attempt.current = null;
         setReviewBody(undefined);
+        if (e instanceof ApiError && e.status === 409) await config.refetch();
       }
     } finally {
       locked.current = false;
@@ -114,11 +124,19 @@ export function Checkout({
             Pagador: {reviewBody.payerName} · CPF {formatCpf(reviewBody.cpf)}
           </p>
           <p className="font-semibold">
-            {money(registration.priceInCents)} ·{' '}
+            {money(
+              reviewBody.method === 'pix' && reviewPricing
+                ? reviewPricing.totalInCents
+                : registration.priceInCents,
+            )}{' '}
+            ·{' '}
             {reviewBody.method === 'pix'
               ? 'Pix'
               : `Cartão em ${reviewBody.installments} parcela(s)`}
           </p>
+          {reviewBody.method === 'pix' && reviewPricing && (
+            <PaymentPricingBreakdown pricing={reviewPricing} />
+          )}
           {reviewBody.method === 'card' && (
             <p className="muted text-xs">
               O valor acima é o preço base. Confira no formulário do Mercado
@@ -177,47 +195,56 @@ export function Checkout({
             />
           </Field>
           {method === 'pix' ? (
-            <form
-              className="space-y-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const normalized = cpf.replace(/\D/g, '');
-                if (payerName.trim().length < 2) {
-                  setError('Informe o nome completo do pagador.');
-                  return;
-                }
-                if (normalized.length !== 11) {
-                  setError('Informe o CPF com 11 dígitos.');
-                  return;
-                }
-                setError('');
-                setReviewBody({
-                  method: 'pix',
-                  cpf: normalized,
-                  payerName: payerName.trim(),
-                  installments: 1,
-                });
-              }}
-            >
-              <Field
-                label="CPF do pagador"
-                hint={
-                  registration.cpf
-                    ? 'O pagamento deve usar o mesmo CPF do participante.'
-                    : 'Necessário para processar o pagamento.'
-                }
+            <>
+              {config.data.pixPricing && (
+                <PaymentPricingBreakdown pricing={config.data.pixPricing} />
+              )}
+              <form
+                className="space-y-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const normalized = cpf.replace(/\D/g, '');
+                  if (payerName.trim().length < 2) {
+                    setError('Informe o nome completo do pagador.');
+                    return;
+                  }
+                  if (normalized.length !== 11) {
+                    setError('Informe o CPF com 11 dígitos.');
+                    return;
+                  }
+                  setError('');
+                  setReviewPricing(config.data.pixPricing);
+                  setReviewBody({
+                    ...(config.data.pixPricing
+                      ? { pixPricingToken: config.data.pixPricing.pricingToken }
+                      : {}),
+                    method: 'pix',
+                    cpf: normalized,
+                    payerName: payerName.trim(),
+                    installments: 1,
+                  });
+                }}
               >
-                <Input
-                  inputMode="numeric"
-                  autoComplete="off"
-                  value={cpf}
-                  readOnly={Boolean(registration.cpf)}
-                  maxLength={14}
-                  onChange={(e) => setCpf(e.target.value)}
-                />
-              </Field>
-              <Button disabled={busy}>Revisar pagamento Pix</Button>
-            </form>
+                <Field
+                  label="CPF do pagador"
+                  hint={
+                    registration.cpf
+                      ? 'O pagamento deve usar o mesmo CPF do participante.'
+                      : 'Necessário para processar o pagamento.'
+                  }
+                >
+                  <Input
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={cpf}
+                    readOnly={Boolean(registration.cpf)}
+                    maxLength={14}
+                    onChange={(e) => setCpf(e.target.value)}
+                  />
+                </Field>
+                <Button disabled={busy}>Revisar pagamento Pix</Button>
+              </form>
+            </>
           ) : config.data ? (
             <div className="payment-sdk-light">
               <Suspense fallback={<Loading />}>

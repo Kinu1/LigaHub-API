@@ -11,6 +11,7 @@ import { api, send } from '../api';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
 import { money, reviewReasonText, type Registration } from '../types';
+import { PaymentPricingBreakdown } from './payment-pricing';
 import { Confirm, Heading, Loading, Notice, Status } from '../ui';
 import { EventArtwork } from './event-images';
 import { Steps } from './public-shared';
@@ -103,7 +104,10 @@ export function ParticipantPage() {
       <section className="card mb-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <Status value={registration.status} />
-          <p className="font-semibold">{money(registration.priceInCents)}</p>
+          <div className="text-right">
+            <p className="muted text-xs">Valor da inscrição</p>
+            <p className="font-semibold">{money(registration.priceInCents)}</p>
+          </div>
         </div>
         <p className="muted mt-4 text-sm break-all">
           {registration.name} · {registration.email}
@@ -190,6 +194,11 @@ export function ParticipantPage() {
                 </p>
                 <Status value={p.status} />
               </div>
+              {p.pricing && (
+                <div className="mt-4">
+                  <PaymentPricingBreakdown pricing={p.pricing} historical />
+                </div>
+              )}
               {p.status === 'refunded' && (
                 <p className="muted mt-3">
                   Este pagamento foi reembolsado pelo Mercado Pago. Consulte o

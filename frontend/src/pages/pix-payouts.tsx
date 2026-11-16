@@ -30,7 +30,13 @@ type Payout = {
   reason?: string;
   createdAt: string;
   manualReservedBy?: string | null;
-  payment?: { registration: { name: string; event: { title: string } } };
+  payment?: {
+    registration: { name: string; event: { title: string } };
+    amountInCents?: number;
+    registrationAmountInCents?: number | null;
+    platformFeeInCents?: number | null;
+    processingFeeInCents?: number | null;
+  };
 };
 const statusLabels: Record<string, string> = {
   pending: 'Aguardando envio',
@@ -108,9 +114,10 @@ export function PixPayoutSection() {
     <section className="data-section mb-6 space-y-5">
       <h2>Recebimento por Pix</h2>
       <p className="text-sm text-muted-foreground">
-        O valor integral de cada inscrição paga por Pix será repassado{' '}
-        {manual ? 'manualmente ' : ''}à chave aprovada do organizador. As
-        tarifas ficam por conta da plataforma.
+        O organizador recebe o valor integral da inscrição por repasse{' '}
+        {manual ? 'manual' : 'automático'}. Nas novas cobranças Pix com taxas, o
+        participante paga R$ 1,00 de serviço LigaHub e a tarifa de processamento
+        do Mercado Pago, quando houver, além da inscrição.
       </p>
       {manual && (
         <p className="text-sm text-muted-foreground">
@@ -247,13 +254,23 @@ export function PixPayoutSection() {
               {payouts.data.items.map((p) => (
                 <li key={p.id} className="rounded-lg border p-3 text-sm">
                   <p>
-                    {date(p.createdAt)} · {money(p.amountInCents)}
+                    {date(p.createdAt)} · Repasse ao organizador:{' '}
+                    {money(p.amountInCents)}
                   </p>
                   <p>{statusLabels[p.status] ?? 'Aguardando revisão'}</p>
                   {p.payment && (
                     <p>
                       {p.payment.registration.event.title} ·{' '}
                       {p.payment.registration.name}
+                    </p>
+                  )}
+                  {p.payment?.registrationAmountInCents != null && (
+                    <p className="text-xs text-muted-foreground">
+                      Total pago: {money(p.payment.amountInCents!)} · Taxa
+                      LigaHub: {money(p.payment.platformFeeInCents ?? 0)} ·
+                      Processamento Mercado Pago:{' '}
+                      {money(p.payment.processingFeeInCents ?? 0)}. As taxas não
+                      compõem o repasse ao organizador.
                     </p>
                   )}
                   <p className="break-all text-xs text-muted-foreground">

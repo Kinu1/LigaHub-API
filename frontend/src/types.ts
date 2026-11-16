@@ -20,6 +20,7 @@ export type RegistrationType = {
   availableSpots?: number | null;
 };
 export type Event = {
+  pixFeePolicy?: { platformFeeInCents: number };
   id: string;
   publicId: string;
   logoImage?: string | null;
@@ -48,7 +49,14 @@ export type Page<T> = {
   page: number;
   limit: number;
 };
+export type PaymentPricing = {
+  registrationAmountInCents: number;
+  platformFeeInCents: number;
+  processingFeeInCents: number;
+  totalInCents: number;
+};
 export type Payment = {
+  pricing?: PaymentPricing;
   id: string;
   method: string;
   status: string;

@@ -106,7 +106,7 @@ export function Dashboard() {
                   'Inscrições no estado confirmado',
                 ],
                 [
-                  'Valor base aprovado',
+                  'Total aprovado',
                   money(info.approvedBaseAmountInCents),
                   'Tentativas aprovadas; não é saldo nem receita líquida',
                 ],

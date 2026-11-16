@@ -39,7 +39,7 @@ describe('Recebimento e repasse Pix', () => {
   it('cadastra chave sem aprovar por conta própria e explica o valor integral e a ativação pendente', async () => {
     const user = userEvent.setup();
     const view = show();
-    await screen.findByText(/As tarifas ficam por conta da plataforma/);
+    await screen.findByText(/o participante paga R\$ 1,00 de serviço LigaHub/);
     expect(screen.getByText(/ainda não estão ativados/)).toBeTruthy();
     await user.selectOptions(
       screen.getByLabelText('Tipo de chave Pix'),

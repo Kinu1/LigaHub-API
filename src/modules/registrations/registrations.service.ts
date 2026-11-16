@@ -7,6 +7,8 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { pixRouting } from '../payments/pix-routing.js';
+import { publicPixPricing } from '../payments/pix-pricing.js';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { PrismaService } from '../../prisma.service.js';
 import { Prisma } from '../../generated/prisma/client.js';
@@ -154,9 +156,12 @@ export class RegistrationsService {
             'O organizador deste evento está indisponível.',
           );
         if (registrationType.priceInCents > 0) {
-          const account = await tx.paymentAccount.findFirst({
-            where: { ownerId: event.ownerId!, active: true },
-          });
+          const routing = await pixRouting(tx, event.ownerId!);
+          const account =
+            routing?.account ??
+            (await tx.paymentAccount.findFirst({
+              where: { ownerId: event.ownerId!, active: true },
+            }));
           if (!account)
             throw new ConflictException(
               'O organizador ainda não conectou sua conta de recebimento.',
@@ -299,6 +304,9 @@ export class RegistrationsService {
         method: true,
         installments: true,
         amountInCents: true,
+        registrationAmountInCents: true,
+        platformFeeInCents: true,
+        processingFeeInCents: true,
         status: true,
         checkout: true,
         createdAt: true,
@@ -329,7 +337,20 @@ export class RegistrationsService {
         publicId: registration.event.publicId,
         status: registration.event.status,
       },
-      payments,
+      payments: payments.map((payment) => {
+        const {
+          registrationAmountInCents: _base,
+          platformFeeInCents: _platform,
+          processingFeeInCents: _processing,
+          ...record
+        } = payment;
+        return {
+          ...record,
+          ...(publicPixPricing(payment)
+            ? { pricing: publicPixPricing(payment) }
+            : {}),
+        };
+      }),
     };
   }
 
@@ -374,6 +395,7 @@ export class RegistrationsService {
       )
         throw new ConflictException('Não é possível renovar esta reserva.');
       if (
+        !(await pixRouting(tx, record.event.ownerId!)) &&
         !(await tx.paymentAccount.findFirst({
           where: { ownerId: record.event.ownerId!, active: true },
         }))
