@@ -155,7 +155,8 @@ export function FinancePage() {
       <section className="data-section">
         <h2 className="mb-5">Histórico de pagamentos</h2>
         <p className="mb-4 text-sm text-muted-foreground">
-          O valor base é o valor da tentativa de pagamento; não representa saldo
+          O total cobrado é o valor da tentativa de pagamento, incluindo as
+          taxas exibidas ao participante quando aplicáveis; não representa saldo
           nem receita líquida.
         </p>
         <FinanceFilters
@@ -181,7 +182,9 @@ export function FinancePage() {
                     <TableHead>Nome completo do pagador</TableHead>
                     <TableHead>CPF do pagador</TableHead>
                     <TableHead>Forma</TableHead>
-                    <TableHead className="xl:text-right">Valor base</TableHead>
+                    <TableHead className="xl:text-right">
+                      Total cobrado
+                    </TableHead>
                     <TableHead>Estado</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -222,9 +225,17 @@ export function FinancePage() {
                       </TableCell>
                       <TableCell
                         className="whitespace-normal break-words tabular-nums xl:text-right"
-                        data-label="Valor base"
+                        data-label="Total cobrado"
                       >
                         {money(p.amountInCents)}
+                        {p.pricing && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Inscrição{' '}
+                            {money(p.pricing.registrationAmountInCents)} ·
+                            LigaHub {money(p.pricing.platformFeeInCents)} ·
+                            Mercado Pago {money(p.pricing.processingFeeInCents)}
+                          </p>
+                        )}
                       </TableCell>
                       <TableCell
                         className="whitespace-normal break-words"

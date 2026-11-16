@@ -4,10 +4,20 @@
 
 Configurar `MERCADO_PAGO_PAYOUT_MODE=manual` e `MERCADO_PAGO_PAYOUTS_ENABLED=false`. Este é o modo padrão. Não exige habilitar Payouts nem registrar chave Ed25519, porque a aplicação não envia dinheiro. O Mercado Pago continua confirmando as cobranças pelo webhook e pela reconciliação.
 
+### Taxas do participante nas novas cobranças Pix centralizadas
+
+O preço da inscrição continua pertencendo ao organizador. Acrescentar **R$ 1,00 de serviço LigaHub** e o encargo de processamento calculado pela tarifa contratada da conta Mercado Pago. O participante vê as três parcelas e o total antes de gerar o Pix. O aviso aparece no evento, na revisão da inscrição, na revisão do pagamento, no acompanhamento e no Financeiro. Inscrições gratuitas continuam gratuitas. Cartões e cobranças antigas preservam sua regra anterior; não há alteração retroativa de valores.
+
+Configurar **explicitamente** `MERCADO_PAGO_PIX_FEE_BPS` e `MERCADO_PAGO_PIX_FEE_FIXED_CENTS` após conferir a condição da conta. Um ponto-base corresponde a 0,01%: 99 significa 0,99%; uma isenção deve ser cadastrada como `0` nos dois campos. Não há consulta pública de tarifa em tempo real implementada. A tarifa pública de mercado não comprova a condição individual da conta; valores ausentes bloqueiam a nova cotação em vez de assumir isenção. Os parâmetros não foram preenchidos automaticamente no ambiente real.
+
+O cálculo aplica a tarifa percentual ao **total cobrado**, incluindo os acréscimos. Usa arredondamento comercial ao centavo e encontra o menor total que preserva o preço da inscrição e R$ 1,00 de LigaHub depois da tarifa cadastrada, inclusive uma parcela fixa quando houver. Exemplo exclusivamente ilustrativo: inscrição de R$ 10,00 + LigaHub R$ 1,00 + processamento R$ 0,11 = total R$ 11,11, se a tarifa cadastrada for 0,99% sem parcela fixa. A regra de arredondamento e os parâmetros precisam corresponder ao contrato; diferenças efetivas do provedor são conciliadas operacionalmente e não geram cobrança posterior automática ao participante.
+
+A cotação é calculada no servidor e vinculada à inscrição, conta e condição tarifária. O cliente devolve o identificador da cotação revisada. Uma condição alterada exige nova revisão (HTTP 409) antes de criar outra cobrança. O total, a composição e a condição ficam congelados na tentativa; reenvios idempotentes preservam o valor original. O webhook valida o valor **total cobrado**, e o repasse manual reserva apenas o preço da inscrição. O identificador e a cotação não permitem enviar um preço arbitrário pelo navegador.
+
 1. No Financeiro, cadastrar a chave Pix do organizador e aprová-la como administrador após conferir o beneficiário. O cadastro fica disponível mesmo antes de configurar a conta centralizada.
 2. Configurar `MERCADO_PAGO_PIX_PLATFORM_ACCOUNT_ID` com o UUID interno da conta Mercado Pago da plataforma já conectada por OAuth, depois de cadastrar e aprovar o destino. Antes disso, as cobranças continuam usando a configuração anterior. Apenas novas cobranças centralizadas entram no controle de repasses.
 3. Quando a inscrição estiver confirmada e o pagamento aprovado/acreditado, localizar o repasse pelo evento e participante e clicar em **Reservar e visualizar repasse**. A aplicação consulta o pagamento novamente, valida a inscrição e a chave, e reserva a operação para aquele administrador. Não envia uma transferência.
-4. No aplicativo do Mercado Pago, transferir o valor integral à chave exibida e conferir o beneficiário antes de confirmar. As tarifas são assumidas pela plataforma.
+4. No aplicativo do Mercado Pago, transferir o valor integral da inscrição à chave exibida e conferir o beneficiário antes de confirmar. O repasse exclui a taxa LigaHub e o encargo de processamento que compõem o total cobrado do participante nas novas operações com taxas.
 5. No LigaHub, informar o **ID da transação no comprovante**, data/hora e marcar que o valor integral já foi transferido. Clicar em **Registrar repasse realizado**. É registrado o identificador do comprovante, não um upload de imagem/PDF. O histórico passa a mostrar **Repasse manual registrado**. O organizador pode consultar esse registro, mas não marcar repasses como pagos.
 
 A reserva não expira automaticamente: se a página for fechada, o mesmo administrador usa **Retomar registro do repasse**, confere seu extrato e conclui o registro sem enviar outro Pix. Outro administrador não pode tomar a reserva nem registrar o comprovante. Não apagar a reserva para tentar novamente; uma operação já feita precisa ser reconciliada pelo extrato. Comprovantes têm identificador único, valor integral obrigatório e ficam criptografados, com auditoria. Repetir o mesmo registro não duplica o lançamento.
@@ -17,7 +27,7 @@ A reserva não expira automaticamente: se a página for fechada, o mesmo adminis
 ## Integração automática opcional, desativada
 
 Fluxo: cliente → conta Mercado Pago da plataforma → chave Pix aprovada do organizador.
-O organizador recebe **100% do valor da inscrição**. A plataforma assume as tarifas e precisa manter saldo suficiente, inclusive para essa diferença. O processamento assíncrono não garante crédito imediato no banco.
+O organizador recebe **100% do valor da inscrição**. Nas novas cobranças Pix centralizadas em modo manual, o participante paga R$ 1,00 ao LigaHub e a tarifa de processamento cadastrada, quando houver. Operações anteriores e a integração automática opcional preservam sua regra de tarifas. A plataforma precisa manter saldo disponível suficiente. O processamento assíncrono não garante crédito imediato no banco.
 
 ## Preparação e habilitação
 

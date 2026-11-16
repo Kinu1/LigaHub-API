@@ -17,6 +17,7 @@ import {
   readPixDestination,
 } from './pix-payout.policy.js';
 import type { ReconcileResult } from './payments.service.js';
+import { organizerPayoutAmount } from './pix-pricing.js';
 
 @Injectable()
 export class PixPayoutsService {
@@ -45,6 +46,10 @@ export class PixPayoutsService {
       manualPaidAt: true,
       payment: {
         select: {
+          amountInCents: true,
+          registrationAmountInCents: true,
+          platformFeeInCents: true,
+          processingFeeInCents: true,
           registration: {
             select: { name: true, event: { select: { title: true } } },
           },
@@ -186,7 +191,7 @@ export class PixPayoutsService {
     const destination = readPixDestination(row.destinationEncrypted);
     if (
       destination.ownerId !== row.ownerId ||
-      row.amountInCents !== attempt.amountInCents ||
+      row.amountInCents !== organizerPayoutAmount(attempt) ||
       row.amountInCents < 100 ||
       attempt.method !== 'pix' ||
       attempt.payoutOwnerId !== row.ownerId ||
@@ -217,7 +222,7 @@ export class PixPayoutsService {
       payment,
       attempt.id,
       attempt.account.merchantId,
-      row.amountInCents,
+      attempt.amountInCents,
       'pix',
       1,
     );

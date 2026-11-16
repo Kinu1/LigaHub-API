@@ -68,10 +68,20 @@ function EventSummary({
             : money(registrationType.priceInCents)}
         </p>
         {event.availableSpots !== undefined && (
-          <p className="muted mt-4 text-xs">
-            {event.availableSpots} vaga(s) disponível(is) segundo a última
-            consulta.
-          </p>
+          <>
+            {registrationType.priceInCents > 0 && event.pixFeePolicy && (
+              <p className="mt-3 text-sm">
+                No Pix: acréscimo de{' '}
+                {money(event.pixFeePolicy.platformFeeInCents)} de taxa de
+                serviço LigaHub e tarifa do Mercado Pago, quando aplicável. O
+                total será exibido antes de confirmar o pagamento.
+              </p>
+            )}
+            <p className="muted mt-4 text-xs">
+              {event.availableSpots} vaga(s) disponível(is) segundo a última
+              consulta.
+            </p>
+          </>
         )}
       </div>
     </aside>
@@ -243,6 +253,16 @@ export function PublicEvent() {
                         : 'Sua vaga será reservada pela API. O pagamento vem na próxima etapa.'}
                     </p>
                   </div>
+                  {selectedRegistrationType.priceInCents > 0 &&
+                    event.pixFeePolicy && (
+                      <p className="text-sm">
+                        O valor acima é da inscrição. No Pix, o participante
+                        paga também{' '}
+                        {money(event.pixFeePolicy.platformFeeInCents)} ao
+                        LigaHub e a tarifa de processamento do Mercado Pago, se
+                        houver. Você verá a composição e o total antes de pagar.
+                      </p>
+                    )}
                   <div className="flex flex-wrap gap-3">
                     <Button
                       type="button"

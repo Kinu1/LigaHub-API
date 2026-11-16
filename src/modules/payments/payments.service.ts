@@ -36,7 +36,12 @@ import {
 } from './payment-security.js';
 import type { ProviderApi } from './payment-orders.js';
 import { pixRouting } from './pix-routing.js';
-import { enqueuePixPayout } from './pix-payout.policy.js';
+import { enqueuePixPayout, payoutMode } from './pix-payout.policy.js';
+import {
+  assertPixPricingAcknowledged,
+  quotePixPricing,
+  publicPixPricing,
+} from './pix-pricing.js';
 
 const unresolved = [
   'created',
@@ -118,6 +123,14 @@ export class PaymentsService {
       amountInCents: registration.priceInCents,
       currency: 'BRL',
       maxInstallments: 12,
+      ...(routing && payoutMode() === 'manual'
+        ? {
+            pixPricing: quotePixPricing(
+              registration.priceInCents,
+              `${registration.id}:${routing.account.id}`,
+            ),
+          }
+        : {}),
       ...(routing
         ? { allowedMethods: account ? ['pix', 'card'] : ['pix'] }
         : {}),
@@ -161,6 +174,9 @@ export class PaymentsService {
         issuerId: input.issuerId ?? null,
         installments: input.installments,
         cpf: input.cpf,
+        ...(input.pixPricingToken
+          ? { pixPricingToken: input.pixPricingToken }
+          : {}),
         ...(input.payerName !== undefined
           ? { payerName: input.payerName }
           : {}),
@@ -210,6 +226,11 @@ export class PaymentsService {
         throw new ServiceUnavailableException(
           'O organizador ainda não conectou uma conta de pagamento.',
         );
+      const pricing =
+        routing && payoutMode() === 'manual'
+          ? quotePixPricing(current.priceInCents, `${current.id}:${account.id}`)
+          : null;
+      if (pricing) assertPixPricingAcknowledged(pricing, input.pixPricingToken);
       let expiresAt = current.reservationExpiresAt;
       if (input.method === 'pix') {
         expiresAt = new Date(
@@ -238,7 +259,8 @@ export class PaymentsService {
       const attemptId = randomUUID();
       const payer = { name: input.payerName ?? current.name, cpf: input.cpf };
       const providerRequest = {
-        transaction_amount: current.priceInCents / 100,
+        transaction_amount:
+          (pricing?.totalInCents ?? current.priceInCents) / 100,
         external_reference: attemptId,
         installments: input.installments,
         payment_method_id:
@@ -270,7 +292,15 @@ export class PaymentsService {
           requestHash,
           method: input.method,
           installments: input.installments,
-          amountInCents: current.priceInCents,
+          amountInCents: pricing?.totalInCents ?? current.priceInCents,
+          ...(pricing
+            ? {
+                registrationAmountInCents: pricing.registrationAmountInCents,
+                platformFeeInCents: pricing.platformFeeInCents,
+                processingFeeInCents: pricing.processingFeeInCents,
+                pricingSnapshot: pricing,
+              }
+            : {}),
           ...(routing
             ? {
                 payoutOwnerId: current.event.ownerId,
@@ -909,6 +939,9 @@ export class PaymentsService {
       method: attempt.method,
       installments: attempt.installments,
       amountInCents: attempt.amountInCents,
+      ...(publicPixPricing(attempt)
+        ? { pricing: publicPixPricing(attempt) }
+        : {}),
       status: attempt.status,
       statusDetail: attempt.statusDetail,
       checkout: attempt.checkout,
