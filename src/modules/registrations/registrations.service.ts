@@ -19,7 +19,12 @@ import {
 import type { CreateRegistrationDto } from './registrations.dto.js';
 
 import { isUniqueConstraint } from '../../common/prisma-errors.js';
-import { encryptCredential } from '../payments/payment-security.js';
+import {
+  encryptCredential,
+  decryptCredential,
+} from '../payments/payment-security.js';
+import { validParticipantCpf } from './participant-cpf.js';
+import { createParticipantsWorkbook } from './participants-export.js';
 import type { RegistrationPaginationDto } from './registrations.dto.js';
 
 export const hashParticipantToken = (token: string): string =>
@@ -76,6 +81,10 @@ export class RegistrationsService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   async reserve(publicId: string, input: CreateRegistrationDto) {
+    if (!validParticipantCpf(input.cpf))
+      throw new BadRequestException(
+        'Informe um CPF válido para o participante.',
+      );
     const name = input.name.trim();
     if (name.length < 2)
       throw new BadRequestException('Informe o nome completo do participante.');
@@ -108,10 +117,13 @@ export class RegistrationsService {
               },
             ];
         const registrationType = availableTypes.find(
-          (type) => type.id === (input.registrationTypeId ?? availableTypes[0].id),
+          (type) =>
+            type.id === (input.registrationTypeId ?? availableTypes[0].id),
         );
         if (!registrationType)
-          throw new BadRequestException('Selecione um tipo de inscrição válido.');
+          throw new BadRequestException(
+            'Selecione um tipo de inscrição válido.',
+          );
         const now = new Date();
         assertRegistrationOpen(event, now);
         if (!event.owner?.active)
@@ -180,12 +192,16 @@ export class RegistrationsService {
             eventId: event.id,
             name,
             email,
+            participantCpfEncrypted: input.cpf
+              ? encryptCredential(input.cpf)
+              : null,
             answers: answers as Prisma.InputJsonObject,
             formSnapshot: event.form as Prisma.InputJsonValue,
             registrationTypeId: registrationType.id,
             registrationTypeName: registrationType.name,
             priceInCents: registrationType.priceInCents,
-            status: registrationType.priceInCents === 0 ? 'confirmed' : 'reserved',
+            status:
+              registrationType.priceInCents === 0 ? 'confirmed' : 'reserved',
             reservationExpiresAt: expiresAt,
             manageTokenHash: hashParticipantToken(manageToken),
             manageTokenEncrypted: encryptCredential(manageToken),
@@ -270,6 +286,9 @@ export class RegistrationsService {
       reviewReason: registration.reviewReason,
       name: registration.name,
       email: registration.email,
+      cpf: registration.participantCpfEncrypted
+        ? decryptCredential(registration.participantCpfEncrypted)
+        : null,
       answers: registration.answers,
       status:
         registration.status === 'reserved' &&
@@ -419,6 +438,10 @@ export class RegistrationsService {
     const now = new Date();
     const where: Prisma.RegistrationWhereInput = {
       eventId,
+      ...(pagination.registrationTypeId &&
+      pagination.registrationTypeId !== 'geral'
+        ? { registrationTypeId: pagination.registrationTypeId }
+        : {}),
       ...(pagination.search
         ? {
             OR: [
@@ -459,10 +482,21 @@ export class RegistrationsService {
               ? { status: pagination.status }
               : {}),
     };
+    if (pagination.registrationTypeId === 'geral') {
+      const existing = where.AND
+        ? Array.isArray(where.AND)
+          ? where.AND
+          : [where.AND]
+        : [];
+      where.AND = [
+        ...existing,
+        { OR: [{ registrationTypeId: 'geral' }, { registrationTypeId: null }] },
+      ];
+    }
     const [items, total] = await Promise.all([
       this.prisma.registration.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (pagination.page - 1) * pagination.limit,
         take: pagination.limit,
         select: {
@@ -474,6 +508,13 @@ export class RegistrationsService {
           reviewReason: true,
           priceInCents: true,
           registrationTypeName: true,
+          registrationTypeId: true,
+          participantCpfEncrypted: true,
+          payments: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: { status: true },
+          },
           status: true,
           reservationExpiresAt: true,
           suspendedAt: true,
@@ -484,8 +525,13 @@ export class RegistrationsService {
       this.prisma.registration.count({ where }),
     ]);
     return {
-      items: items.map((item) => ({
+      items: items.map(({ participantCpfEncrypted, payments, ...item }) => ({
         ...item,
+        cpf: participantCpfEncrypted
+          ? decryptCredential(participantCpfEncrypted)
+          : null,
+        paymentStatus:
+          item.priceInCents === 0 ? 'free' : (payments[0]?.status ?? 'unpaid'),
         status:
           item.status === 'reserved' && item.reservationExpiresAt <= now
             ? 'expired'
@@ -495,6 +541,38 @@ export class RegistrationsService {
       page: pagination.page,
       limit: pagination.limit,
     };
+  }
+
+  async exportParticipants(
+    eventId: string,
+    actor: AuthenticatedUser,
+    pagination: RegistrationPaginationDto,
+  ) {
+    const event = await this.eventAccess(eventId, actor);
+    const filters = {
+      search: pagination.search,
+      status: pagination.status,
+      registrationTypeId: pagination.registrationTypeId,
+    };
+    const first = await this.list(eventId, actor, {
+      ...filters,
+      page: 1,
+      limit: 100,
+    });
+    if (first.total > 50000)
+      throw new BadRequestException(
+        'A exportação suporta até 50.000 participantes. Filtre por tipo de inscrição ou situação.',
+      );
+    const rows = [...first.items];
+    for (let page = 2; page <= Math.ceil(first.total / 100); page++) {
+      const batch = await this.list(eventId, actor, {
+        ...filters,
+        page,
+        limit: 100,
+      });
+      rows.push(...batch.items);
+    }
+    return createParticipantsWorkbook(event.title, rows);
   }
 
   async suspend(id: string, suspended: boolean, actor: AuthenticatedUser) {

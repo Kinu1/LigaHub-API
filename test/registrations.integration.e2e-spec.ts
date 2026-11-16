@@ -98,6 +98,7 @@ describe('Reservas de vagas e controle de inscrições no PostgreSQL', () => {
   }
 
   const input = (email = `${randomUUID()}@ligahub.test`) => ({
+    cpf: '12345678909',
     name: 'Participante de teste',
     email,
     answers: {},

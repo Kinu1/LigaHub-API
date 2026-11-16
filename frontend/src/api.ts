@@ -32,6 +32,7 @@ export async function api<T>(
   path: string,
   options: RequestInit = {},
   retry = true,
+  responseType: 'json' | 'blob' = 'json',
 ): Promise<T> {
   await security();
   const response = await fetch(`/api${path}`, {
@@ -66,7 +67,7 @@ export async function api<T>(
       });
     try {
       await refresh;
-      return api<T>(path, options, false);
+      return api<T>(path, options, false, responseType);
     } catch {
       window.dispatchEvent(new Event('session-expired'));
       throw new ApiError(
@@ -93,6 +94,7 @@ export async function api<T>(
       fields,
     );
   }
+  if (responseType === 'blob') return response.blob() as Promise<T>;
   return response.status === 204 ? (undefined as T) : response.json();
 }
 export const send = <T>(

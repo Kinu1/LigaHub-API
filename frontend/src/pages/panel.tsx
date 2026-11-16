@@ -345,6 +345,9 @@ export function EventDetails() {
   const [tab, setTab] = useState('inscricoes');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [registrationTypeId, setRegistrationTypeId] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
   const querySearch = useDebounced(search);
   const [params] = useSearchParams();
   const [status, setStatus] = useState(
@@ -363,10 +366,17 @@ export function EventDetails() {
     queryFn: () => api<Event>(`/events/${id}`),
   });
   const registrations = useQuery({
-    queryKey: ['registrations', id, page, querySearch, status],
+    queryKey: [
+      'registrations',
+      id,
+      page,
+      querySearch,
+      status,
+      registrationTypeId,
+    ],
     queryFn: () =>
       api<Page<Registration>>(
-        `/events/${id}/registrations?page=${page}&search=${encodeURIComponent(querySearch)}&status=${status}`,
+        `/events/${id}/registrations?page=${page}&search=${encodeURIComponent(querySearch)}&status=${status}${registrationTypeId ? `&registrationTypeId=${encodeURIComponent(registrationTypeId)}` : ''}`,
       ),
     enabled: tab === 'inscricoes',
   });
@@ -482,7 +492,7 @@ export function EventDetails() {
               <TabsTrigger value="historico">Histórico</TabsTrigger>
             </TabsList>
             <TabsContent value="inscricoes" className="data-section">
-              <div className="filter-bar mb-5 grid gap-3 sm:grid-cols-[1fr_200px]">
+              <div className="filter-bar mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_200px_200px_auto]">
                 <Input
                   aria-label="Buscar inscrição"
                   placeholder="Buscar por nome ou e-mail"
@@ -507,7 +517,66 @@ export function EventDetails() {
                   <option value="payment_review">Revisão necessária</option>
                   <option value="cancellation">Cancelamento solicitado</option>
                 </select>
+                <select
+                  aria-label="Tipo de inscrição"
+                  value={registrationTypeId}
+                  onChange={(e) => {
+                    setRegistrationTypeId(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="">Todos os tipos</option>
+                  {(event.registrationTypes?.length
+                    ? event.registrationTypes
+                    : [{ id: 'geral', name: 'Inscrição geral' }]
+                  ).map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.name}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  variant="outline"
+                  disabled={exporting || !registrations.data?.total}
+                  onClick={async () => {
+                    setExporting(true);
+                    setExportError('');
+                    try {
+                      const filters = new URLSearchParams({
+                        search: querySearch,
+                        status,
+                      });
+                      if (registrationTypeId)
+                        filters.set('registrationTypeId', registrationTypeId);
+                      const blob = await api<Blob>(
+                        `/events/${id}/registrations/export?${filters}`,
+                        {},
+                        true,
+                        'blob',
+                      );
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.download = `participantes-${id}.xlsx`;
+                      document.body.appendChild(link);
+                      link.click();
+                      link.remove();
+                      setTimeout(() => URL.revokeObjectURL(url), 1000);
+                    } catch (error) {
+                      setExportError((error as Error).message);
+                    } finally {
+                      setExporting(false);
+                    }
+                  }}
+                >
+                  {exporting ? 'Exportando...' : 'Exportar Excel'}
+                </Button>
               </div>
+              <p className="muted mb-3 text-xs">
+                A exportação inclui todos os participantes dos filtros
+                selecionados, de todas as páginas.
+              </p>
+              {exportError && <Notice>{exportError}</Notice>}
               <QueryState query={registrations} hasData={!!registrations.data}>
                 {registrations.data && (
                   <p className="muted mb-3 text-sm" role="status">
@@ -520,6 +589,9 @@ export function EventDetails() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Participante</TableHead>
+                          <TableHead>CPF do participante</TableHead>
+                          <TableHead>Tipo de inscrição</TableHead>
+                          <TableHead>Pagamento</TableHead>
                           <TableHead>Estado</TableHead>
                           <TableHead>Reserva até</TableHead>
                           <TableHead>Ação</TableHead>
@@ -535,11 +607,6 @@ export function EventDetails() {
                               <div>
                                 <p className="font-medium">{r.name}</p>
                                 <p className="muted mt-1">{r.email}</p>
-                                {r.registrationTypeName && (
-                                  <p className="muted mt-1 text-xs">
-                                    {r.registrationTypeName} · {money(r.priceInCents)}
-                                  </p>
-                                )}
                                 <details className="mt-2">
                                   <summary className="cursor-pointer text-xs">
                                     Respostas do formulário
@@ -555,6 +622,23 @@ export function EventDetails() {
                                   )}
                                 </details>
                               </div>
+                            </TableCell>
+                            <TableCell data-label="CPF do participante">
+                              {formatCpf(r.cpf)}
+                            </TableCell>
+                            <TableCell
+                              data-label="Tipo de inscrição"
+                              className="whitespace-normal"
+                            >
+                              {r.registrationTypeName || 'Inscrição geral'}
+                            </TableCell>
+                            <TableCell data-label="Pagamento">
+                              <Status
+                                value={
+                                  r.paymentStatus ??
+                                  (r.priceInCents === 0 ? 'free' : 'unpaid')
+                                }
+                              />
                             </TableCell>
                             <TableCell
                               className="whitespace-normal break-words"

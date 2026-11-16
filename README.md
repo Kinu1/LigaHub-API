@@ -1,6 +1,6 @@
 # LigaHub API
 
-Aplicação para organizar eventos pagos de **uma liga acadêmica**, com backend TypeScript, NestJS, Prisma e PostgreSQL e frontend React com Tailwind CSS.
+Aplicação para organizar eventos gratuitos e pagos de **uma liga acadêmica**, com backend TypeScript, NestJS, Prisma e PostgreSQL e frontend React com Tailwind CSS.
 
 O frontend fica em `frontend/`. Depois de iniciar a API, execute `npm.cmd --prefix frontend ci` e `npm.cmd run frontend:dev`, e abra [LigaHub local](http://localhost:3001). Instruções de e-mail local, segurança, contratos e publicação estão em [frontend/README.md](frontend/README.md).
 
@@ -8,7 +8,8 @@ O frontend fica em `frontend/`. Depois de iniciar a API, execute `npm.cmd --pref
 
 - Administrador com acesso global e um responsável organizador com acesso aos próprios eventos.
 - JWT de 15 minutos, senhas Argon2id e revogação de sessões.
-- Eventos em rascunho, publicados, suspensos ou encerrados; formulário personalizável e preço único em centavos.
+- Eventos em rascunho, publicados, suspensos ou encerrados; formulário personalizável e tipos de inscrição com preços e vagas próprios, incluindo inscrições gratuitas.
+- [Participantes por tipo e exportação Excel](docs/PARTICIPANTES.md), com nome, CPF, e-mail e status de pagamento. O CPF é obrigatório nas novas inscrições e deve ser o mesmo do pagador.
 - Abertura opcional das inscrições com data e hora de Brasília; sem abertura definida, as inscrições ficam disponíveis ao publicar. A abertura deve ocorrer antes do encerramento (ou do início do evento, se não houver prazo).
 - Logo e banner opcionais enviados pelo organizador, com prévia, troca e remoção. PNG/JPG/WebP de até 5 MB são reencodados no navegador para WebP compacto (até 400000 caracteres por imagem) e salvos no banco junto ao evento. Aparecem na página pública e na inscrição; listagens não carregam os arquivos. A API aceita JSON de até 1 MB. Não exige serviço externo de arquivos; backups do banco incluem as imagens.
 - Inscrições pelo link divulgado pelo organizador, sem catálogo público nem conta do participante.

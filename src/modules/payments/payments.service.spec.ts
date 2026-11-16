@@ -4,7 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaService } from '../../prisma.service.js';
 import type { PaymentAccountsService } from './payment-accounts.service.js';
 import type { PaymentGateway } from './payment.gateway.js';
-import { digest, type ProviderPayment } from './payment-security.js';
+import {
+  digest,
+  encryptCredential,
+  type ProviderPayment,
+} from './payment-security.js';
 import { PaymentsService } from './payments.service.js';
 
 const input = { method: 'pix' as const, installments: 1, cpf: '12345678909' };
@@ -229,6 +233,48 @@ describe('PaymentsService', () => {
     expect(result).not.toHaveProperty('requestHash');
     expect(result).not.toHaveProperty('cpf');
     expect(result).not.toHaveProperty('cardToken');
+  });
+  it.each(['pix', 'card'] as const)(
+    'recusa pagamento %s com CPF diferente do participante antes de cobrar',
+    async (method) => {
+      const setup = fixture();
+      vi.stubEnv(
+        'CREDENTIALS_ENCRYPTION_KEY',
+        Buffer.alloc(32, 2).toString('base64'),
+      );
+      Object.assign(setup.registration, {
+        participantCpfEncrypted: encryptCredential('52998224725'),
+      });
+      await expect(
+        setup.service.create(
+          setup.registration.id,
+          'acesso-participante',
+          randomUUID(),
+          { ...input, method },
+        ),
+      ).rejects.toThrow('mesmo CPF do participante');
+      expect(setup.gateway.createPayment).not.toHaveBeenCalled();
+      expect(setup.prisma.$transaction).not.toHaveBeenCalled();
+    },
+  );
+  it('aceita repetição idempotente com o mesmo CPF do participante', async () => {
+    const setup = fixture();
+    vi.stubEnv(
+      'CREDENTIALS_ENCRYPTION_KEY',
+      Buffer.alloc(32, 2).toString('base64'),
+    );
+    Object.assign(setup.registration, {
+      participantCpfEncrypted: encryptCredential(input.cpf),
+    });
+    setup.attempt.status = 'approved';
+    const result = await setup.service.create(
+      setup.registration.id,
+      'acesso-participante',
+      setup.attempt.idempotencyKey,
+      input,
+    );
+    expect(result.status).toBe('approved');
+    expect(setup.gateway.createPayment).not.toHaveBeenCalled();
   });
   it('deve negar a leitura da inscrição com token incorreto', async () => {
     const setup = fixture();
