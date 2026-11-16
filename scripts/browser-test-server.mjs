@@ -22,6 +22,10 @@ Object.assign(process.env, {
   FRONTEND_URL: 'http://localhost:3101',
   CORS_ORIGINS: 'http://localhost:3101',
   MERCADO_PAGO_TEST_MODE: 'true',
+  MERCADO_PAGO_CLIENT_ID: 'aplicacao-ficticia-do-navegador',
+  MERCADO_PAGO_CLIENT_SECRET: 'segredo-ficticio-do-navegador',
+  MERCADO_PAGO_REDIRECT_URI:
+    'http://localhost:3101/api/payments/accounts/callback',
   MERCADO_PAGO_NOTIFICATION_URL: 'https://browser.invalid/payments/webhook',
 });
 globalThis.fetch = async () => {
@@ -62,6 +66,21 @@ let fixture,
   rejectNextPayment = false,
   createdCharges = 0;
 const gateway = {
+  async exchangeOAuth(input) {
+    if (input.code !== 'codigo-oauth-do-navegador')
+      throw new Error('Código de teste inválido.');
+    return {
+      access_token: 'segredo-ficticio-oauth-navegador',
+      refresh_token: 'renovacao-ficticia-oauth',
+      user_id: 900000000,
+      public_key: 'TEST-chave-publica-oauth',
+      expires_in: 3600,
+      live_mode: false,
+    };
+  },
+  async merchant() {
+    return { id: 900000000, site_id: 'MLB', tags: ['test_user'] };
+  },
   async createPayment(_token, key, body) {
     if (keys.has(key)) return remote.get(keys.get(key));
     const payment = {
@@ -193,6 +212,10 @@ async function cleanup() {
     where: { registrationId: { in: registrations.map((r) => r.id) } },
     select: { id: true },
   });
+  const accounts = await prisma.paymentAccount.findMany({
+    where: { ownerId: fixture.ownerId },
+    select: { id: true },
+  });
   await prisma.auditLog.deleteMany({
     where: {
       entityId: {
@@ -200,6 +223,7 @@ async function cleanup() {
           fixture.ownerId,
           fixture.eventId,
           fixture.accountId,
+          ...accounts.map((account) => account.id),
           ...registrations.map((r) => r.id),
           ...payments.map((p) => p.id),
           ...tasks.map((t) => t.id),
@@ -214,6 +238,7 @@ async function cleanup() {
   await prisma.paymentAccount.deleteMany({
     where: { ownerId: fixture.ownerId },
   });
+  await prisma.oAuthState.deleteMany({ where: { ownerId: fixture.ownerId } });
   await prisma.academicEvent.deleteMany({ where: { id: fixture.eventId } });
   await prisma.browserSession.deleteMany({
     where: { userId: fixture.ownerId },

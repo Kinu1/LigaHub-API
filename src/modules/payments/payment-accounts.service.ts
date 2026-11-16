@@ -147,6 +147,7 @@ export class PaymentAccountsService {
       });
       return {
         id: account.id,
+        ownerId: owner.id,
         merchantId: account.merchantId,
         publicKey: account.publicKey,
         connected: true,
@@ -170,7 +171,15 @@ export class PaymentAccountsService {
     const account = await this.prisma.paymentAccount.findFirst({
       where: { ownerId, active: true },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, merchantId: true, publicKey: true },
+      select: {
+        id: true,
+        ownerId: true,
+        merchantId: true,
+        publicKey: true,
+        isTest: true,
+        createdAt: true,
+        tokenExpiresAt: true,
+      },
     });
     return account ? { ...account, connected: true } : { connected: false };
   }

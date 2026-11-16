@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, send } from '../api';
 import { useAuth } from '../auth';
 import { Button } from '../components/ui/button';
@@ -27,20 +27,51 @@ import {
   type PaymentFilters,
 } from './finance-filters';
 import { QueryState } from './query-state';
+
+type ConnectedAccount = {
+  connected: boolean;
+};
+
 export function FinancePage() {
   const { user } = useAuth();
+  const [connectionReturn] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return {
+      result: params.get('mercadoPago'),
+      ownerId: params.get('ownerId'),
+    };
+  });
+  useEffect(() => {
+    if (
+      !['connected', 'error', 'canceled'].includes(
+        connectionReturn.result ?? '',
+      )
+    )
+      return;
+    const url = new URL(location.href);
+    url.searchParams.delete('mercadoPago');
+    history.replaceState(
+      history.state,
+      '',
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }, [connectionReturn]);
   const [page, setPage] = useState(1);
   const initialFilters = paymentFiltersFromSearch(location.search);
   const [filters, setFilters] = useState<PaymentFilters>(initialFilters);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const account = useQuery({
-    queryKey: ['account'],
+    queryKey: ['account', user?.id, connectionReturn.ownerId],
     queryFn: async () => {
       const users = user?.role === 'admin' ? await api<User[]>('/users') : [];
-      const owner = users.find((u) => u.role === 'organizer' && u.active);
-      return api<{ connected: boolean; merchantId?: string; isTest?: boolean }>(
-        `/payments/accounts${owner ? '?ownerId=' + owner.id : ''}`,
+      const ownerId =
+        user?.role === 'admin'
+          ? (connectionReturn.ownerId ??
+            users.find((u) => u.role === 'organizer' && u.active)?.id)
+          : undefined;
+      return api<ConnectedAccount>(
+        `/payments/accounts${ownerId ? '?ownerId=' + encodeURIComponent(ownerId) : ''}`,
       );
     },
   });
@@ -55,12 +86,25 @@ export function FinancePage() {
       </Heading>
       <section className="account-strip mb-6">
         <h2 className="text-base">Conta de recebimento</h2>
+        {connectionReturn.result === 'error' && (
+          <Notice>
+            Não foi possível concluir a conexão. Tente conectar a conta
+            novamente.
+          </Notice>
+        )}
+        {connectionReturn.result === 'canceled' && (
+          <Notice>
+            A autorização foi cancelada. Sua conexão anterior foi preservada.
+          </Notice>
+        )}
         <QueryState query={account} hasData={!!account.data}>
-          <p className="muted my-2 text-sm">
+          <p
+            className="muted my-2 text-sm"
+            role={account.data?.connected ? 'status' : undefined}
+          >
             {account.data?.connected
               ? 'Conta conectada ao Mercado Pago.'
-              : 'Conecte a conta do organizador para habilitar pagamentos.'}{' '}
-            {account.data?.isTest ? 'Ambiente de teste.' : ''}
+              : 'Conecte a conta do organizador para habilitar pagamentos.'}
           </p>
           <Button
             disabled={busy}
@@ -70,9 +114,9 @@ export function FinancePage() {
                 let ownerId: string | undefined;
                 if (user?.role === 'admin') {
                   const users = await api<User[]>('/users');
-                  ownerId = users.find(
-                    (u) => u.role === 'organizer' && u.active,
-                  )?.id;
+                  ownerId =
+                    connectionReturn.ownerId ??
+                    users.find((u) => u.role === 'organizer' && u.active)?.id;
                   if (!ownerId)
                     throw new Error(
                       'Cadastre e ative o organizador antes de conectar a conta.',

@@ -9,7 +9,9 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   CurrentUser,
   Public,
@@ -21,6 +23,7 @@ import { AuthorizeAccountDto, CreatePaymentDto } from './payment.dto.js';
 import { PaymentsService } from './payments.service.js';
 import { PaymentHistoryQuery } from './payment-history.query.js';
 import { BadRequestException } from '@nestjs/common';
+import { paymentAccountReturnUrl } from './payment-account-return.js';
 
 const registrationIdPipe = new ParseUUIDPipe({
   exceptionFactory: () =>
@@ -56,11 +59,36 @@ export class PaymentsController {
 
   @Get('payments/accounts/callback')
   @Public()
-  callback(@Query('state') state: string, @Query('code') code: string) {
-    return this.accounts.callback(state, code);
+  @Header('Cache-Control', 'no-store')
+  @Header('Referrer-Policy', 'no-referrer')
+  async callback(
+    @Query('state') state: string,
+    @Query('code') code: string,
+    @Query('error') error: string | undefined,
+    @Res() response: Response,
+  ) {
+    // Validate the configured destination before consuming the one-use state.
+    // Never accept a return URL from the provider or the incoming query.
+    const destination = paymentAccountReturnUrl();
+    if (error !== undefined) {
+      destination.searchParams.set(
+        'mercadoPago',
+        error === 'access_denied' ? 'canceled' : 'error',
+      );
+    } else {
+      try {
+        const account = await this.accounts.callback(state, code);
+        destination.searchParams.set('mercadoPago', 'connected');
+        destination.searchParams.set('ownerId', account.ownerId);
+      } catch {
+        destination.searchParams.set('mercadoPago', 'error');
+      }
+    }
+    response.redirect(303, destination.toString());
   }
 
   @Get('payments/accounts')
+  @Header('Cache-Control', 'no-store')
   @Roles('admin', 'organizer')
   account(
     @CurrentUser() actor: AuthenticatedUser,
