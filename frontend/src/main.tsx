@@ -10,22 +10,28 @@ import {
   useRouteError,
 } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AuthProvider, LoginPage } from './auth';
-import { Layout, PublicLayout } from './layout';
+import { AuthProvider } from './auth';
+const LoginPage = React.lazy(() =>
+  import('./login').then((m) => ({ default: m.LoginPage })),
+);
+import { PublicLayout } from './public-layout';
+const Layout = React.lazy(() =>
+  import('./layout').then((m) => ({ default: m.Layout })),
+);
 const Dashboard = React.lazy(() =>
   import('./pages/dashboard').then((m) => ({ default: m.Dashboard })),
 );
 const EventsPage = React.lazy(() =>
-  import('./pages/panel').then((m) => ({ default: m.EventsPage })),
+  import('./pages/events').then((m) => ({ default: m.EventsPage })),
 );
 const EventDetails = React.lazy(() =>
-  import('./pages/panel').then((m) => ({ default: m.EventDetails })),
+  import('./pages/event-details').then((m) => ({ default: m.EventDetails })),
 );
 const FinancePage = React.lazy(() =>
-  import('./pages/panel').then((m) => ({ default: m.FinancePage })),
+  import('./pages/finance').then((m) => ({ default: m.FinancePage })),
 );
 const UsersPage = React.lazy(() =>
-  import('./pages/panel').then((m) => ({ default: m.UsersPage })),
+  import('./pages/users').then((m) => ({ default: m.UsersPage })),
 );
 const OperationsPage = React.lazy(() =>
   import('./pages/operations').then((m) => ({ default: m.OperationsPage })),
@@ -34,27 +40,29 @@ const OutboxPage = React.lazy(() =>
   import('./pages/outbox').then((m) => ({ default: m.OutboxPage })),
 );
 const AuditPage = React.lazy(() =>
-  import('./pages/panel').then((m) => ({ default: m.AuditPage })),
+  import('./pages/audit').then((m) => ({ default: m.AuditPage })),
 );
 const EventEditor = React.lazy(() =>
   import('./pages/editor').then((m) => ({ default: m.EventEditor })),
 );
 const PublicEvent = React.lazy(() =>
-  import('./pages/public').then((m) => ({ default: m.PublicEvent })),
+  import('./pages/public-event').then((m) => ({ default: m.PublicEvent })),
 );
 const ParticipantPage = React.lazy(() =>
-  import('./pages/public').then((m) => ({ default: m.ParticipantPage })),
+  import('./pages/participant').then((m) => ({ default: m.ParticipantPage })),
 );
 const RecoveryPage = React.lazy(() =>
-  import('./pages/public').then((m) => ({ default: m.RecoveryPage })),
+  import('./pages/recovery').then((m) => ({ default: m.RecoveryPage })),
 );
 const StatusPage = React.lazy(() =>
-  import('./pages/public').then((m) => ({ default: m.StatusPage })),
+  import('./pages/participant-status').then((m) => ({ default: m.StatusPage })),
 );
 import { Heading, Notice, Loading } from './ui';
 import './styles.css';
 import { ExperienceProvider } from './experience';
-import { HomePage } from './pages/home';
+const HomePage = React.lazy(() =>
+  import('./pages/home').then((m) => ({ default: m.HomePage })),
+);
 function NotFound() {
   return (
     <>
