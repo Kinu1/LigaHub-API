@@ -40,6 +40,7 @@ import {
 import { AuditList } from './audit-list';
 import { QueryState } from './query-state';
 import { Share } from './share';
+import { ManualRegistration } from './manual-registration';
 export function EventDetails() {
   const { id } = useParams();
   const client = useQueryClient();
@@ -193,6 +194,24 @@ export function EventDetails() {
               <TabsTrigger value="historico">Histórico</TabsTrigger>
             </TabsList>
             <TabsContent value="inscricoes" className="data-section">
+              <div className="mb-5 space-y-3">
+                <ManualRegistration
+                  event={event}
+                  onCreated={async () => {
+                    setPage(1);
+                    setSearch('');
+                    setStatus('');
+                    setRegistrationTypeId('');
+                    await invalidate();
+                  }}
+                  onDuplicate={(email) => {
+                    setSearch(email);
+                    setStatus('');
+                    setRegistrationTypeId('');
+                    setPage(1);
+                  }}
+                />
+              </div>
               <div className="filter-bar mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_200px_200px_auto]">
                 <Input
                   aria-label="Buscar inscrição"
@@ -307,6 +326,20 @@ export function EventDetails() {
                             >
                               <div>
                                 <p className="font-medium">{r.name}</p>
+                                {r.origin === 'manual' && (
+                                  <div className="mt-2 space-y-1">
+                                    <Status value="manual" />
+                                    <p className="muted text-xs">
+                                      Incluída em {date(r.manualCreatedAt)}
+                                    </p>
+                                    {r.emailDeliveryStatus !== 'sent' && (
+                                      <p className="text-xs text-warning">
+                                        Confirmação por e-mail pendente. A vaga
+                                        está confirmada.
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
                                 <p className="muted mt-1">{r.email}</p>
                                 <details className="mt-2">
                                   <summary className="cursor-pointer text-xs">
@@ -389,7 +422,9 @@ export function EventDetails() {
                               className="whitespace-normal break-words"
                               data-label="Reserva até"
                             >
-                              {date(r.reservationExpiresAt)}
+                              {r.origin === 'manual'
+                                ? 'Não se aplica'
+                                : date(r.reservationExpiresAt)}
                             </TableCell>
                             <TableCell
                               className="whitespace-normal break-words"

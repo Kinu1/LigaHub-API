@@ -8,6 +8,7 @@ export async function enqueueConfirmation(
     id: string;
     name: string;
     email: string;
+    origin?: string;
     event: { title: string; startsAt: Date | null; location: string };
   },
 ) {
@@ -32,6 +33,7 @@ export async function enqueueConfirmation(
       payloadEncrypted: encryptCredential(
         JSON.stringify({
           registrationId: registration.id,
+          origin: registration.origin,
           to: registration.email,
           name: registration.name,
           eventTitle: registration.event.title,
@@ -58,6 +60,7 @@ export function renderConfirmation(payload: {
   startsAt?: string;
   location: string;
   token: string;
+  origin?: string;
 }): EmailMessage {
   const { base, from } = emailRenderConfig();
   const link = new URL(`/inscricoes/${payload.registrationId}`, base);
@@ -71,7 +74,7 @@ export function renderConfirmation(payload: {
     from,
     to: [payload.to],
     subject: 'Sua vaga no evento está confirmada — LigaHub',
-    text: `Olá, ${payload.name}!\n\nSeu pagamento foi aprovado e sua vaga no evento ${payload.eventTitle} está confirmada.\nData: ${date}\nLocal: ${payload.location || 'A confirmar'}\n\nConsulte a situação atual da sua inscrição: ${link.toString()}\n\nEste link é pessoal. Não o compartilhe. Ele permite consultar sua inscrição por 90 dias após a confirmação.\nLigaHub`,
+    text: `Olá, ${payload.name}!\n\n${payload.origin === 'manual' ? 'Sua cortesia foi registrada' : 'Seu pagamento foi aprovado'} e sua vaga no evento ${payload.eventTitle} está confirmada.\nData: ${date}\nLocal: ${payload.location || 'A confirmar'}\n\nConsulte a situação atual da sua inscrição: ${link.toString()}\n\nEste link é pessoal. Não o compartilhe. Ele permite consultar sua inscrição por 90 dias após a confirmação.\nLigaHub`,
   };
 }
 

@@ -48,6 +48,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
     let status = 500;
     let message: string | string[] = 'Não foi possível concluir a operação.';
     let errors: unknown;
+    let registrationId: string | undefined;
     if (error instanceof HttpException) {
       status = error.getStatus();
       const body = error.getResponse();
@@ -56,9 +57,16 @@ export class ApiExceptionFilter implements ExceptionFilter {
         const payload = body as {
           message?: string | string[];
           errors?: unknown;
+          registrationId?: unknown;
         };
         message = payload.message ?? message;
         errors = payload.errors;
+        if (
+          status === 409 &&
+          typeof payload.registrationId === 'string' &&
+          /^[0-9a-f-]{36}$/i.test(payload.registrationId)
+        )
+          registrationId = payload.registrationId;
       }
       if (status === 429)
         message = 'Muitas solicitações. Aguarde antes de tentar novamente.';
@@ -97,6 +105,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
       statusCode: status,
       message,
       ...(errors ? { errors } : {}),
+      ...(registrationId ? { registrationId } : {}),
       timestamp: new Date().toISOString(),
     });
   }

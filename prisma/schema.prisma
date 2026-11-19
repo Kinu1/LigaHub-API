@@ -39,6 +39,12 @@ enum UserRole {
   organizer
 }
 
+enum RegistrationOrigin {
+  public
+  manual
+  historical
+}
+
 model User {
   id           String   @id @db.Uuid
   name         String
@@ -83,8 +89,14 @@ model Registration {
   payments                PaymentAttempt[]
   confirmationEmails      EmailOutbox[]
 
+  origin                  RegistrationOrigin @default(public)
+  manualAuthorId          String?            @db.Uuid
+  manualCreatedAt         DateTime?
+
   @@unique([eventId, email])
   @@index([eventId, status, reservationExpiresAt])
+  @@index([origin])
+  @@index([manualAuthorId])
   @@map("registrations")
 }
 

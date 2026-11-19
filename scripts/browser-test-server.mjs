@@ -11,6 +11,8 @@ if (
 )
   throw new Error('Servidor permitido somente no teste de navegador.');
 Object.assign(process.env, testDatabaseEnvironment());
+const apiPort = Number(process.env.LIGAHUB_BROWSER_API_PORT ?? '3100');
+const webOrigin = `http://localhost:${process.env.LIGAHUB_BROWSER_WEB_PORT ?? '3101'}`;
 Object.assign(process.env, {
   JWT_SECRET: 'segredo-exclusivo-do-navegador-nao-usar-em-producao',
   CREDENTIALS_ENCRYPTION_KEY: Buffer.alloc(32, 2).toString('base64'),
@@ -21,13 +23,12 @@ Object.assign(process.env, {
   EMAIL_PROVIDER: 'resend',
   RESEND_API_KEY: 'chave-simulada-do-navegador',
   EMAIL_FROM: 'LigaHub <teste@example.com>',
-  FRONTEND_URL: 'http://localhost:3101',
-  CORS_ORIGINS: 'http://localhost:3101',
+  FRONTEND_URL: webOrigin,
+  CORS_ORIGINS: webOrigin,
   MERCADO_PAGO_TEST_MODE: 'true',
   MERCADO_PAGO_CLIENT_ID: 'aplicacao-ficticia-do-navegador',
   MERCADO_PAGO_CLIENT_SECRET: 'segredo-ficticio-do-navegador',
-  MERCADO_PAGO_REDIRECT_URI:
-    'http://localhost:3101/api/payments/accounts/callback',
+  MERCADO_PAGO_REDIRECT_URI: `${webOrigin}/api/payments/accounts/callback`,
   MERCADO_PAGO_NOTIFICATION_URL: 'https://browser.invalid/payments/webhook',
 });
 globalThis.fetch = async () => {
@@ -321,6 +322,19 @@ control('post', '/__browser/cleanup', async () => {
   await cleanup();
   return { cleaned: true };
 });
+control('post', '/__browser/shutdown', async (req) => {
+  if (
+    !process.env.LIGAHUB_BROWSER_RUN_TOKEN ||
+    req.headers['x-browser-run'] !== process.env.LIGAHUB_BROWSER_RUN_TOKEN
+  )
+    throw new Error('Execução de navegador não corresponde ao servidor.');
+  await cleanup();
+  setTimeout(() => {
+    app.getHttpServer().closeAllConnections();
+    void app.close().finally(() => process.exit(0));
+  }, 100);
+  return { closing: true };
+});
 control('post', '/__browser/participant-types', async () => {
   await prisma.user.update({
     where: { id: fixture.ownerId },
@@ -344,6 +358,39 @@ control('post', '/__browser/participant-types', async () => {
   return { updated: true };
 });
 control('get', '/__browser/messages', async () => messages);
+control('post', '/__browser/manual-form', async () => {
+  await prisma.academicEvent.update({
+    where: { id: fixture.eventId },
+    data: {
+      capacity: 2,
+      registrationTypes: [
+        {
+          id: 'profissional',
+          name: 'Profissional',
+          priceInCents: 2500,
+          capacity: 2,
+        },
+      ],
+      form: [
+        { id: 'curso', label: 'Curso', type: 'text', required: true },
+        {
+          id: 'turno',
+          label: 'Turno',
+          type: 'select',
+          options: ['Manhã', 'Noite'],
+          required: true,
+        },
+        {
+          id: 'aceite',
+          label: 'Aceita as regras',
+          type: 'checkbox',
+          required: true,
+        },
+      ],
+    },
+  });
+  return { updated: true };
+});
 control('post', '/__browser/failed-email', async () => {
   const row = await prisma.registration.create({
     data: {
@@ -472,6 +519,6 @@ control('post', '/__browser/interrupted/:id', async (req) => {
 });
 app.use(browserSecurity);
 app.useGlobalPipes(validationPipe());
-await app.listen(3100, '127.0.0.1');
+await app.listen(apiPort, '127.0.0.1');
 // Os timers foram desativados durante a inicialização; o envio é simulado e controlado por fixture.
 process.env.EMAIL_DELIVERY_ENABLED = 'true';
