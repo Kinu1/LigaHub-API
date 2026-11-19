@@ -1,5 +1,6 @@
 ﻿import { createHash } from 'node:crypto';
 import { inflateRawSync } from 'node:zlib';
+/* oxlint-disable no-control-regex -- Uploaded names and text intentionally reject control bytes. */
 import { posix } from 'node:path';
 import { SaxesParser } from 'saxes';
 export const calculateChecksum = (b: Buffer) =>

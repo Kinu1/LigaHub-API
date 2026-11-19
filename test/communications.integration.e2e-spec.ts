@@ -488,7 +488,6 @@ describe('communications PostgreSQL transactions and delivery', () => {
     expect((await recipient(c.id)).status).toBe('failed');
     expect((await recipient(c.id)).attempts).toBe(1);
     c = await queue();
-    const r = await recipient(c.id);
     await db.communicationRecipient.updateMany({
       where: { campaignId: c.id },
       data: {

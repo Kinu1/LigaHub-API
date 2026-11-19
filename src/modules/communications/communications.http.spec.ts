@@ -12,7 +12,7 @@ import { AttachmentsService } from './attachments.service.js';
 import { JwtAuthGuard, RolesGuard } from '../auth/auth.guards.js';
 import { PrismaService } from '../../prisma.service.js';
 import { communicationsNoStore } from './communications.middleware.js';
-import { validationPipe } from '../../common/http.js';
+import { validationPipe, ApiExceptionFilter } from '../../common/http.js';
 
 describe('communications HTTP boundary', () => {
   let app: NestExpressApplication;
@@ -61,6 +61,7 @@ describe('communications HTTP boundary', () => {
     app.use(communicationsNoStore);
     app.useBodyParser('json', { limit: '1mb' });
     app.useGlobalPipes(validationPipe());
+    app.useGlobalFilters(new ApiExceptionFilter());
     await app.init();
   });
   afterAll(async () => {

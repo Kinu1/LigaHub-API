@@ -13,10 +13,8 @@ import {
   Put,
   Query,
   Req,
-  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard, RolesGuard } from '../auth/auth.guards.js';
 import { Roles } from '../auth/auth.decorators.js';
 import { CommunicationsService } from './communications.service.js';
 import { AttachmentsService } from './attachments.service.js';
@@ -35,7 +33,6 @@ import {
 @ApiTags('Communications')
 @ApiBearerAuth()
 @Controller('events/:eventId/communications')
-@UseGuards(JwtAuthGuard, RolesGuard)
 export class CommunicationsController {
   constructor(
     @Inject(CommunicationsService)
@@ -46,7 +43,6 @@ export class CommunicationsController {
 
   // Campaign CRUD
   @Post()
-  @UseGuards(RolesGuard)
   @Roles('admin', 'organizer')
   async createCampaign(
     @Param('eventId', new ParseUUIDPipe()) eventId: string,
@@ -62,7 +58,6 @@ export class CommunicationsController {
   }
 
   @Get()
-  @UseGuards(RolesGuard)
   @Roles('admin', 'organizer')
   async listCampaigns(
     @Param('eventId', new ParseUUIDPipe()) eventId: string,
@@ -78,7 +73,6 @@ export class CommunicationsController {
   }
 
   @Get(':campaignId')
-  @UseGuards(RolesGuard)
   @Roles('admin', 'organizer')
   async getCampaign(
     @Param('eventId', new ParseUUIDPipe()) eventId: string,
@@ -94,7 +88,6 @@ export class CommunicationsController {
   }
 
   @Put(':campaignId')
-  @UseGuards(RolesGuard)
   @Roles('admin', 'organizer')
   async updateCampaign(
     @Param('eventId', new ParseUUIDPipe()) eventId: string,
@@ -113,7 +106,6 @@ export class CommunicationsController {
 
   // Audience preview
   @Get(':campaignId/preview')
-  @UseGuards(RolesGuard)
   @Roles('admin', 'organizer')
   async previewAudience(
     @Param('eventId', new ParseUUIDPipe()) eventId: string,
@@ -131,7 +123,6 @@ export class CommunicationsController {
   // Test email
   @Post(':campaignId/test')
   @HttpCode(200)
-  @UseGuards(RolesGuard)
   @Roles('admin', 'organizer')
   async sendTest(
     @Param('eventId', new ParseUUIDPipe()) eventId: string,
@@ -151,7 +142,6 @@ export class CommunicationsController {
   // Final send
   @Post(':campaignId/send')
   @HttpCode(202)
-  @UseGuards(RolesGuard)
   @Roles('admin', 'organizer')
   async finalSend(
     @Param('eventId', new ParseUUIDPipe()) eventId: string,
@@ -170,7 +160,6 @@ export class CommunicationsController {
 
   // Recipients
   @Get(':campaignId/recipients')
-  @UseGuards(RolesGuard)
   @Roles('admin', 'organizer')
   async listRecipients(
     @Param('eventId', new ParseUUIDPipe()) eventId: string,
@@ -189,7 +178,6 @@ export class CommunicationsController {
 
   // Attachments
   @Post(':campaignId/attachments/initiate')
-  @UseGuards(RolesGuard)
   @Roles('admin', 'organizer')
   async initiateAttachment(
     @Param('eventId', new ParseUUIDPipe()) eventId: string,
@@ -208,7 +196,6 @@ export class CommunicationsController {
 
   @Post(':campaignId/attachments/:attachmentId/chunks')
   @HttpCode(200)
-  @UseGuards(RolesGuard)
   @Roles('admin', 'organizer')
   async uploadChunk(
     @Param('eventId', new ParseUUIDPipe()) eventId: string,
@@ -229,7 +216,6 @@ export class CommunicationsController {
 
   @Post(':campaignId/attachments/finalize')
   @HttpCode(200)
-  @UseGuards(RolesGuard)
   @Roles('admin', 'organizer')
   async finalizeAttachment(
     @Param('eventId', new ParseUUIDPipe()) eventId: string,
@@ -247,7 +233,6 @@ export class CommunicationsController {
   }
 
   @Delete(':campaignId/attachments/:attachmentId')
-  @UseGuards(RolesGuard)
   @Roles('admin', 'organizer')
   async deleteAttachment(
     @Param('eventId', new ParseUUIDPipe()) eventId: string,
@@ -265,7 +250,6 @@ export class CommunicationsController {
   }
 
   @Get(':campaignId/attachments/:attachmentId/download')
-  @UseGuards(RolesGuard)
   @Roles('admin', 'organizer')
   async downloadAttachment(
     @Param('eventId', new ParseUUIDPipe()) eventId: string,

@@ -69,7 +69,32 @@ describe('communications append to existing email job', () => {
       status: 'completed',
     });
     expect(calls).toEqual(['access', 'confirmation', 'communications']);
+    // oxlint-disable-next-line typescript/unbound-method -- Inspecting the mocked method does not invoke it.
     expect(comms.processBatch).toHaveBeenCalledWith(deadline);
+  });
+  it('caps a default email run before its lease expires', async () => {
+    const db = {
+      $queryRaw: vi.fn().mockResolvedValue([{ name: 'emails' }]),
+      backgroundJob: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    } as unknown as PrismaService;
+    const processBatch = vi
+      .fn()
+      .mockResolvedValue({
+        status: 'completed',
+        processed: 0,
+        succeeded: 0,
+        failed: 0,
+        skipped: 0,
+      });
+    const before = Date.now();
+    await new JobsRunner(
+      db,
+      { processBatch } as unknown as EmailOutboxService,
+      {} as PaymentsService,
+    ).run('emails');
+    const deadline = processBatch.mock.calls[0][1];
+    expect(deadline).toBeGreaterThanOrEqual(before + 240_000);
+    expect(deadline).toBeLessThanOrEqual(Date.now() + 240_000);
   });
   it('keeps SMTP jobs working with communications installed and no Resend configured', async () => {
     const db = {
@@ -103,6 +128,7 @@ describe('communications append to existing email job', () => {
         'emails',
       ),
     ).resolves.toMatchObject({ status: 'completed' });
+    // oxlint-disable-next-line typescript/unbound-method -- Inspecting the mocked method does not invoke it.
     expect(attachments.cleanup).toHaveBeenCalled();
   });
 });

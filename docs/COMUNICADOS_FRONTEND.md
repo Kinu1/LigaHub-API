@@ -10,4 +10,6 @@ Verificações executadas na worktree isolada:
 - Playwright: fluxo de composição/anexo/teste/confirmação repetida/acompanhamento passou em desktop e celular. API de comunicados controlada pelo teste; login/evento reais no backend local de fixture. Não comprova transporte Resend real.
 - A primeira execução parou numa seleção nativa de estado; o fluxo final usa pesquisa para atualizar os destinatários e passou. Capturas ficam em test-results; a configuração e2e permite fontes da dependência local resolvida por junction.
 
-Após integração, repetir os checks na branch com backend final. Nenhum e-mail real foi enviado. A confirmação de entrega real depende de domínio/remetente e webhook Resend acessível e configurado.
+Após integração das duas funcionalidades: 125 testes frontend passaram e os seis testes de navegador passaram. O cenário adicional usa a API real local, PostgreSQL, anexos persistidos e webhook assinado, substituindo somente o transporte externo por um gateway simulado. O modal mantém cabeçalho/fechar fixos durante a rolagem; capturas de desktop e celular foram inspecionadas.
+
+Nenhum e-mail real foi enviado. A confirmação de entrega real depende de domínio/remetente e webhook Resend acessível e configurado.

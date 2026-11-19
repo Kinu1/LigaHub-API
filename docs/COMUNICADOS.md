@@ -26,4 +26,10 @@ POST público /notifications/resend/webhook: Svix oficial sobre corpo ORIGINAL, 
 
 Operação: ver communications.env.example. Sem Resend fila fica intacta. Leases90s, até5 tentativas, backoff exponencial temporário, janela conservadora23h (Resend24h), deadline preservado. Upload incompleto24h; anexos terminais30d sem pendências. Migração aditiva; rollback desabilitando feature, manter dados, remoção exige nova migração.
 
-Checks reais e limitações serão preenchidos ao término. Sem email/rede real ou migração produção.
+O relatório de destinatários inclui `webhookEvents` com rejeições permanentes e reclamações, exibidas como ocorrências mesmo após entrega. A categoria geral inclui inscrições históricas sem categoria. Anexos mantêm ordem determinística nas repetições; `acceptedAt` separa o prazo de confirmação da janela de tentativas. `completedAt` inicia a retenção de 30 dias na conclusão da campanha. A manutenção de estados/anexos continua sem credenciais Resend, sem efetuar transporte.
+
+O job compartilha um prazo de até quatro minutos entre acesso, confirmação e comunicados, respeitando prazos menores recebidos pelo scheduler e a concessão global de cinco minutos. O transporte mantém timeout de 12 segundos; a concessão de cada destinatário dura 90 segundos.
+
+Validação final local: builds backend/frontend e lint passaram (um aviso anterior em catalog.service.ts); 433 testes backend, 125 frontend, 186 de integração e 16 de scripts passaram. Os seis testes de navegador passaram em desktop/celular: cortesia, fluxo com API controlada e fluxo de comunicado usando API/PostgreSQL reais locais, gateway simulado e webhook assinado. O logo atual foi conferido byte a byte no frontend, fonte do backend e dist. O teste de empacotamento Lambda passou; o build SAM/Linux e serviços remotos não foram executados.
+
+Nenhum e-mail real foi enviado nem migration aplicada em produção. Domínio/remetente verificados, secrets, webhook público acessível e homologação real com destinatários autorizados continuam como pré-requisitos operacionais. Aceite da API nunca comprova entrega ou leitura. Ver `VERIFICACAO_COMUNICADOS.md`.
