@@ -4,6 +4,7 @@ import config from './vite.config';
 import { realpathSync } from 'node:fs';
 
 export default mergeConfig(config, {
+  cacheDir: '.test-temp/vite-e2e',
   plugins: [
     {
       name: 'browser-test-shutdown',

@@ -40,6 +40,7 @@ import {
 import { AuditList } from './audit-list';
 import { QueryState } from './query-state';
 import { Share } from './share';
+import { Communications } from './communications';
 import { ManualRegistration } from './manual-registration';
 export function EventDetails() {
   const { id } = useParams();
@@ -211,6 +212,7 @@ export function EventDetails() {
                     setPage(1);
                   }}
                 />
+                <Communications event={event} />
               </div>
               <div className="filter-bar mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_200px_200px_auto]">
                 <Input

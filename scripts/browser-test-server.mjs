@@ -22,6 +22,7 @@ Object.assign(process.env, {
   EMAIL_DELIVERY_ENABLED: 'false',
   EMAIL_PROVIDER: 'resend',
   RESEND_API_KEY: 'chave-simulada-do-navegador',
+  RESEND_WEBHOOK_SECRET: `whsec_${Buffer.alloc(32, 7).toString('base64')}`,
   EMAIL_FROM: 'LigaHub <teste@example.com>',
   FRONTEND_URL: webOrigin,
   CORS_ORIGINS: webOrigin,
@@ -64,6 +65,11 @@ const [
 const messages = [],
   remote = new Map(),
   keys = new Map();
+const { CommunicationsGateway } =
+  await import('../dist/modules/communications/communications.gateway.js');
+const { CommunicationsProcessor } =
+  await import('../dist/modules/communications/communications.processor.js');
+const communicationMessages = new Map();
 let fixture,
   loseNextResponse = false,
   rejectNextPayment = false,
@@ -154,8 +160,24 @@ const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       return `email-ficticio-${messages.length}`;
     },
   })
+  .overrideProvider(CommunicationsGateway)
+  .useValue({
+    configured: () => true,
+    async send(message, key) {
+      if (!communicationMessages.has(key))
+        communicationMessages.set(key, {
+          providerId: `browser-communication-${randomUUID()}`,
+          message,
+        });
+      return communicationMessages.get(key).providerId;
+    },
+  })
   .compile();
-const app = moduleRef.createNestApplication({ logger: ['error'] });
+const app = moduleRef.createNestApplication({
+  logger: ['error'],
+  rawBody: true,
+});
+app.useBodyParser('json', { limit: '1mb' });
 const prisma = app.get(PrismaService);
 // O histórico do navegador nunca lê pagamentos de usuários do banco compartilhado.
 const payments = app.get(PaymentsService);
@@ -219,6 +241,20 @@ async function cleanup() {
     where: { ownerId: fixture.ownerId },
     select: { id: true },
   });
+  const recipients = await prisma.communicationRecipient.findMany({
+    where: { campaign: { eventId: fixture.eventId } },
+    select: { providerId: true },
+  });
+  await prisma.communicationWebhookEvent.deleteMany({
+    where: {
+      providerId: {
+        in: recipients.flatMap((r) => (r.providerId ? [r.providerId] : [])),
+      },
+    },
+  });
+  await prisma.communicationCampaign.deleteMany({
+    where: { eventId: fixture.eventId },
+  });
   await prisma.auditLog.deleteMany({
     where: {
       entityId: {
@@ -249,6 +285,7 @@ async function cleanup() {
   await prisma.user.deleteMany({ where: { id: fixture.ownerId } });
   fixture = undefined;
   messages.length = 0;
+  communicationMessages.clear();
   remote.clear();
   keys.clear();
   createdCharges = 0;
@@ -321,6 +358,34 @@ control('post', '/__browser/fixture', async () => {
 control('post', '/__browser/cleanup', async () => {
   await cleanup();
   return { cleaned: true };
+});
+control('post', '/__browser/communications-prepare', async () => {
+  if (!fixture) throw new Error('Fixture obrigatória.');
+  await prisma.registration.create({
+    data: {
+      eventId: fixture.eventId,
+      name: 'Ana Comunicado',
+      email: 'ana-comunicado@example.com',
+      answers: {},
+      formSnapshot: [],
+      priceInCents: 0,
+      status: 'confirmed',
+      registrationTypeId: 'geral',
+      registrationTypeName: 'Inscrição geral',
+      reservationExpiresAt: new Date(),
+      manageTokenHash: digest('credencial-ficticia-de-comunicado'),
+    },
+  });
+  return { ready: true };
+});
+control('post', '/__browser/communications-process', async () => {
+  if (!fixture) throw new Error('Fixture obrigatória.');
+  await app.get(CommunicationsProcessor).processBatch(Date.now() + 60000);
+  const rows = await prisma.communicationRecipient.findMany({
+    where: { campaign: { eventId: fixture.eventId } },
+    select: { providerId: true, status: true },
+  });
+  return { recipients: rows, messages: communicationMessages.size };
 });
 control('post', '/__browser/shutdown', async (req) => {
   if (

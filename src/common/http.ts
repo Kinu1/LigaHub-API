@@ -72,6 +72,13 @@ export class ApiExceptionFilter implements ExceptionFilter {
         message = 'Muitas solicitações. Aguarde antes de tentar novamente.';
       if (status === 404 && message === 'Cannot GET /')
         message = 'Recurso não encontrado.';
+    } else if (
+      error instanceof Error &&
+      'type' in error &&
+      error.type === 'entity.too.large'
+    ) {
+      status = 413;
+      message = 'O conteúdo da requisição excede o limite permitido.';
     } else if (error instanceof EmailAlreadyInUseError) {
       status = 409;
       message = error.message;
