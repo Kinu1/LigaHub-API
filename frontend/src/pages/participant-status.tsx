@@ -16,6 +16,7 @@ export function StatusPage() {
       api<{
         name: string;
         status: string;
+        origin?: 'public' | 'manual' | 'historical';
         suspended: boolean;
         cancellationRequested: boolean;
         event: { title: string; location: string; startsAt: string };
@@ -48,6 +49,7 @@ export function StatusPage() {
       <Heading title={query.data?.event.title || 'Sua inscrição'} />
       <section className="card">
         <Status value={query.data?.status || ''} />
+        {query.data?.origin === 'manual' && <Status value="manual" />}
         {query.data?.suspended && (
           <Notice>
             Sua inscrição está suspensa. Entre em contato com a organização do

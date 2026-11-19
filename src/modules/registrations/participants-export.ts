@@ -31,6 +31,7 @@ export const participantPaymentLabels: Record<string, string> = {
   in_mediation: 'Em mediação',
 };
 type ParticipantExportRow = {
+  origin?: string;
   name: string;
   cpf: string | null;
   email: string;
@@ -87,8 +88,9 @@ export async function createParticipantsWorkbook(
     },
     { header: 'Última tentativa', key: 'latestPayment', width: 25 },
     { header: 'Alertas financeiros', key: 'warnings', width: 48 },
+    { header: 'Origem', key: 'origin', width: 22 },
   ];
-  sheet.autoFilter = 'A1:J1';
+  sheet.autoFilter = 'A1:K1';
   sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   sheet.getRow(1).fill = {
     type: 'pattern',
@@ -101,6 +103,12 @@ export async function createParticipantsWorkbook(
       sheet
         .addRow({
           event,
+          origin:
+            row.origin === 'manual'
+              ? 'Cortesia'
+              : row.origin === 'historical'
+                ? 'Histórica'
+                : 'Pública',
           type: row.registrationTypeName ?? 'Inscrição geral',
           name: row.name,
           cpf: row.cpf ?? 'Não informado',
