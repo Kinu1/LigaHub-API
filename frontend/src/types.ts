@@ -70,6 +70,10 @@ export type Payment = {
   } | null;
 };
 export type Registration = {
+  origin?: 'public' | 'manual' | 'historical';
+  manualAuthorId?: string | null;
+  manualCreatedAt?: string | null;
+  emailDeliveryStatus?: string | null;
   cpf?: string | null;
   registrationTypeId?: string | null;
   paymentStatus?: string;
@@ -142,6 +146,7 @@ export const date = (value?: string | null) =>
       }).format(new Date(value))
     : 'A confirmar';
 export const labels: Record<string, string> = {
+  manual: 'Cortesia',
   free: 'Gratuita',
   unpaid: 'Sem pagamento',
   draft: 'Rascunho',

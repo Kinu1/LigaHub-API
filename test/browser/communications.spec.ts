@@ -6,7 +6,7 @@ test('compõe comunicado, repete confirmação com a mesma chave e acompanha ent
 }, info) => {
   const control = async (path: string) => {
     const response = await request.post(
-      `http://127.0.0.1:3100/__browser/${path}`,
+      `http://127.0.0.1:${process.env.LIGAHUB_BROWSER_API_PORT ?? '3100'}/__browser/${path}`,
       { headers: { 'x-browser-test': 'controle-local-de-testes' } },
     );
     expect(response.ok()).toBeTruthy();

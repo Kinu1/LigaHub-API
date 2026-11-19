@@ -1,9 +1,34 @@
-import { mergeConfig } from 'vite';
+import { mergeConfig, type ViteDevServer } from 'vite';
 import { fileURLToPath } from 'node:url';
-import { realpathSync } from 'node:fs';
 import config from './vite.config';
+import { realpathSync } from 'node:fs';
 
 export default mergeConfig(config, {
+  cacheDir: '.test-temp/vite-e2e',
+  plugins: [
+    {
+      name: 'browser-test-shutdown',
+      configureServer(server: ViteDevServer) {
+        server.middlewares.use('/__browser/shutdown', (req, res) => {
+          if (
+            req.method !== 'POST' ||
+            req.headers['x-browser-test'] !== 'controle-local-de-testes' ||
+            !process.env.LIGAHUB_BROWSER_RUN_TOKEN ||
+            req.headers['x-browser-run'] !==
+              process.env.LIGAHUB_BROWSER_RUN_TOKEN
+          ) {
+            res.statusCode = 403;
+            res.end();
+            return;
+          }
+          res.end('closing');
+          setTimeout(() => {
+            void server.close().finally(() => process.exit(0));
+          }, 100);
+        });
+      },
+    },
+  ],
   resolve: {
     alias: {
       '@mercadopago/sdk-react': fileURLToPath(
@@ -11,7 +36,6 @@ export default mergeConfig(config, {
       ),
     },
   },
-  cacheDir: '.test-temp/vite-e2e',
   server: {
     fs: {
       allow: [
@@ -19,6 +43,10 @@ export default mergeConfig(config, {
         realpathSync(fileURLToPath(new URL('./node_modules', import.meta.url))),
       ],
     },
-    proxy: { '/api': { target: 'http://127.0.0.1:3100' } },
+    proxy: {
+      '/api': {
+        target: `http://127.0.0.1:${process.env.LIGAHUB_BROWSER_API_PORT ?? '3100'}`,
+      },
+    },
   },
 });

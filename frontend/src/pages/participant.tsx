@@ -104,6 +104,7 @@ export function ParticipantPage() {
       <section className="card mb-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <Status value={registration.status} />
+          {registration.origin === 'manual' && <Status value="manual" />}
           <div className="text-right">
             <p className="muted text-xs">Valor da inscrição</p>
             <p className="font-semibold">{money(registration.priceInCents)}</p>

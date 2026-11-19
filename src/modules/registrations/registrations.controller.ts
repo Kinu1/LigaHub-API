@@ -27,6 +27,7 @@ import {
 
 import {
   CreateRegistrationDto,
+  CreateManualRegistrationDto,
   RegistrationSuspensionDto,
   RegistrationPaginationDto,
 } from './registrations.dto.js';
@@ -101,6 +102,16 @@ export class RegistrationsController {
     @Headers('x-registration-token') token?: string,
   ) {
     return this.registrations.renew(id, token);
+  }
+  @Post('events/:eventId/registrations/manual')
+  @Roles('admin', 'organizer')
+  @ApiBearerAuth()
+  async createManual(
+    @Param('eventId', uuid()) eventId: string,
+    @Body() input: CreateManualRegistrationDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.registrations.createManual(eventId, input, actor);
   }
   @Get('events/:eventId/registrations')
   @Header('Cache-Control', 'no-store')

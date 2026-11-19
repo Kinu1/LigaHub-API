@@ -49,8 +49,15 @@ describe('Rotinas HTTP e concessões PostgreSQL locais', () => {
 
   beforeAll(async () => {
     const url = new URL(process.env.DATABASE_URL ?? '');
-    if (url.hostname !== '127.0.0.1' || !/(^|[_-])tests?([_-]|$)/i.test(url.pathname.slice(1)) || url.toString() !== new URL(process.env.DATABASE_TEST_URL ?? '').toString())
-      throw new Error('Banco deve coincidir com DATABASE_TEST_URL local e ter nome de teste.');
+    const expected = new URL(process.env.DATABASE_TEST_URL ?? '');
+    if (
+      url.href !== expected.href ||
+      !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ||
+      !/(^|[_-])tests?([_-]|$)/i.test(decodeURIComponent(url.pathname.slice(1)))
+    )
+      throw new Error(
+        'Banco deve corresponder à DATABASE_TEST_URL local e identificar teste.',
+      );
     prisma = new PrismaService();
     // Inserção exclusiva: nunca assume posse de registros preexistentes, mesmo expirados.
     await prisma.$transaction(async (tx) => {
