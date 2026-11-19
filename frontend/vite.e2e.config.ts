@@ -1,5 +1,6 @@
 import { mergeConfig } from 'vite';
 import { fileURLToPath } from 'node:url';
+import { realpathSync } from 'node:fs';
 import config from './vite.config';
 
 export default mergeConfig(config, {
@@ -10,5 +11,14 @@ export default mergeConfig(config, {
       ),
     },
   },
-  server: { proxy: { '/api': { target: 'http://127.0.0.1:3100' } } },
+  cacheDir: '.test-temp/vite-e2e',
+  server: {
+    fs: {
+      allow: [
+        fileURLToPath(new URL('.', import.meta.url)),
+        realpathSync(fileURLToPath(new URL('./node_modules', import.meta.url))),
+      ],
+    },
+    proxy: { '/api': { target: 'http://127.0.0.1:3100' } },
+  },
 });

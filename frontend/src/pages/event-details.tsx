@@ -40,6 +40,7 @@ import {
 import { AuditList } from './audit-list';
 import { QueryState } from './query-state';
 import { Share } from './share';
+import { Communications } from './communications';
 export function EventDetails() {
   const { id } = useParams();
   const client = useQueryClient();
@@ -193,6 +194,7 @@ export function EventDetails() {
               <TabsTrigger value="historico">Histórico</TabsTrigger>
             </TabsList>
             <TabsContent value="inscricoes" className="data-section">
+              <Communications event={event} />
               <div className="filter-bar mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_200px_200px_auto]">
                 <Input
                   aria-label="Buscar inscrição"

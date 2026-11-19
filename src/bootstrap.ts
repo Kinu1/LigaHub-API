@@ -1,3 +1,4 @@
+import { communicationsNoStore } from './modules/communications/communications.middleware.js';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
@@ -9,7 +10,9 @@ import { browserSecurity } from './common/browser-security.js';
 export async function createHttpApplication() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     abortOnError: false,
+    rawBody: true,
   });
+  app.use(communicationsNoStore);
   app.useBodyParser('json', { limit: '1mb' });
   app.use(helmet());
   app.use(browserSecurity);

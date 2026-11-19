@@ -4,6 +4,15 @@ import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
+export async function assertCommunicationsLogo(directory) {
+  const [source, built] = await Promise.all([
+    readFile(join(directory, 'src/assets/logo-lauen.png')),
+    readFile(join(directory, 'dist/assets/logo-lauen.png')),
+  ]);
+  if (!source.length || !source.equals(built))
+    throw new Error('Current communications logo missing or changed in build.');
+}
+
 export async function packageLambda(
   artifacts,
   { platform = process.platform, run = spawnSync } = {},
@@ -49,6 +58,7 @@ export async function packageLambda(
     execute(['ci']);
     execute(['run', 'db:generate']);
     execute(['run', 'build']);
+    await assertCommunicationsLogo(scratch);
     execute(['prune', '--omit=dev']);
     await mkdir(output, { recursive: true });
     for (const path of ['dist', 'node_modules'])
