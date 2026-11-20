@@ -92,7 +92,12 @@ describe('Consulta da inscrição pelo link do e-mail', () => {
       });
       show();
 
-      expect(await screen.findByText('Confirmada')).toBeTruthy();
+      expect(
+        await screen.findByText(suspended ? 'Suspenso' : 'Confirmada'),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText(suspended ? 'Confirmada' : 'Suspenso'),
+      ).toBeNull();
       expect(screen.getByText('Olá, Ana Silva.')).toBeTruthy();
       expect(Boolean(screen.queryByText(suspendedNotice))).toBe(suspended);
       expect(Boolean(screen.queryByText(cancellationNotice))).toBe(

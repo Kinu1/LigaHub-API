@@ -1,3 +1,5 @@
+import { notifyDataChanged } from './data-updates';
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -98,6 +100,13 @@ export async function api<T>(
         : undefined,
     );
   }
+  if (
+    !['GET', 'HEAD', 'OPTIONS'].includes(
+      (options.method ?? 'GET').toUpperCase(),
+    ) &&
+    !path.startsWith('/auth/')
+  )
+    notifyDataChanged();
   if (responseType === 'blob') return response.blob() as Promise<T>;
   return response.status === 204 ? (undefined as T) : response.json();
 }

@@ -48,7 +48,9 @@ export function StatusPage() {
     <div className="mx-auto max-w-xl">
       <Heading title={query.data?.event.title || 'Sua inscrição'} />
       <section className="card">
-        <Status value={query.data?.status || ''} />
+        <Status
+          value={query.data?.suspended ? 'suspended' : query.data?.status || ''}
+        />
         {query.data?.origin === 'manual' && <Status value="manual" />}
         {query.data?.suspended && (
           <Notice>

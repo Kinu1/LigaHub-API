@@ -77,7 +77,6 @@ export function PixPayoutSection() {
       !!destination.data?.platformPix ||
       destination.data?.payoutMode === 'manual',
     queryFn: () => api<Page<Payout>>(`/payments/payouts?page=${page}`),
-    refetchInterval: 30_000,
   });
   const act = async (action: () => Promise<unknown>, success: string) => {
     setBusy(true);

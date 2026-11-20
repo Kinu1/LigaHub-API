@@ -195,7 +195,7 @@ export function EventDetails() {
               <TabsTrigger value="historico">Histórico</TabsTrigger>
             </TabsList>
             <TabsContent value="inscricoes" className="data-section">
-              <div className="mb-5 space-y-3">
+              <div className="mb-5 flex flex-wrap items-start gap-3">
                 <ManualRegistration
                   event={event}
                   onCreated={async () => {
@@ -398,7 +398,9 @@ export function EventDetails() {
                               data-label="Estado"
                             >
                               <div>
-                                <Status value={r.status} />
+                                <Status
+                                  value={r.suspendedAt ? 'suspended' : r.status}
+                                />
                                 {r.status === 'payment_review' && (
                                   <p className="mt-2 text-xs">
                                     {reviewReasonText(r.reviewReason)}
@@ -411,11 +413,6 @@ export function EventDetails() {
                                     {r.status === 'canceled'
                                       ? 'Solicitação de cancelamento concluída'
                                       : 'Cancelamento solicitado'}
-                                  </p>
-                                )}
-                                {r.suspendedAt && (
-                                  <p className="mt-2 text-xs">
-                                    Inscrição suspensa
                                   </p>
                                 )}
                               </div>

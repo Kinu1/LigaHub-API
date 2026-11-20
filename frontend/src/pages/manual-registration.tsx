@@ -51,13 +51,15 @@ export function ManualRegistration({
   return (
     <>
       {created && (
-        <Notice success>
-          Cortesia confirmada. A confirmação por e-mail está pendente na fila; a
-          vaga já está garantida.
-        </Notice>
+        <div className="basis-full">
+          <Notice success>
+            Cortesia confirmada. A confirmação por e-mail está pendente na fila;
+            a vaga já está garantida.
+          </Notice>
+        </div>
       )}
       {unavailable && (
-        <p className="muted text-sm">
+        <p className="muted basis-full text-sm">
           Para adicionar uma cortesia, configure o início futuro de um evento
           não encerrado.
         </p>

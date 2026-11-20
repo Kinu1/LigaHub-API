@@ -93,7 +93,6 @@ export function PublicEvent() {
   const query = useQuery({
     queryKey: ['public-event', publicId],
     queryFn: () => api<Event>(`/public/events/${publicId}`),
-    refetchInterval: 30000,
   });
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [answerErrors, setAnswerErrors] = useState<Record<string, string>>({});

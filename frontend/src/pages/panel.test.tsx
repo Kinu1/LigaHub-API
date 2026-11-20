@@ -16,6 +16,64 @@ vi.mock('../auth', () => ({
 }));
 beforeEach(() => vi.resetAllMocks());
 
+it.each(['reserved', 'confirmed'])(
+  'mostra suspensão no lugar do estado %s e restaura após reativar',
+  async (status) => {
+    let suspendedAt: string | null = '2026-11-19T10:00:00Z';
+    vi.mocked(api).mockImplementation(async (path) => {
+      if (path.includes('/registrations?'))
+        return {
+          items: [
+            {
+              id: 'r',
+              name: 'Ana Suspensa',
+              email: 'ana@example.test',
+              answers: {},
+              status,
+              suspendedAt,
+            },
+          ],
+          total: 1,
+        };
+      return {
+        id: 'event',
+        title: 'Encontro',
+        status: 'closed',
+        form: [],
+        capacity: 10,
+        priceInCents: 0,
+      };
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/events/event']}>
+          <Routes>
+            <Route path="/events/:id" element={<EventDetails />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const row = (await screen.findByText('Ana Suspensa')).closest('tr')!;
+    expect(within(row).getByText('Suspenso')).toBeTruthy();
+    expect(
+      within(row).queryByText(
+        status === 'reserved' ? 'Reservada' : 'Confirmada',
+      ),
+    ).toBeNull();
+    expect(within(row).getByRole('button', { name: 'Reativar' })).toBeTruthy();
+    suspendedAt = null;
+    await client.invalidateQueries();
+    await waitFor(() => expect(within(row).queryByText('Suspenso')).toBeNull());
+    expect(
+      within(row).getByText(status === 'reserved' ? 'Reservada' : 'Confirmada'),
+    ).toBeTruthy();
+    client.clear();
+  },
+);
+
 it('separa situação financeira, última tentativa e inscrição cancelada', async () => {
   vi.mocked(api).mockImplementation(async (path) =>
     path.includes('/registrations?')

@@ -211,7 +211,7 @@ export function Communications({ event }: { event: Event }) {
       }
     };
     void refresh();
-    const timer = window.setInterval(refresh, 10000);
+    const timer = window.setInterval(refresh, 5000);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -301,7 +301,7 @@ export function Communications({ event }: { event: Event }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="mb-4">Notificar participantes</Button>
+        <Button>Notificar participantes</Button>
       </DialogTrigger>
       <DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden p-0 sm:max-w-3xl">
         <DialogHeader className="shrink-0 px-6 pt-6 pr-14">
