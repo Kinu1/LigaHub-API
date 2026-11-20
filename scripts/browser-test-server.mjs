@@ -302,7 +302,9 @@ try {
     !/^[0-9a-f-]{36}$/.test(fixture.eventId)
   )
     throw new Error('Arquivo de fixture inválido.');
-  await cleanup();
+  // Manual local demonstrations retain their fictitious dataset across restarts.
+  // Automated browser runs keep their original clean-start behavior.
+  if (process.env.LIGAHUB_PERSIST_FIXTURE !== 'true') await cleanup();
 } catch (error) {
   if (error.code !== 'ENOENT') throw error;
 }
