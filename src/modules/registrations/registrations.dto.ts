@@ -12,6 +12,7 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { PaginationDto } from '../../common/pagination.js';
+
 export class RegistrationPaginationDto extends PaginationDto {
   @IsOptional()
   @IsString()
@@ -56,6 +57,39 @@ export class CreateRegistrationDto {
   @IsString()
   @MaxLength(80)
   registrationTypeId?: string;
+}
+
+export class CreateManualRegistrationDto {
+  @ApiProperty({
+    description: 'CPF obrigatório do participante.',
+  })
+  @IsString()
+  @Matches(/^\d{11}$/)
+  cpf!: string;
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @ApiProperty()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(120)
+  name!: string;
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
+  @ApiProperty()
+  @IsEmail()
+  @MaxLength(254)
+  email!: string;
+  @ApiPropertyOptional({ type: Object })
+  @IsOptional()
+  @IsObject()
+  answers: Record<string, unknown> = {};
+  @ApiProperty()
+  @IsString()
+  @Matches(/^[a-zA-Z0-9_-]{1,80}$/)
+  @MaxLength(80)
+  registrationTypeId!: string;
 }
 
 export class RegistrationSuspensionDto {

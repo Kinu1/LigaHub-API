@@ -3,6 +3,7 @@ export class ApiError extends Error {
     public status: number,
     message: string,
     public fields?: Record<string, string>,
+    public registrationId?: string,
   ) {
     super(message);
   }
@@ -92,6 +93,9 @@ export async function api<T>(
         ? error.message.join(' ')
         : error.message || 'Não foi possível concluir. Tente novamente.',
       fields,
+      typeof error.registrationId === 'string'
+        ? error.registrationId
+        : undefined,
     );
   }
   if (responseType === 'blob') return response.blob() as Promise<T>;

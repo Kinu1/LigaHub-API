@@ -52,7 +52,12 @@ describe('Fila durável de acesso (PostgreSQL local)', () => {
   }
   beforeAll(async () => {
     const url = new URL(process.env.DATABASE_URL ?? '');
-    if (url.hostname !== '127.0.0.1' || url.port !== '5433')
+    const expected = new URL(process.env.DATABASE_TEST_URL ?? '');
+    if (
+      url.href !== expected.href ||
+      !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ||
+      !/(^|[_-])tests?([_-]|$)/i.test(decodeURIComponent(url.pathname.slice(1)))
+    )
       throw new Error('Banco não permitido.');
     vi.stubEnv('EMAIL_DELIVERY_ENABLED', 'true');
     vi.stubEnv('EMAIL_PROVIDER', 'resend');

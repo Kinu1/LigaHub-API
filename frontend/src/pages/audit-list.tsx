@@ -18,6 +18,8 @@ export const auditCategories: Record<string, string> = {
 };
 
 const actions: Record<string, string> = {
+  'registration:registration.confirmed_manual':
+    'Cortesia incluída e confirmada manualmente',
   'registration:registration.payment_review_confirmed':
     'Confirmação reavaliada e autorizada',
   'registration:registration.payment_review_blocked':
