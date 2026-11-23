@@ -62,7 +62,10 @@ export async function packageLambda(
     execute(['prune', '--omit=dev']);
     await mkdir(output, { recursive: true });
     for (const path of ['dist', 'node_modules'])
-      await cp(join(scratch, path), join(output, path), { recursive: true });
+      await cp(join(scratch, path), join(output, path), {
+        recursive: true,
+        verbatimSymlinks: true,
+      });
     const pkg = JSON.parse(
       await readFile(join(scratch, 'package.json'), 'utf8'),
     );
