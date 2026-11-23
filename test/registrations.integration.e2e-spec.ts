@@ -5,6 +5,8 @@ import {
 } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { randomUUID } from 'node:crypto';
+import ExcelJS from 'exceljs';
+import { Prisma } from '../src/generated/prisma/client.js';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../src/prisma.service.js';
 import { RegistrationsModule } from '../src/modules/registrations/registrations.module.js';
@@ -32,13 +34,26 @@ describe('Reservas de vagas e controle de inscrições no PostgreSQL', () => {
       select: { id: true },
     });
     const ids = registrations.map(({ id }) => id);
+    const payments = await prisma.paymentAttempt.findMany({
+      where: { registrationId: { in: ids } },
+      select: { id: true },
+    });
     await prisma.paymentAttempt.deleteMany({
       where: { registrationId: { in: ids } },
     });
     await prisma.auditLog.deleteMany({
       where: {
         OR: [
-          { entityId: { in: [...events, ...ids, ...owners] } },
+          {
+            entityId: {
+              in: [
+                ...events,
+                ...ids,
+                ...owners,
+                ...payments.map((payment) => payment.id),
+              ],
+            },
+          },
           { actorId: { in: owners } },
         ],
       },
@@ -103,6 +118,153 @@ describe('Reservas de vagas e controle de inscrições no PostgreSQL', () => {
     email,
     answers: {},
   });
+
+  it('exporta o snapshot completo mesmo com inserção, exclusão e pagamento concorrentes entre lotes', async () => {
+    const { event, ownerId } = await fixture(1000);
+    const baseTime = Date.now() - 10_000;
+    const original = Array.from({ length: 502 }, (_, index) => ({
+      id: randomUUID(),
+      eventId: event.id,
+      name: `Snapshot ${index}`,
+      email: `snapshot-${index}@ligahub.test`,
+      answers: {},
+      formSnapshot: [],
+      priceInCents: 2500,
+      status: 'confirmed',
+      manageTokenHash: 'teste',
+      participantCpfEncrypted: null,
+      reservationExpiresAt: new Date(Date.now() + 60000),
+      createdAt: new Date(baseTime),
+    })).sort((a, b) => (a.id < b.id ? -1 : 1));
+    await prisma.registration.createMany({ data: original });
+    const account = await prisma.paymentAccount.findFirstOrThrow({
+      where: { ownerId },
+    });
+    const approved = await prisma.paymentAttempt.create({
+      data: {
+        registrationId: original[1].id,
+        accountId: account.id,
+        idempotencyKey: randomUUID(),
+        requestHash: 'teste',
+        method: 'pix',
+        installments: 1,
+        amountInCents: 2500,
+        status: 'approved',
+        createdAt: new Date(baseTime),
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        entityType: 'payment',
+        entityId: approved.id,
+        action: 'payment.updated',
+        metadata: { status: 'in_mediation' },
+      },
+    });
+    await prisma.paymentAttempt.create({
+      data: {
+        registrationId: original[1].id,
+        accountId: account.id,
+        idempotencyKey: randomUUID(),
+        requestHash: 'teste',
+        method: 'pix',
+        installments: 1,
+        amountInCents: 2500,
+        status: 'rejected',
+        createdAt: new Date(baseTime + 1000),
+      },
+    });
+    let batches = 0;
+    const scoped = new Proxy(prisma, {
+      get(target, property) {
+        if (property === '$transaction')
+          return (
+            work: (tx: Prisma.TransactionClient) => Promise<Buffer>,
+            options: {
+              isolationLevel: Prisma.TransactionIsolationLevel;
+              timeout: number;
+            },
+          ) =>
+            target.$transaction(async (tx) => {
+              const reader = new Proxy(tx, {
+                get(transaction, key) {
+                  if (key === 'registration')
+                    return new Proxy(transaction.registration, {
+                      get(model, operation) {
+                        if (operation === 'findMany')
+                          return async (
+                            args: Prisma.RegistrationFindManyArgs,
+                          ) => {
+                            const rows = await model.findMany(args);
+                            if (++batches === 1) {
+                              // A separate connection commits while the export transaction is open.
+                              await prisma.registration.create({
+                                data: {
+                                  ...original[0],
+                                  id: randomUUID(),
+                                  email: 'new@ligahub.test',
+                                  name: 'Concorrente',
+                                  createdAt: new Date(),
+                                },
+                              });
+                              await prisma.registration.delete({
+                                where: { id: original[0].id },
+                              });
+                              await prisma.paymentAttempt.update({
+                                where: { id: approved.id },
+                                data: { status: 'refunded' },
+                              });
+                              await prisma.registration.update({
+                                where: { id: original[1].id },
+                                data: { name: 'Alterado', status: 'canceled' },
+                              });
+                            }
+                            return rows;
+                          };
+                        const value: unknown = Reflect.get(model, operation);
+                        return typeof value === 'function'
+                          ? value.bind(model)
+                          : value;
+                      },
+                    });
+                  const value: unknown = Reflect.get(transaction, key);
+                  return typeof value === 'function'
+                    ? value.bind(transaction)
+                    : value;
+                },
+              });
+              return work(reader);
+            }, options);
+        const value: unknown = Reflect.get(target, property);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const file = await new RegistrationsService(scoped).exportParticipants(
+      event.id,
+      {
+        id: ownerId,
+        role: 'organizer',
+        name: 'Teste',
+        email: 'owner@ligahub.test',
+      },
+      { page: 4, limit: 20, status: 'confirmed', search: 'Snapshot' },
+    );
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(file as unknown as ExcelJS.Buffer);
+    const sheet = workbook.getWorksheet(1)!;
+    expect(batches).toBe(2);
+    expect(sheet.rowCount).toBe(503);
+    const names = new Set<string>();
+    sheet.eachRow((row, index) => {
+      if (index > 1) names.add(row.getCell(3).text);
+    });
+    expect(names.size).toBe(502);
+    expect(names).toEqual(new Set(original.map((row) => row.name)));
+    expect(sheet.getCell('F502').value).toBe('Confirmada');
+    expect(sheet.getCell('G502').value).toBe('Aprovado');
+    expect(sheet.getCell('I502').value).toBe('Recusado');
+    expect(sheet.getCell('J502').value).toBe('Histórico de contestação');
+  }, 30_000);
 
   it('conta e lista somente solicitações abertas, preservando histórico e propriedade', async () => {
     const { event, ownerId } = await fixture(2);

@@ -3,28 +3,33 @@ import 'reflect-metadata';
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { readFile, writeFile, unlink, mkdir } from 'node:fs/promises';
+import { testDatabaseEnvironment } from './test-database.mjs';
 
 if (
   process.env.LIGAHUB_BROWSER_TEST !== 'true' ||
   process.env.NODE_ENV !== 'test'
 )
   throw new Error('Servidor permitido somente no teste de navegador.');
-const database = new URL(process.env.DATABASE_URL ?? '');
-if (!['localhost', '127.0.0.1', '[::1]'].includes(database.hostname))
-  throw new Error(
-    'Os testes de navegador exigem PostgreSQL local ou do job de CI.',
-  );
+Object.assign(process.env, testDatabaseEnvironment());
+const apiPort = Number(process.env.LIGAHUB_BROWSER_API_PORT ?? '3100');
+const webOrigin = `http://localhost:${process.env.LIGAHUB_BROWSER_WEB_PORT ?? '3101'}`;
 Object.assign(process.env, {
   JWT_SECRET: 'segredo-exclusivo-do-navegador-nao-usar-em-producao',
   CREDENTIALS_ENCRYPTION_KEY: Buffer.alloc(32, 2).toString('base64'),
   PAYMENT_RECONCILIATION_ENABLED: 'false',
+  MERCADO_PAGO_PAYOUTS_ENABLED: 'false',
+  MERCADO_PAGO_PIX_PLATFORM_ACCOUNT_ID: '',
   EMAIL_DELIVERY_ENABLED: 'false',
   EMAIL_PROVIDER: 'resend',
   RESEND_API_KEY: 'chave-simulada-do-navegador',
+  RESEND_WEBHOOK_SECRET: `whsec_${Buffer.alloc(32, 7).toString('base64')}`,
   EMAIL_FROM: 'LigaHub <teste@example.com>',
-  FRONTEND_URL: 'http://localhost:3101',
-  CORS_ORIGINS: 'http://localhost:3101',
+  FRONTEND_URL: webOrigin,
+  CORS_ORIGINS: webOrigin,
   MERCADO_PAGO_TEST_MODE: 'true',
+  MERCADO_PAGO_CLIENT_ID: 'aplicacao-ficticia-do-navegador',
+  MERCADO_PAGO_CLIENT_SECRET: 'segredo-ficticio-do-navegador',
+  MERCADO_PAGO_REDIRECT_URI: `${webOrigin}/api/payments/accounts/callback`,
   MERCADO_PAGO_NOTIFICATION_URL: 'https://browser.invalid/payments/webhook',
 });
 globalThis.fetch = async () => {
@@ -60,11 +65,31 @@ const [
 const messages = [],
   remote = new Map(),
   keys = new Map();
+const { CommunicationsGateway } =
+  await import('../dist/modules/communications/communications.gateway.js');
+const { CommunicationsProcessor } =
+  await import('../dist/modules/communications/communications.processor.js');
+const communicationMessages = new Map();
 let fixture,
   loseNextResponse = false,
   rejectNextPayment = false,
   createdCharges = 0;
 const gateway = {
+  async exchangeOAuth(input) {
+    if (input.code !== 'codigo-oauth-do-navegador')
+      throw new Error('Código de teste inválido.');
+    return {
+      access_token: 'segredo-ficticio-oauth-navegador',
+      refresh_token: 'renovacao-ficticia-oauth',
+      user_id: 900000000,
+      public_key: 'TEST-chave-publica-oauth',
+      expires_in: 3600,
+      live_mode: false,
+    };
+  },
+  async merchant() {
+    return { id: 900000000, site_id: 'MLB', tags: ['test_user'] };
+  },
   async createPayment(_token, key, body) {
     if (keys.has(key)) return remote.get(keys.get(key));
     const payment = {
@@ -135,8 +160,24 @@ const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       return `email-ficticio-${messages.length}`;
     },
   })
+  .overrideProvider(CommunicationsGateway)
+  .useValue({
+    configured: () => true,
+    async send(message, key) {
+      if (!communicationMessages.has(key))
+        communicationMessages.set(key, {
+          providerId: `browser-communication-${randomUUID()}`,
+          message,
+        });
+      return communicationMessages.get(key).providerId;
+    },
+  })
   .compile();
-const app = moduleRef.createNestApplication({ logger: ['error'] });
+const app = moduleRef.createNestApplication({
+  logger: ['error'],
+  rawBody: true,
+});
+app.useBodyParser('json', { limit: '1mb' });
 const prisma = app.get(PrismaService);
 // O histórico do navegador nunca lê pagamentos de usuários do banco compartilhado.
 const payments = app.get(PaymentsService);
@@ -196,6 +237,24 @@ async function cleanup() {
     where: { registrationId: { in: registrations.map((r) => r.id) } },
     select: { id: true },
   });
+  const accounts = await prisma.paymentAccount.findMany({
+    where: { ownerId: fixture.ownerId },
+    select: { id: true },
+  });
+  const recipients = await prisma.communicationRecipient.findMany({
+    where: { campaign: { eventId: fixture.eventId } },
+    select: { providerId: true },
+  });
+  await prisma.communicationWebhookEvent.deleteMany({
+    where: {
+      providerId: {
+        in: recipients.flatMap((r) => (r.providerId ? [r.providerId] : [])),
+      },
+    },
+  });
+  await prisma.communicationCampaign.deleteMany({
+    where: { eventId: fixture.eventId },
+  });
   await prisma.auditLog.deleteMany({
     where: {
       entityId: {
@@ -203,6 +262,7 @@ async function cleanup() {
           fixture.ownerId,
           fixture.eventId,
           fixture.accountId,
+          ...accounts.map((account) => account.id),
           ...registrations.map((r) => r.id),
           ...payments.map((p) => p.id),
           ...tasks.map((t) => t.id),
@@ -217,6 +277,7 @@ async function cleanup() {
   await prisma.paymentAccount.deleteMany({
     where: { ownerId: fixture.ownerId },
   });
+  await prisma.oAuthState.deleteMany({ where: { ownerId: fixture.ownerId } });
   await prisma.academicEvent.deleteMany({ where: { id: fixture.eventId } });
   await prisma.browserSession.deleteMany({
     where: { userId: fixture.ownerId },
@@ -224,6 +285,7 @@ async function cleanup() {
   await prisma.user.deleteMany({ where: { id: fixture.ownerId } });
   fixture = undefined;
   messages.length = 0;
+  communicationMessages.clear();
   remote.clear();
   keys.clear();
   createdCharges = 0;
@@ -240,7 +302,9 @@ try {
     !/^[0-9a-f-]{36}$/.test(fixture.eventId)
   )
     throw new Error('Arquivo de fixture inválido.');
-  await cleanup();
+  // Manual local demonstrations retain their fictitious dataset across restarts.
+  // Automated browser runs keep their original clean-start behavior.
+  if (process.env.LIGAHUB_PERSIST_FIXTURE !== 'true') await cleanup();
 } catch (error) {
   if (error.code !== 'ENOENT') throw error;
 }
@@ -297,6 +361,47 @@ control('post', '/__browser/cleanup', async () => {
   await cleanup();
   return { cleaned: true };
 });
+control('post', '/__browser/communications-prepare', async () => {
+  if (!fixture) throw new Error('Fixture obrigatória.');
+  await prisma.registration.create({
+    data: {
+      eventId: fixture.eventId,
+      name: 'Ana Comunicado',
+      email: 'ana-comunicado@example.com',
+      answers: {},
+      formSnapshot: [],
+      priceInCents: 0,
+      status: 'confirmed',
+      registrationTypeId: 'geral',
+      registrationTypeName: 'Inscrição geral',
+      reservationExpiresAt: new Date(),
+      manageTokenHash: digest('credencial-ficticia-de-comunicado'),
+    },
+  });
+  return { ready: true };
+});
+control('post', '/__browser/communications-process', async () => {
+  if (!fixture) throw new Error('Fixture obrigatória.');
+  await app.get(CommunicationsProcessor).processBatch(Date.now() + 60000);
+  const rows = await prisma.communicationRecipient.findMany({
+    where: { campaign: { eventId: fixture.eventId } },
+    select: { providerId: true, status: true },
+  });
+  return { recipients: rows, messages: communicationMessages.size };
+});
+control('post', '/__browser/shutdown', async (req) => {
+  if (
+    !process.env.LIGAHUB_BROWSER_RUN_TOKEN ||
+    req.headers['x-browser-run'] !== process.env.LIGAHUB_BROWSER_RUN_TOKEN
+  )
+    throw new Error('Execução de navegador não corresponde ao servidor.');
+  await cleanup();
+  setTimeout(() => {
+    app.getHttpServer().closeAllConnections();
+    void app.close().finally(() => process.exit(0));
+  }, 100);
+  return { closing: true };
+});
 control('post', '/__browser/participant-types', async () => {
   await prisma.user.update({
     where: { id: fixture.ownerId },
@@ -320,6 +425,39 @@ control('post', '/__browser/participant-types', async () => {
   return { updated: true };
 });
 control('get', '/__browser/messages', async () => messages);
+control('post', '/__browser/manual-form', async () => {
+  await prisma.academicEvent.update({
+    where: { id: fixture.eventId },
+    data: {
+      capacity: 2,
+      registrationTypes: [
+        {
+          id: 'profissional',
+          name: 'Profissional',
+          priceInCents: 2500,
+          capacity: 2,
+        },
+      ],
+      form: [
+        { id: 'curso', label: 'Curso', type: 'text', required: true },
+        {
+          id: 'turno',
+          label: 'Turno',
+          type: 'select',
+          options: ['Manhã', 'Noite'],
+          required: true,
+        },
+        {
+          id: 'aceite',
+          label: 'Aceita as regras',
+          type: 'checkbox',
+          required: true,
+        },
+      ],
+    },
+  });
+  return { updated: true };
+});
 control('post', '/__browser/failed-email', async () => {
   const row = await prisma.registration.create({
     data: {
@@ -448,6 +586,6 @@ control('post', '/__browser/interrupted/:id', async (req) => {
 });
 app.use(browserSecurity);
 app.useGlobalPipes(validationPipe());
-await app.listen(3100, '127.0.0.1');
+await app.listen(apiPort, '127.0.0.1');
 // Os timers foram desativados durante a inicialização; o envio é simulado e controlado por fixture.
 process.env.EMAIL_DELIVERY_ENABLED = 'true';

@@ -1,46 +1,46 @@
-import { useEffect, useState } from 'react';
-import { NavLink, Outlet, Navigate, Link, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard,
-  CalendarDays,
-  Wallet,
-  Users,
-  History,
-  Mail,
   Activity,
-  LogOut,
   ArrowUpRight,
+  CalendarDays,
+  History,
+  LayoutDashboard,
+  LogOut,
+  Mail,
+  Users,
+  Wallet,
   X,
   type LucideIcon,
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from './auth';
-import { Brand, Loading, Notice } from './ui';
-import { MotionSection, SoundToggle } from './experience';
-import { ThemeToggle } from './theme';
-import { Button } from './components/ui/button';
-import {
-  SidebarProvider,
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupLabel,
-  SidebarGroupContent,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-  SidebarTrigger,
-  useSidebar,
-} from './components/ui/sidebar';
 import {
   Breadcrumb,
-  BreadcrumbList,
   BreadcrumbItem,
   BreadcrumbLink,
+  BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from './components/ui/breadcrumb';
+import { Button } from './components/ui/button';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from './components/ui/sidebar';
+import { MotionSection, SoundToggle } from './experience';
+import { ThemeToggle } from './theme';
+import { Brand, Loading, Notice } from './ui';
 
 type Item = [string, string, LucideIcon];
 const management: Item[] = [
@@ -259,42 +259,4 @@ export function Layout() {
   );
 }
 
-export function PublicLayout() {
-  const { pathname } = useLocation();
-  return (
-    <>
-      <a href="#conteudo-publico" className="skip-link">
-        Ir para o conteúdo
-      </a>
-      <header className="public-topbar">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-4 sm:px-9">
-          <Link to="/">
-            <Brand />
-          </Link>
-          <div className="flex items-center gap-2">
-            <SoundToggle />
-            <ThemeToggle />
-            <Button variant="ghost" asChild>
-              <Link to="/login">
-                <span className="hidden sm:inline">Acesso à gestão</span>
-                <span className="sm:hidden">Entrar</span>
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </header>
-      <main
-        id="conteudo-publico"
-        tabIndex={-1}
-        className="mx-auto max-w-6xl px-5 py-9 sm:px-9 sm:py-12"
-      >
-        <MotionSection change={pathname}>
-          <Outlet />
-        </MotionSection>
-      </main>
-      <footer className="mx-auto max-w-6xl border-t border-border px-5 py-6 text-sm text-muted-foreground">
-        LigaHub · Encontros que aproximam.
-      </footer>
-    </>
-  );
-}
+export { PublicLayout } from './public-layout';

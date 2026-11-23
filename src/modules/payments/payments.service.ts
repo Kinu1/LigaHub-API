@@ -35,6 +35,13 @@ import {
   type ProviderPayment,
 } from './payment-security.js';
 import type { ProviderApi } from './payment-orders.js';
+import { pixRouting } from './pix-routing.js';
+import { enqueuePixPayout, payoutMode } from './pix-payout.policy.js';
+import {
+  assertPixPricingAcknowledged,
+  quotePixPricing,
+  publicPixPricing,
+} from './pix-pricing.js';
 
 const unresolved = [
   'created',
@@ -103,15 +110,30 @@ export class PaymentsService {
       where: { ownerId: registration.event.ownerId ?? '', active: true },
       orderBy: { createdAt: 'desc' },
     });
-    if (!account)
+    const routing = await pixRouting(
+      this.prisma,
+      registration.event.ownerId ?? '',
+    );
+    if (!account && !routing)
       throw new ServiceUnavailableException(
         'O organizador ainda não conectou uma conta de pagamento.',
       );
     return {
-      publicKey: account.publicKey,
+      publicKey: (account ?? routing!.account).publicKey,
       amountInCents: registration.priceInCents,
       currency: 'BRL',
       maxInstallments: 12,
+      ...(routing && payoutMode() === 'manual'
+        ? {
+            pixPricing: quotePixPricing(
+              registration.priceInCents,
+              `${registration.id}:${routing.account.id}`,
+            ),
+          }
+        : {}),
+      ...(routing
+        ? { allowedMethods: account ? ['pix', 'card'] : ['pix'] }
+        : {}),
     };
   }
 
@@ -152,6 +174,9 @@ export class PaymentsService {
         issuerId: input.issuerId ?? null,
         installments: input.installments,
         cpf: input.cpf,
+        ...(input.pixPricingToken
+          ? { pixPricingToken: input.pixPricingToken }
+          : {}),
         ...(input.payerName !== undefined
           ? { payerName: input.payerName }
           : {}),
@@ -187,14 +212,25 @@ export class PaymentsService {
         throw new ConflictException(
           'Já existe um pagamento em processamento. Consulte seu resultado antes de tentar outro.',
         );
-      const account = await tx.paymentAccount.findFirst({
-        where: { ownerId: current.event.ownerId ?? '', active: true },
-        orderBy: { createdAt: 'desc' },
-      });
+      const routing =
+        input.method === 'pix'
+          ? await pixRouting(tx, current.event.ownerId ?? '')
+          : null;
+      const account =
+        routing?.account ??
+        (await tx.paymentAccount.findFirst({
+          where: { ownerId: current.event.ownerId ?? '', active: true },
+          orderBy: { createdAt: 'desc' },
+        }));
       if (!account)
         throw new ServiceUnavailableException(
           'O organizador ainda não conectou uma conta de pagamento.',
         );
+      const pricing =
+        routing && payoutMode() === 'manual'
+          ? quotePixPricing(current.priceInCents, `${current.id}:${account.id}`)
+          : null;
+      if (pricing) assertPixPricingAcknowledged(pricing, input.pixPricingToken);
       let expiresAt = current.reservationExpiresAt;
       if (input.method === 'pix') {
         expiresAt = new Date(
@@ -223,7 +259,8 @@ export class PaymentsService {
       const attemptId = randomUUID();
       const payer = { name: input.payerName ?? current.name, cpf: input.cpf };
       const providerRequest = {
-        transaction_amount: current.priceInCents / 100,
+        transaction_amount:
+          (pricing?.totalInCents ?? current.priceInCents) / 100,
         external_reference: attemptId,
         installments: input.installments,
         payment_method_id:
@@ -255,7 +292,21 @@ export class PaymentsService {
           requestHash,
           method: input.method,
           installments: input.installments,
-          amountInCents: current.priceInCents,
+          amountInCents: pricing?.totalInCents ?? current.priceInCents,
+          ...(pricing
+            ? {
+                registrationAmountInCents: pricing.registrationAmountInCents,
+                platformFeeInCents: pricing.platformFeeInCents,
+                processingFeeInCents: pricing.processingFeeInCents,
+                pricingSnapshot: pricing,
+              }
+            : {}),
+          ...(routing
+            ? {
+                payoutOwnerId: current.event.ownerId,
+                payoutDestinationEncrypted: routing.snapshot,
+              }
+            : {}),
         },
       });
       await tx.auditLog.create({
@@ -770,6 +821,7 @@ export class PaymentsService {
           },
         },
       });
+      await enqueuePixPayout(tx, saved);
       return saved;
     });
   }
@@ -887,6 +939,9 @@ export class PaymentsService {
       method: attempt.method,
       installments: attempt.installments,
       amountInCents: attempt.amountInCents,
+      ...(publicPixPricing(attempt)
+        ? { pricing: publicPixPricing(attempt) }
+        : {}),
       status: attempt.status,
       statusDetail: attempt.statusDetail,
       checkout: attempt.checkout,

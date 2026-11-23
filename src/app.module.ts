@@ -1,4 +1,4 @@
-import { JobsModule } from './modules/jobs/jobs.module.js';
+﻿import { JobsModule } from './modules/jobs/jobs.module.js';
 import { HealthController } from './health.controller.js';
 import { PrismaModule } from './prisma.module.js';
 import { Module } from '@nestjs/common';
@@ -17,6 +17,7 @@ import { RegistrationsModule } from './modules/registrations/registrations.modul
 import { PaymentsModule } from './modules/payments/payments.module.js';
 import { AdminModule } from './modules/admin/admin.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
+import { CommunicationsModule } from './modules/communications/communications.module.js';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     PaymentsModule,
     AdminModule,
     NotificationsModule,
+    CommunicationsModule,
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
   ],
   controllers: [AppController, HealthController],

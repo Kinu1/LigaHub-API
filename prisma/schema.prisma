@@ -30,6 +30,7 @@ model AcademicEvent {
   form                 Json           @default("[]")
   registrationTypes    Json           @default("[]")
   registrations        Registration[]
+  communicationCampaigns CommunicationCampaign[]
 
   @@map("academic_events")
 }
@@ -37,6 +38,12 @@ model AcademicEvent {
 enum UserRole {
   admin
   organizer
+}
+
+enum RegistrationOrigin {
+  public
+  manual
+  historical
 }
 
 model User {
@@ -53,6 +60,7 @@ model User {
   paymentAccounts PaymentAccount[]
   oauthStates     OAuthState[]
   auditLogs       AuditLog[]
+  communicationCampaigns CommunicationCampaign[]
 
   @@map("users")
 }
@@ -82,9 +90,16 @@ model Registration {
   createdAt               DateTime         @default(now())
   payments                PaymentAttempt[]
   confirmationEmails      EmailOutbox[]
+  communicationRecipients CommunicationRecipient[]
+
+  origin                  RegistrationOrigin @default(public)
+  manualAuthorId          String?            @db.Uuid
+  manualCreatedAt         DateTime?
 
   @@unique([eventId, email])
   @@index([eventId, status, reservationExpiresAt])
+  @@index([origin])
+  @@index([manualAuthorId])
   @@map("registrations")
 }
 
@@ -155,9 +170,17 @@ model PaymentAttempt {
   // Nulo preserva a incerteza dos registros anteriores à marcação de envio.
   submissionStarted Boolean?
   payerEncrypted    String?
+  // Snapshot de destino somente para novas cobranças Pix na conta da plataforma.
+  payoutOwnerId String? @db.Uuid
+  payoutDestinationEncrypted String?
+  payout PixPayout?
   method            String
   installments      Int
   amountInCents     Int
+  registrationAmountInCents Int?
+  platformFeeInCents Int?
+  processingFeeInCents Int?
+  pricingSnapshot Json?
   status            String         @default("created")
   statusDetail      String?
   checkout          Json?
@@ -169,9 +192,53 @@ model PaymentAttempt {
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
+
   @@index([status, updatedAt])
   @@index([lastSyncErrorCode])
   @@map("payment_attempts")
+}
+
+model OrganizerPixDestination {
+  ownerId      String    @id @db.Uuid
+  id           String    @unique @default(uuid()) @db.Uuid
+  keyType      String
+  keyEncrypted String
+  fingerprint  String
+  approvedAt   DateTime?
+  approvedBy   String?   @db.Uuid
+  updatedAt    DateTime  @updatedAt
+
+  @@map("organizer_pix_destinations")
+}
+
+model PixPayout {
+  id                    String         @id @default(uuid()) @db.Uuid
+  paymentId             String         @unique @db.Uuid
+  payment               PaymentAttempt @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  // Uma inscrição não pode gerar dois repasses, mesmo com várias aprovações.
+  registrationId        String         @unique @db.Uuid
+  ownerId               String         @db.Uuid
+  destinationEncrypted  String
+  amountInCents         Int
+  status                String         @default("pending")
+  reason                String?
+  submittedAt           DateTime?
+  manualReservedBy      String?        @db.Uuid
+  manualReservedAt      DateTime?
+  manualReceiptEncrypted String?
+  manualReceiptHash     String?        @unique
+  manualPaidAt          DateTime?
+  providerPayoutId      String?        @unique
+  providerTransactionId String?        @unique
+  leaseId               String?        @db.Uuid
+  leaseExpiresAt        DateTime?
+  nextAttemptAt         DateTime       @default(now())
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([ownerId, createdAt])
+  @@map("pix_payouts")
 }
 
 model AuditLog {
@@ -246,4 +313,153 @@ model AccessEmailOutbox {
   @@index([status, leaseExpiresAt])
   @@index([expiresAt])
   @@map("access_email_outbox")
+}
+
+enum CommunicationStatus {
+  draft
+  sending
+  sent
+  failed
+}
+
+enum CommunicationAudience {
+  all_active
+  confirmed_only
+  categories
+}
+
+enum RecipientStatus {
+  pending
+  queued
+  processing
+  accepted
+  delivered
+  delayed
+  failed
+  unconfirmed_after24h
+  skipped
+}
+
+enum AttachmentStatus {
+  uploading
+  ready
+  failed
+  expired
+}
+
+model CommunicationCampaign {
+  id                String    @id @default(uuid()) @db.Uuid
+  eventId           String    @db.Uuid
+  event             AcademicEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  ownerId           String    @db.Uuid
+  owner             User      @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  subject           String    @db.VarChar(255)
+  htmlContent       String    @db.Text
+  textContent       String    @db.Text
+  audienceType      CommunicationAudience @default(all_active)
+  audienceCategoryIds String[]  @default([])
+  confirmedOnly Boolean @default(false)
+  contentEncrypted String? @db.Text
+  envelopeEncrypted String? @db.Text
+  snapshotCount Int @default(0)
+  completedAt DateTime?
+  status            CommunicationStatus @default(draft)
+  idempotencyKey    String    @db.Uuid
+  sentAt            DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  attachments       CommunicationAttachment[]
+  recipients        CommunicationRecipient[]
+
+
+  @@index([eventId])
+  @@index([ownerId])
+  @@index([idempotencyKey])
+  @@unique([eventId, idempotencyKey])
+  @@map("communication_campaigns")
+}
+
+model CommunicationAttachment {
+  id              String    @id @default(uuid()) @db.Uuid
+  campaignId      String    @db.Uuid
+  campaign        CommunicationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  filename        String    @db.VarChar(255)
+  mimeType        String    @db.VarChar(100)
+  sizeBytes       BigInt
+  checksum        String    @db.VarChar(64)
+  status          AttachmentStatus @default(uploading)
+  encryptedPayload String?   @db.Text
+  uploadedAt      DateTime?
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+  chunks          CommunicationAttachmentChunk[]
+  totalChunks Int
+
+  @@index([campaignId])
+  @@index([status, expiresAt])
+  @@map("communication_attachments")
+}
+
+model CommunicationAttachmentChunk {
+  id            String    @id @default(uuid()) @db.Uuid
+  attachmentId  String    @db.Uuid
+  attachment    CommunicationAttachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+  chunkIndex    Int
+  dataBase64    String    @db.Text
+  checksum      String    @db.VarChar(64)
+  createdAt     DateTime  @default(now())
+
+  @@unique([attachmentId, chunkIndex])
+  @@map("communication_attachment_chunks")
+}
+
+model CommunicationRecipient {
+  webhookEvents CommunicationWebhookEvent[]
+  id                String         @id @default(uuid()) @db.Uuid
+  campaignId        String         @db.Uuid
+  campaign          CommunicationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  registrationId    String         @db.Uuid
+  registration      Registration   @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  email             String         @db.VarChar(255)
+  name              String         @db.VarChar(255)
+  status            RecipientStatus @default(pending)
+  attempts          Int            @default(0)
+  leaseId           String?        @db.Uuid
+  leaseExpiresAt    DateTime?
+  providerId        String?        @db.VarChar(255)
+  acceptedAt        DateTime?
+  firstAttemptAt    DateTime?
+  lastAttemptAt     DateTime?
+  nextAttemptAt DateTime @default(now())
+  deliveredAt       DateTime?
+  errorCode         String?        @db.VarChar(100)
+  errorDetail       String?        @db.Text
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@unique([campaignId, registrationId])
+  @@index([campaignId])
+  @@index([status, nextAttemptAt])
+  @@index([leaseId])
+  @@index([providerId])
+  @@map("communication_recipients")
+}
+
+model CommunicationWebhookEvent {
+  id                   String   @id @default(uuid()) @db.Uuid
+  svixId               String   @unique @db.VarChar(255)
+  eventType            String   @db.VarChar(100)
+  providerId String @db.VarChar(255)
+  payloadJson          Json
+  receivedAt           DateTime @default(now())
+  processedAt          DateTime?
+  matchedRecipientId   String?  @db.Uuid
+  matchedRecipient     CommunicationRecipient? @relation(fields: [matchedRecipientId], references: [id], onDelete: SetNull)
+  reconciliationStatus String   @default("unmatched") @db.VarChar(50)
+
+  @@index([receivedAt])
+  @@index([matchedRecipientId])
+  @@index([reconciliationStatus])
+  @@index([providerId])
+  @@map("communication_webhook_events")
 }

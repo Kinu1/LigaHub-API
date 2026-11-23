@@ -7,6 +7,8 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { pixRouting } from '../payments/pix-routing.js';
+import { publicPixPricing } from '../payments/pix-pricing.js';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { PrismaService } from '../../prisma.service.js';
 import { Prisma } from '../../generated/prisma/client.js';
@@ -17,15 +19,44 @@ import {
   assertRegistrationOpen,
 } from './registration.policy.js';
 import type { CreateRegistrationDto } from './registrations.dto.js';
+import type { CreateManualRegistrationDto } from './registrations.dto.js';
+import { enqueueConfirmation } from '../notifications/confirmation-email.js';
 
 import { isUniqueConstraint } from '../../common/prisma-errors.js';
 import {
   encryptCredential,
   decryptCredential,
 } from '../payments/payment-security.js';
+import { participantFinancial } from './participant-financial.js';
 import { validParticipantCpf } from './participant-cpf.js';
 import { createParticipantsWorkbook } from './participants-export.js';
 import type { RegistrationPaginationDto } from './registrations.dto.js';
+
+const participantSelect = {
+  id: true,
+  name: true,
+  email: true,
+  answers: true,
+  formSnapshot: true,
+  reviewReason: true,
+  priceInCents: true,
+  registrationTypeName: true,
+  registrationTypeId: true,
+  participantCpfEncrypted: true,
+  payments: {
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    select: { id: true, status: true },
+  },
+  status: true,
+  reservationExpiresAt: true,
+  suspendedAt: true,
+  cancellationRequestedAt: true,
+  createdAt: true,
+  origin: true,
+  manualAuthorId: true,
+  manualCreatedAt: true,
+  confirmationEmails: { select: { status: true } },
+} satisfies Prisma.RegistrationSelect;
 
 export const hashParticipantToken = (token: string): string =>
   createHash('sha256').update(token).digest('hex');
@@ -43,6 +74,7 @@ export class RegistrationsService {
         id: true,
         name: true,
         status: true,
+        origin: true,
         reviewReason: true,
         suspendedAt: true,
         cancellationRequestedAt: true,
@@ -70,6 +102,7 @@ export class RegistrationsService {
       );
     return {
       id: registration.id,
+      origin: registration.origin,
       reviewReason: registration.reviewReason,
       name: registration.name,
       status: registration.status,
@@ -79,6 +112,132 @@ export class RegistrationsService {
     };
   }
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+
+  async createManual(
+    eventId: string,
+    input: CreateManualRegistrationDto,
+    actor: AuthenticatedUser,
+  ) {
+    if (!['admin', 'organizer'].includes(actor.role))
+      throw new ForbiddenException('Você não tem acesso a este evento.');
+    return this.prisma.$transaction(async (tx) => {
+      // Same row lock as reserve(): manual and public requests share capacity.
+      await tx.$queryRaw`SELECT "id" FROM "academic_events" WHERE "id" = ${eventId}::uuid FOR UPDATE`;
+      await this.eventAccess(eventId, actor, tx);
+      const event = await tx.academicEvent.findUniqueOrThrow({
+        where: { id: eventId },
+        include: { owner: true },
+      });
+      if (!validParticipantCpf(input.cpf))
+        throw new BadRequestException(
+          'Informe um CPF válido para o participante.',
+        );
+      const name = input.name.trim();
+      if (name.length > 120 || !/^\S+\s+\S/.test(name))
+        throw new BadRequestException(
+          'Informe o nome completo do participante.',
+        );
+      const now = new Date();
+      if (
+        event.status === 'closed' ||
+        !event.startsAt ||
+        event.startsAt <= now ||
+        (event.endsAt && event.endsAt <= now)
+      )
+        throw new ConflictException(
+          'A cortesia exige um evento com início futuro e não encerrado.',
+        );
+      if (!event.owner?.active)
+        throw new ConflictException(
+          'O organizador deste evento está indisponível.',
+        );
+      const types =
+        Array.isArray(event.registrationTypes) && event.registrationTypes.length
+          ? (event.registrationTypes as unknown as Array<{
+              id: string;
+              name: string;
+              capacity?: number | null;
+            }>)
+          : [{ id: 'geral', name: 'Inscrição geral', capacity: null }];
+      const category = types.find(
+        (type) => type.id === input.registrationTypeId,
+      );
+      if (!category)
+        throw new BadRequestException('Selecione um tipo de inscrição válido.');
+      const answers = validateAnswers(event.form, input.answers);
+      const email = input.email.trim().toLowerCase();
+      const duplicate = await tx.registration.findUnique({
+        where: { eventId_email: { eventId, email } },
+        select: { id: true },
+      });
+      if (duplicate)
+        throw new ConflictException({
+          message: 'Já existe uma inscrição com este e-mail neste evento.',
+          registrationId: duplicate.id,
+        });
+      const occupied = {
+        eventId,
+        OR: [
+          { status: 'confirmed' },
+          { status: 'reserved', reservationExpiresAt: { gt: now } },
+        ],
+      };
+      assertAvailableCapacity(
+        event.capacity,
+        await tx.registration.count({ where: occupied }),
+      );
+      if (category.capacity != null)
+        assertAvailableCapacity(
+          category.capacity,
+          await tx.registration.count({
+            where: { ...occupied, registrationTypeId: category.id },
+          }),
+        );
+      const manageToken = randomBytes(32).toString('base64url');
+      const registration = await tx.registration.create({
+        data: {
+          eventId,
+          name,
+          email,
+          participantCpfEncrypted: encryptCredential(input.cpf),
+          answers: answers as Prisma.InputJsonObject,
+          formSnapshot: event.form as Prisma.InputJsonValue,
+          registrationTypeId: category.id,
+          registrationTypeName: category.name,
+          priceInCents: 0,
+          status: 'confirmed',
+          origin: 'manual',
+          manualAuthorId: actor.id,
+          manualCreatedAt: now,
+          reservationExpiresAt: now,
+          manageTokenHash: hashParticipantToken(manageToken),
+          manageTokenEncrypted: encryptCredential(manageToken),
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: actor.id,
+          entityType: 'registration',
+          entityId: registration.id,
+          action: 'registration.confirmed_manual',
+          metadata: {
+            eventId,
+            registrationTypeId: category.id,
+            origin: 'manual',
+            priceInCents: 0,
+          },
+        },
+      });
+      // Queue atomically. No provider/config preflight or send during creation.
+      await enqueueConfirmation(tx, { ...registration, event });
+      return {
+        id: registration.id,
+        status: registration.status,
+        origin: registration.origin,
+        emailDeliveryStatus: 'pending',
+      };
+    });
+  }
 
   async reserve(publicId: string, input: CreateRegistrationDto) {
     if (!validParticipantCpf(input.cpf))
@@ -131,9 +290,12 @@ export class RegistrationsService {
             'O organizador deste evento está indisponível.',
           );
         if (registrationType.priceInCents > 0) {
-          const account = await tx.paymentAccount.findFirst({
-            where: { ownerId: event.ownerId!, active: true },
-          });
+          const routing = await pixRouting(tx, event.ownerId!);
+          const account =
+            routing?.account ??
+            (await tx.paymentAccount.findFirst({
+              where: { ownerId: event.ownerId!, active: true },
+            }));
           if (!account)
             throw new ConflictException(
               'O organizador ainda não conectou sua conta de recebimento.',
@@ -276,6 +438,9 @@ export class RegistrationsService {
         method: true,
         installments: true,
         amountInCents: true,
+        registrationAmountInCents: true,
+        platformFeeInCents: true,
+        processingFeeInCents: true,
         status: true,
         checkout: true,
         createdAt: true,
@@ -283,6 +448,9 @@ export class RegistrationsService {
     });
     return {
       id: registration.id,
+      origin: registration.origin,
+      registrationTypeId: registration.registrationTypeId,
+      registrationTypeName: registration.registrationTypeName,
       reviewReason: registration.reviewReason,
       name: registration.name,
       email: registration.email,
@@ -306,7 +474,20 @@ export class RegistrationsService {
         publicId: registration.event.publicId,
         status: registration.event.status,
       },
-      payments,
+      payments: payments.map((payment) => {
+        const {
+          registrationAmountInCents: _base,
+          platformFeeInCents: _platform,
+          processingFeeInCents: _processing,
+          ...record
+        } = payment;
+        return {
+          ...record,
+          ...(publicPixPricing(payment)
+            ? { pricing: publicPixPricing(payment) }
+            : {}),
+        };
+      }),
     };
   }
 
@@ -351,6 +532,7 @@ export class RegistrationsService {
       )
         throw new ConflictException('Não é possível renovar esta reserva.');
       if (
+        !(await pixRouting(tx, record.event.ownerId!)) &&
         !(await tx.paymentAccount.findFirst({
           where: { ownerId: record.event.ownerId!, active: true },
         }))
@@ -419,8 +601,12 @@ export class RegistrationsService {
     });
   }
 
-  private async eventAccess(eventId: string, actor: AuthenticatedUser) {
-    const event = await this.prisma.academicEvent.findUnique({
+  private async eventAccess(
+    eventId: string,
+    actor: AuthenticatedUser,
+    db: Prisma.TransactionClient = this.prisma,
+  ) {
+    const event = await db.academicEvent.findUnique({
       where: { id: eventId },
     });
     if (!event) throw new NotFoundException('Evento não encontrado.');
@@ -429,13 +615,11 @@ export class RegistrationsService {
     return event;
   }
 
-  async list(
+  private participantFilters(
     eventId: string,
-    actor: AuthenticatedUser,
     pagination: RegistrationPaginationDto,
+    now: Date,
   ) {
-    await this.eventAccess(eventId, actor);
-    const now = new Date();
     const where: Prisma.RegistrationWhereInput = {
       eventId,
       ...(pagination.registrationTypeId &&
@@ -493,54 +677,90 @@ export class RegistrationsService {
         { OR: [{ registrationTypeId: 'geral' }, { registrationTypeId: null }] },
       ];
     }
+    return where;
+  }
+
+  async list(
+    eventId: string,
+    actor: AuthenticatedUser,
+    pagination: RegistrationPaginationDto,
+  ) {
+    await this.eventAccess(eventId, actor);
+    const now = new Date();
+    const where = this.participantFilters(eventId, pagination, now);
     const [items, total] = await Promise.all([
       this.prisma.registration.findMany({
         where,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (pagination.page - 1) * pagination.limit,
         take: pagination.limit,
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          answers: true,
-          formSnapshot: true,
-          reviewReason: true,
-          priceInCents: true,
-          registrationTypeName: true,
-          registrationTypeId: true,
-          participantCpfEncrypted: true,
-          payments: {
-            orderBy: { createdAt: 'desc' },
-            take: 1,
-            select: { status: true },
-          },
-          status: true,
-          reservationExpiresAt: true,
-          suspendedAt: true,
-          cancellationRequestedAt: true,
-          createdAt: true,
-        },
+        select: participantSelect,
       }),
       this.prisma.registration.count({ where }),
     ]);
     return {
-      items: items.map(({ participantCpfEncrypted, payments, ...item }) => ({
-        ...item,
-        cpf: participantCpfEncrypted
-          ? decryptCredential(participantCpfEncrypted)
-          : null,
-        paymentStatus:
-          item.priceInCents === 0 ? 'free' : (payments[0]?.status ?? 'unpaid'),
-        status:
-          item.status === 'reserved' && item.reservationExpiresAt <= now
-            ? 'expired'
-            : item.status,
-      })),
+      items: await this.presentParticipants(this.prisma, items, now),
       total,
       page: pagination.page,
       limit: pagination.limit,
     };
+  }
+
+  private async presentParticipants<
+    T extends {
+      participantCpfEncrypted: string | null;
+      payments: { id: string; status: string }[];
+      priceInCents: number;
+      status: string;
+      reservationExpiresAt: Date;
+      confirmationEmails?: { status: string }[];
+    },
+  >(db: Prisma.TransactionClient, items: T[], now: Date) {
+    const disputed = await this.disputedPayments(db, items);
+    return items.map(
+      ({ participantCpfEncrypted, payments, confirmationEmails, ...item }) => ({
+        ...item,
+        ...(confirmationEmails
+          ? { emailDeliveryStatus: confirmationEmails[0]?.status ?? null }
+          : {}),
+        cpf: participantCpfEncrypted
+          ? decryptCredential(participantCpfEncrypted)
+          : null,
+        ...participantFinancial(
+          item.priceInCents,
+          payments,
+          payments.some((payment) => disputed.has(payment.id)),
+        ),
+        status:
+          item.status === 'reserved' && item.reservationExpiresAt <= now
+            ? 'expired'
+            : item.status,
+      }),
+    );
+  }
+
+  private async disputedPayments(
+    db: Prisma.TransactionClient,
+    items: { payments: { id: string }[] }[],
+  ) {
+    const ids = items.flatMap((item) =>
+      item.payments.map((payment) => payment.id),
+    );
+    if (!ids.length) return new Set<string>();
+    const history = await db.auditLog.findMany({
+      where: {
+        entityType: 'payment',
+        entityId: { in: ids },
+        action: 'payment.updated',
+        OR: [
+          { metadata: { path: ['status'], equals: 'in_mediation' } },
+          { metadata: { path: ['status'], equals: 'charged_back' } },
+        ],
+      },
+      select: { entityId: true },
+      distinct: ['entityId'],
+    });
+    return new Set(history.map((entry) => entry.entityId));
   }
 
   async exportParticipants(
@@ -548,31 +768,54 @@ export class RegistrationsService {
     actor: AuthenticatedUser,
     pagination: RegistrationPaginationDto,
   ) {
-    const event = await this.eventAccess(eventId, actor);
-    const filters = {
-      search: pagination.search,
-      status: pagination.status,
-      registrationTypeId: pagination.registrationTypeId,
-    };
-    const first = await this.list(eventId, actor, {
-      ...filters,
-      page: 1,
-      limit: 100,
-    });
-    if (first.total > 50000)
-      throw new BadRequestException(
-        'A exportação suporta até 50.000 participantes. Filtre por tipo de inscrição ou situação.',
-      );
-    const rows = [...first.items];
-    for (let page = 2; page <= Math.ceil(first.total / 100); page++) {
-      const batch = await this.list(eventId, actor, {
-        ...filters,
-        page,
-        limit: 100,
-      });
-      rows.push(...batch.items);
-    }
-    return createParticipantsWorkbook(event.title, rows);
+    const now = new Date();
+    const where = this.participantFilters(eventId, pagination, now);
+    return this.prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+        const event = await this.eventAccess(eventId, actor, tx);
+        const total = await tx.registration.count({ where });
+        if (total > 50000)
+          throw new BadRequestException(
+            'A exportação suporta até 50.000 participantes. Filtre por tipo de inscrição ou situação.',
+          );
+        const presentParticipants = this.presentParticipants.bind(this);
+        async function* rows() {
+          let cursor: string | undefined;
+          for (let fetched = 0; fetched < total;) {
+            const batch = await tx.registration.findMany({
+              where,
+              orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+              ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+              take: Math.min(500, total - fetched),
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                participantCpfEncrypted: true,
+                registrationTypeName: true,
+                status: true,
+                reservationExpiresAt: true,
+                priceInCents: true,
+                origin: true,
+                payments: participantSelect.payments,
+              },
+            });
+            if (!batch.length)
+              throw new Error('Snapshot de participantes incompleto.');
+            for (const row of await presentParticipants(tx, batch, now))
+              yield row;
+            fetched += batch.length;
+            cursor = batch[batch.length - 1].id;
+          }
+        }
+        return createParticipantsWorkbook(event.title, rows());
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+        timeout: 120_000,
+      },
+    );
   }
 
   async suspend(id: string, suspended: boolean, actor: AuthenticatedUser) {

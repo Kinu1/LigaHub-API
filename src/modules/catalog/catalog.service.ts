@@ -6,6 +6,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  platformPixAccountId,
+  payoutMode,
+} from '../payments/pix-payout.policy.js';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma.service.js';
 import type { AcademicEvent, Prisma } from '../../generated/prisma/client.js';
@@ -447,15 +451,37 @@ export class CatalogService {
         };
       }),
     );
-    const publicKey = event.ownerId
-      ? (
-          await this.prisma.paymentAccount.findFirst({
-            where: { ownerId: event.ownerId, active: true },
-            orderBy: { createdAt: 'desc' },
-            select: { publicKey: true },
+    const centralAccountId = platformPixAccountId();
+    const centralDestination =
+      centralAccountId && event.ownerId
+        ? await this.prisma.organizerPixDestination.findUnique({
+            where: { ownerId: event.ownerId },
+            select: { approvedAt: true },
           })
-        )?.publicKey
-      : undefined;
+        : null;
+    const publicKey = centralAccountId
+      ? centralDestination?.approvedAt
+        ? (
+            await this.prisma.paymentAccount.findFirst({
+              where: {
+                id: centralAccountId,
+                active: true,
+                isTest:
+                  (process.env.MERCADO_PAGO_TEST_MODE ?? 'true') === 'true',
+              },
+              select: { publicKey: true },
+            })
+          )?.publicKey
+        : undefined
+      : event.ownerId
+        ? (
+            await this.prisma.paymentAccount.findFirst({
+              where: { ownerId: event.ownerId, active: true },
+              orderBy: { createdAt: 'desc' },
+              select: { publicKey: true },
+            })
+          )?.publicKey
+        : undefined;
     const availableSpots = Math.max(0, event.capacity - occupied);
     const hasAvailableFreeType = registrationTypes.some(
       (type) =>
@@ -494,6 +520,9 @@ export class CatalogService {
       availableSpots,
       acceptingRegistrations,
       publicKey: publicKey ?? null,
+      ...(centralAccountId && payoutMode() === 'manual'
+        ? { pixFeePolicy: { platformFeeInCents: 100 } }
+        : {}),
     };
   }
 

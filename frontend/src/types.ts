@@ -20,6 +20,7 @@ export type RegistrationType = {
   availableSpots?: number | null;
 };
 export type Event = {
+  pixFeePolicy?: { platformFeeInCents: number };
   id: string;
   publicId: string;
   logoImage?: string | null;
@@ -48,7 +49,14 @@ export type Page<T> = {
   page: number;
   limit: number;
 };
+export type PaymentPricing = {
+  registrationAmountInCents: number;
+  platformFeeInCents: number;
+  processingFeeInCents: number;
+  totalInCents: number;
+};
 export type Payment = {
+  pricing?: PaymentPricing;
   id: string;
   method: string;
   status: string;
@@ -62,9 +70,16 @@ export type Payment = {
   } | null;
 };
 export type Registration = {
+  origin?: 'public' | 'manual' | 'historical';
+  manualAuthorId?: string | null;
+  manualCreatedAt?: string | null;
+  emailDeliveryStatus?: string | null;
   cpf?: string | null;
   registrationTypeId?: string | null;
   paymentStatus?: string;
+  financialStatus?: string;
+  latestPaymentStatus?: string;
+  financialWarnings?: ('multiple_approvals' | 'dispute_history')[];
   id: string;
   name: string;
   email: string;
@@ -131,6 +146,7 @@ export const date = (value?: string | null) =>
       }).format(new Date(value))
     : 'A confirmar';
 export const labels: Record<string, string> = {
+  manual: 'Cortesia',
   free: 'Gratuita',
   unpaid: 'Sem pagamento',
   draft: 'Rascunho',
@@ -153,3 +169,121 @@ export const labels: Record<string, string> = {
   in_mediation: 'Em mediação',
   payment_review: 'Revisão necessária',
 };
+
+// Communications types
+export type CommunicationAudience =
+  'all_active' | 'confirmed_only' | 'categories';
+export type CommunicationStatus = 'draft' | 'sending' | 'sent' | 'failed';
+export type RecipientStatus =
+  | 'pending'
+  | 'queued'
+  | 'processing'
+  | 'accepted'
+  | 'delivered'
+  | 'delayed'
+  | 'failed'
+  | 'unconfirmed_after24h'
+  | 'skipped';
+export type AttachmentStatus = 'uploading' | 'ready' | 'failed' | 'expired';
+
+export type CommunicationCampaign = {
+  id: string;
+  subject: string;
+  htmlContent: string;
+  textContent: string;
+  audienceType: CommunicationAudience;
+  audienceCategoryIds: string[];
+  status: CommunicationStatus;
+  createdAt: string;
+  sentAt: string | null;
+  event: {
+    title: string;
+    location: string;
+    startsAt: string | null;
+    logoImage: string | null;
+  };
+  owner: { email: string; name: string };
+  attachments: CommunicationAttachment[];
+  recipients: CommunicationRecipient[];
+};
+
+export type CommunicationCampaignListItem = {
+  id: string;
+  subject: string;
+  status: CommunicationStatus;
+  audienceType: CommunicationAudience;
+  recipientCount: number;
+  attachmentCount: number;
+  createdAt: string;
+  sentAt: string | null;
+};
+
+export type CommunicationCampaignsPage = Page<CommunicationCampaignListItem>;
+
+export type CommunicationAttachment = {
+  id: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  checksum: string;
+  status: AttachmentStatus;
+  expiresAt: string;
+  uploadedAt: string | null;
+};
+
+export type CommunicationRecipient = {
+  id: string;
+  campaignId: string;
+  registrationId: string;
+  email: string;
+  name: string;
+  status: RecipientStatus;
+  attempts: number;
+  providerId: string | null;
+  firstAttemptAt: string | null;
+  lastAttemptAt: string | null;
+  deliveredAt: string | null;
+  errorCode: string | null;
+  errorDetail: string | null;
+};
+
+export type CommunicationRecipientsPage = Page<CommunicationRecipient>;
+
+export type AudiencePreview = {
+  total: number;
+  byCategory: { categoryId: string; categoryName: string; count: number }[];
+};
+
+export const communicationLabels = {
+  draft: 'Rascunho',
+  sending: 'Enviando',
+  sent: 'Enviado',
+  failed: 'Falhou',
+  all_active: 'Todos ativos',
+  confirmed_only: 'Apenas confirmados',
+  categories: 'Por categorias',
+  pending: 'Pendente',
+  queued: 'Na fila',
+  processing: 'Processando',
+  accepted: 'Aceito pelo servidor',
+  delivered: 'Entregue',
+  delayed: 'Atrasado',
+  unconfirmed_after24h: 'Nao confirmado em 24h',
+  skipped: 'Ignorado',
+};
+
+export const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'text/plain',
+  'text/csv',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+] as const;
+
+export const MAX_ATTACHMENTS = 5;
+export const MAX_TOTAL_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+export const MAX_CHUNK_SIZE = 512 * 1024;
+export const ATTACHMENT_EXPIRY_HOURS = 24;

@@ -1,8 +1,11 @@
+import { notifyDataChanged } from './data-updates';
+
 export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
     public fields?: Record<string, string>,
+    public registrationId?: string,
   ) {
     super(message);
   }
@@ -92,8 +95,18 @@ export async function api<T>(
         ? error.message.join(' ')
         : error.message || 'Não foi possível concluir. Tente novamente.',
       fields,
+      typeof error.registrationId === 'string'
+        ? error.registrationId
+        : undefined,
     );
   }
+  if (
+    !['GET', 'HEAD', 'OPTIONS'].includes(
+      (options.method ?? 'GET').toUpperCase(),
+    ) &&
+    !path.startsWith('/auth/')
+  )
+    notifyDataChanged();
   if (responseType === 'blob') return response.blob() as Promise<T>;
   return response.status === 204 ? (undefined as T) : response.json();
 }

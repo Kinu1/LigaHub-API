@@ -24,9 +24,12 @@
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
     "env:init": "node scripts/setup-local.mjs",
     "payments:check": "node scripts/check-mercado-pago.mjs",
+    "payments:payouts:keys": "node scripts/setup-payout-keys.mjs",
     "payments:connect-test": "npm run build && node dist/modules/payments/bootstrap-sandbox.js",
     "db:generate": "prisma generate --config prisma7.config.ts",
     "db:migrate": "prisma migrate deploy --config prisma7.config.ts",
+    "db:migrate:test": "node scripts/migrate-test-database.mjs",
+    "test:scripts": "node --test scripts/*.test.mjs",
     "admin:bootstrap": "npm run build && node dist/modules/auth/bootstrap-admin.js",
     "test:browser": "playwright test"
   },
@@ -51,14 +54,18 @@
     "nodemailer": "^10.0.16",
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "sanitize-html": "2.18.1",
+    "saxes": "6.0.0",
+    "svix": "1.99.1"
   },
   "overrides": {
     "@nestjs/platform-express": {
       "multer": "^2.5.0"
     },
     "@prisma/config": {
-      "deepmerge-ts": "8.0.2"
+      "deepmerge-ts": "8.0.2",
+      "effect": "3.22.1"
     },
     "prisma": {
       "mysql2": "3.24.5"
@@ -68,7 +75,7 @@
     }
   },
   "devDependencies": {
-    "@nestjs/cli": "^12.0.0",
+    "@nestjs/cli": "^12.0.12",
     "@nestjs/schematics": "^12.0.0",
     "@nestjs/testing": "^12.0.1",
     "@playwright/test": "^1.64.1",
@@ -78,6 +85,7 @@
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.0.0",
     "@vitest/coverage-v8": "^4.1.12",
+    "fflate": "0.8.3",
     "oxlint": "^1.58.0",
     "oxlint-tsgolint": "^7.0.2001",
     "prettier": "^3.4.2",

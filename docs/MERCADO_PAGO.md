@@ -55,13 +55,18 @@ Para testes locais, inicie a API na porta 3000 e encaminhe um túnel HTTPS para 
 1. Faça login na API como organizador.
 2. Chame `POST /payments/accounts/authorize` com `{}` e JWT. Como administrador, envie `{ "ownerId": "UUID_DO_ORGANIZADOR" }`.
 3. Abra `authorizationUrl` e autorize a conta que receberá os pagamentos.
-4. O callback consome o estado uma única vez e armazena credenciais criptografadas. Consulte `GET /payments/accounts` para verificar `connected`.
+4. O callback consome o estado uma única vez, armazena credenciais criptografadas e redireciona automaticamente para o Financeiro do site configurado em `FRONTEND_URL`. O destino é fixo: `/painel/financeiro`. Códigos, state e credenciais não são encaminhados ao site.
+5. O Financeiro confirma a conexão após consultar a API autenticada e mostra apenas que a conta está conectada. Administradores retornam à conta do responsável que acabou de autorizar. `GET /payments/accounts` permanece protegido por autenticação e `Cache-Control: no-store`; tokens e segredos permanecem criptografados no servidor.
+
+O callback usa HTTP 303 e `Referrer-Policy: no-referrer`. Em caso de recusa ou falha, retorna ao Financeiro com um aviso genérico, preservando a conexão anterior. O parâmetro de aviso é removido da URL após a página abrir. `FRONTEND_URL` deve ser uma origem HTTPS; HTTP de loopback é permitido apenas fora de `NODE_ENV=production`. A alteração do callback exige uma nova tentativa de conexão para observar o retorno completo; códigos antigos são de uso único.
 
 O fluxo OAuth usa `authorization_code`, PKCE e renovação por `refresh_token`. Para sandbox, a implementação envia `test_token: "true"`. Veja [OAuth e credenciais de sandbox](https://www.mercadopago.com.br/developers/pt/docs/security/oauth/creation).
 
 Reconectar outra conta desativa a anterior para novas cobranças. Tentativas antigas conservam o vínculo original para consulta e reconciliação. Não apague contas antigas do banco.
 
 ## Roteiro de sandbox
+
+A verificação remota de 15/11/2026 confirmou a conta de teste, mas o endereço configurado do webhook não resolveu DNS. Consulte [o resultado atual e o roteiro para concluir o recebimento automático](HOMOLOGACAO_WEBHOOK_2026-11-15.md). O comando `node scripts/check-mercado-pago-remote.mjs` executa consultas sem criar cobranças; seu sucesso não substitui a homologação automática.
 
 - Prepare comprador e vendedor de teste no painel, seguindo as instruções de testes exibidas para sua aplicação. Autorize a conta recebedora no ambiente de teste, em uma sessão separada da conta proprietária da aplicação.
 - Publique um evento futuro, faça a inscrição e consulte a configuração de checkout.

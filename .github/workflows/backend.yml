@@ -26,6 +26,7 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://ligahub:senha-exclusiva-ci@127.0.0.1:5433/ligahub_test?schema=public
+      DATABASE_TEST_URL: postgresql://ligahub:senha-exclusiva-ci@127.0.0.1:5433/ligahub_test?schema=public
       JWT_SECRET: segredo-exclusivo-ci-nao-utilizar-em-producao
       PAYMENT_RECONCILIATION_ENABLED: 'false'
       MERCADO_PAGO_TEST_MODE: 'true'
@@ -37,7 +38,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run db:generate
-      - run: npm run db:migrate
+      - run: npm run db:migrate:test
+      - run: npm run test:scripts
       - run: npm run lint
       - run: npm run build
       - run: npm test
