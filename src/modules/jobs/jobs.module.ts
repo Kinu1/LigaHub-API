@@ -8,8 +8,15 @@ import { JobsGuard } from './jobs.guard.js';
 import { JobsRunner } from './jobs.runner.js';
 import { JobsSchedule } from './jobs.schedule.js';
 
+import { CommunicationsModule } from '../communications/communications.module.js';
+
 @Module({
-  imports: [PrismaModule, NotificationsModule, PaymentsModule],
+  imports: [
+    PrismaModule,
+    NotificationsModule,
+    PaymentsModule,
+    CommunicationsModule,
+  ],
   controllers: [JobsController],
   providers: [JobsGuard, JobsRunner, JobsSchedule],
   exports: [JobsRunner, JobsSchedule],

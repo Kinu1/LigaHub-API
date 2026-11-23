@@ -16,6 +16,8 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import { PixPayoutsService } from '../payments/pix-payouts.service.js';
 import { payoutMode } from '../payments/pix-payout.policy.js';
 
+import { CommunicationsProcessor } from '../communications/communications.processor.js';
+
 export type JobName = 'emails' | 'payments';
 export type JobSource = 'http' | 'timer' | 'scheduler';
 
@@ -43,6 +45,9 @@ export class JobsRunner {
     @Optional()
     @Inject(PixPayoutsService)
     private readonly payouts?: PixPayoutsService,
+    @Optional()
+    @Inject(CommunicationsProcessor)
+    private readonly communications?: CommunicationsProcessor,
   ) {}
 
   private preflight(name: JobName, source: JobSource = 'http') {
@@ -135,10 +140,31 @@ export class JobsRunner {
               Math.min(options?.deadline ?? Infinity, Date.now() + 60_000),
             )
           : undefined;
+      // All email queues share a deadline shorter than the five-minute job lease.
+      const emailDeadline = Math.min(
+        options?.deadline ?? Infinity,
+        Date.now() + 240_000,
+      );
       const raw =
         name === 'emails'
-          ? await this.emails.processBatch(undefined, options?.deadline)
+          ? await this.emails.processBatch(undefined, emailDeadline)
           : await this.payments.reconcile(options?.deadline);
+      if (
+        name === 'emails' &&
+        this.communications &&
+        raw &&
+        ['completed', 'partial', 'failed'].includes(raw.status)
+      ) {
+        const comms = await this.communications.processBatch(emailDeadline);
+        raw.processed += comms.processed;
+        raw.succeeded += comms.succeeded;
+        raw.failed += comms.failed;
+        raw.skipped += comms.skipped;
+        if (raw.failed) {
+          raw.status = raw.succeeded ? 'partial' : 'failed';
+          raw.errorCode ??= comms.errorCode;
+        }
+      }
       if (transfers) {
         raw.processed += transfers.processed;
         raw.succeeded += transfers.succeeded;

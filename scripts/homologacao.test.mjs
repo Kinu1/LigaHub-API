@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { dumpOptions } from './backup-database.mjs';
 import { packageLambda } from './package-lambda.mjs';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -49,6 +49,11 @@ test('package builds from an allowlist and exports only runtime artifacts', asyn
           mkdirSync(join(options.cwd, 'dist'), { recursive: true });
           mkdirSync(join(options.cwd, 'node_modules'), { recursive: true });
           writeFileSync(join(options.cwd, 'dist', 'main.js'), '// mock build');
+          mkdirSync(join(options.cwd, 'dist/assets'), { recursive: true });
+          copyFileSync(
+            join(options.cwd, 'src/assets/logo-lauen.png'),
+            join(options.cwd, 'dist/assets/logo-lauen.png'),
+          );
         }
         return { status: 0 };
       },
