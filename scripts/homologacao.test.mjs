@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { dumpOptions } from './backup-database.mjs';
 import { packageLambda } from './package-lambda.mjs';
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
-import { mkdirSync, writeFileSync, copyFileSync } from 'node:fs';
+import { mkdtemp, readdir, readFile, readlink, rm } from 'node:fs/promises';
+import { mkdirSync, writeFileSync, copyFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -49,6 +49,12 @@ test('package builds from an allowlist and exports only runtime artifacts', asyn
           mkdirSync(join(options.cwd, 'dist'), { recursive: true });
           mkdirSync(join(options.cwd, 'node_modules'), { recursive: true });
           writeFileSync(join(options.cwd, 'dist', 'main.js'), '// mock build');
+          if (process.platform === 'linux') {
+            const modules = join(options.cwd, 'node_modules');
+            mkdirSync(join(modules, '.bin'));
+            writeFileSync(join(modules, 'tool.js'), '// mock npm bin');
+            symlinkSync('../tool.js', join(modules, '.bin', 'tool'));
+          }
           mkdirSync(join(options.cwd, 'dist/assets'), { recursive: true });
           copyFileSync(
             join(options.cwd, 'src/assets/logo-lauen.png'),
@@ -69,6 +75,12 @@ test('package builds from an allowlist and exports only runtime artifacts', asyn
       'node_modules',
       'package.json',
     ]);
+    if (process.platform === 'linux') {
+      assert.equal(
+        await readlink(join(output, 'node_modules', '.bin', 'tool')),
+        '../tool.js',
+      );
+    }
     const pkg = JSON.parse(
       await readFile(join(output, 'package.json'), 'utf8'),
     );
